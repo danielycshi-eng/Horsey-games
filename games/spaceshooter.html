@@ -1050,7 +1050,7 @@
         if (totalBullets === 1) {
           playerBullets.push({ x: player.x, y: player.y - PLAYER_H / 2 - 14 });
         } else {
-          const spread = 8;
+          const spread = 20;
           const totalW = (totalBullets - 1) * spread;
           for (let bi = 0; bi < totalBullets; bi++) {
             playerBullets.push({ x: player.x - totalW / 2 + bi * spread, y: player.y - PLAYER_H / 2 - 14 });
@@ -1159,15 +1159,15 @@
               shieldActive = false; shieldExpireAt = 0;
             } else {
               hp = Math.max(0, hp - diffSettings[difficulty].bulletDmg);
+              flashDamage();
             }
-            flashDamage();
           } else {
             if (shieldActive) {
               shieldActive = false; shieldExpireAt = 0;
             } else {
               hp = Math.max(0, hp - diffSettings[difficulty].bulletDmg);
+              flashDamage();
             }
-            flashDamage();
           }
           updateUI();
           if (hp <= 0) {
