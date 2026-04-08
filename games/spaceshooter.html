@@ -184,9 +184,9 @@
 
     #hardcore-heart {
       position: fixed;
-      top: 4px;
+      top: 8px;
       left: 18px;
-      font-size: 5rem;
+      font-size: 3.5rem;
       pointer-events: none;
       line-height: 1;
       color: #e94560;
@@ -200,15 +200,15 @@
     #hardcore-heart.center {
       top: 50%;
       left: 50%;
-      font-size: 10rem;
+      font-size: 16rem;
       transform: translate(-50%, -50%);
     }
 
     #fire-canvas {
       position: fixed;
-      top: -15px;
-      left: -2px;
-      width: 160px;
+      top: -20px;
+      left: -22px;
+      width: 140px;
       height: 100px;
       z-index: 11;
       pointer-events: none;
@@ -311,7 +311,7 @@
     <button id="start-btn">Start Game</button>
   </div>
 
-  <canvas id="fire-canvas" width="160" height="100"></canvas>
+  <canvas id="fire-canvas" width="140" height="100"></canvas>
   <div id="hardcore-heart">&#10084;</div>
   <canvas id="shatter-canvas"></canvas>
   <div id="ui">
@@ -743,8 +743,8 @@
       // Spawn new particles from both sides of the heart
       for (let i = 0; i < 5; i++) {
         fireParticles.push({
-          x: 80 + (Math.random() - 0.5) * 80,
-          y: 65 + Math.random() * 15,
+          x: 70 + (Math.random() - 0.5) * 60,
+          y: 70 + Math.random() * 15,
           vx: (Math.random() - 0.5) * 1.8,
           vy: -(1.5 + Math.random() * 3.5),
           life: 1,
@@ -838,25 +838,18 @@
         }
 
         let frame = 0;
-        const totalFrames = 180;
-        const fadeStartFrame = 40; // start fading to black early
+        const totalFrames = 200;
+        const fadeStartFrame = 30;
         function animateShatter() {
           sctx.clearRect(0, 0, sc.width, sc.height);
-
-          // Fade to dark overlay in the final stages
-          if (frame > fadeStartFrame) {
-            const fadeProg = (frame - fadeStartFrame) / (totalFrames - fadeStartFrame);
-            sctx.fillStyle = `rgba(26, 26, 46, ${Math.min(fadeProg * 0.95, 0.95)})`;
-            sctx.fillRect(0, 0, sc.width, sc.height);
-          }
 
           let alive = false;
           for (const p of pieces) {
             p.x += p.vx;
             p.y += p.vy;
-            p.vy += 0.15; // gravity
+            p.vy += 0.15;
             p.rot += p.rotV;
-            p.alpha -= 0.008;
+            p.alpha -= 0.006;
             if (p.alpha <= 0) continue;
             alive = true;
             sctx.save();
@@ -867,6 +860,16 @@
             sctx.fillRect(-p.size/2, -p.size/2, p.size, p.size);
             sctx.restore();
           }
+
+          // Draw dark overlay ON TOP of particles so it's visible
+          if (frame > fadeStartFrame) {
+            const fadeProg = (frame - fadeStartFrame) / (totalFrames - fadeStartFrame);
+            sctx.globalAlpha = Math.min(fadeProg, 1);
+            sctx.fillStyle = '#1a1a2e';
+            sctx.fillRect(0, 0, sc.width, sc.height);
+            sctx.globalAlpha = 1;
+          }
+
           frame++;
           if (alive && frame < totalFrames) {
             requestAnimationFrame(animateShatter);
