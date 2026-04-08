@@ -183,29 +183,34 @@
     }
 
     #hardcore-heart {
-      font-size: 3.5rem;
+      position: fixed;
+      top: 10px;
+      left: 18px;
+      font-size: 3rem;
       line-height: 1;
       color: #e94560;
       animation: flicker 0.2s infinite alternate;
       display: none;
-      filter: drop-shadow(0 0 6px #ff4500) drop-shadow(0 0 12px #e94560);
+      z-index: 12;
     }
 
     #hardcore-heart.show { display: block; }
-    #hardcore-heart.broken { animation: shatter 1.5s forwards; }
+    #hardcore-heart.broken { animation: shatter 2s ease-out forwards !important; }
 
     @keyframes flicker {
-      0% { color: #e94560; text-shadow: 0 0 12px #e94560, 0 0 24px #ff6b6b, 0 0 40px #ff4500, 0 0 60px #ff0000; transform: scale(1); }
-      100% { color: #ff4500; text-shadow: 0 0 16px #ff4500, 0 0 32px #e94560, 0 0 50px #ff6b6b, 0 0 70px #ff0000; transform: scale(1.05); }
+      0% { color: #e94560; text-shadow: 0 0 12px #e94560, 0 0 24px #ff6b6b, 0 0 40px #ff4500; filter: drop-shadow(0 0 8px #ff4500); transform: scale(1); }
+      100% { color: #ff4500; text-shadow: 0 0 16px #ff4500, 0 0 32px #e94560, 0 0 50px #ff6b6b; filter: drop-shadow(0 0 14px #ff0000); transform: scale(1.08); }
     }
 
     @keyframes shatter {
-      0% { transform: scale(1); opacity: 1; color: #e94560; }
-      15% { transform: scale(1.8); color: #ff0000; text-shadow: 0 0 40px #ff0000, 0 0 80px #ff4500; }
-      40% { transform: scale(1.6) rotate(10deg); opacity: 1; }
-      60% { transform: scale(2) rotate(-5deg); color: #ff0000; text-shadow: 0 0 60px #ff0000; }
-      80% { transform: scale(0.8) rotate(20deg); opacity: 0.6; filter: grayscale(0.5); }
-      100% { transform: scale(0.3) rotate(45deg); opacity: 0; filter: grayscale(1); }
+      0% { transform: scale(1); opacity: 1; color: #e94560; filter: none; }
+      10% { transform: scale(3); color: #ff0000; text-shadow: 0 0 60px #ff0000, 0 0 120px #ff4500; filter: drop-shadow(0 0 40px #ff0000); }
+      25% { transform: scale(2.8) rotate(15deg); color: #ff0000; }
+      40% { transform: scale(3.2) rotate(-10deg); text-shadow: 0 0 80px #ff0000; }
+      55% { transform: scale(2) rotate(5deg); opacity: 0.9; }
+      70% { transform: scale(1.5); opacity: 0.6; filter: grayscale(0.4) drop-shadow(0 0 20px #ff0000); }
+      85% { transform: scale(0.6) rotate(30deg); opacity: 0.3; filter: grayscale(0.8); }
+      100% { transform: scale(0) rotate(60deg); opacity: 0; filter: grayscale(1); }
     }
 
     #start-btn {
@@ -293,9 +298,9 @@
     <button id="start-btn">Start Game</button>
   </div>
 
+  <div id="hardcore-heart">&#10084;</div>
   <div id="ui">
     <div>
-      <div id="hardcore-heart">&#10084;</div>
       <div id="hp-text">HP: 100</div>
       <div class="hp-bar-outer"><div class="hp-bar-inner" id="hp-bar" style="width:100%"></div></div>
       <a href="../games.html" class="back-link" style="position:static; font-size:0.8rem; margin-top:4px; display:inline-block;">&larr; All Games</a>
@@ -723,7 +728,7 @@
       updateUI();
       if (lifeDifficulty === 'hardcore') {
         // Let shatter animation play before showing game over
-        setTimeout(() => deathStats(cause), 1500);
+        setTimeout(() => deathStats(cause), 2000);
       } else {
         deathStats(cause);
       }
