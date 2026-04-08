@@ -226,6 +226,51 @@
       display: none;
     }
 
+    .toggle-row {
+      margin: 1rem 0;
+    }
+
+    .toggle-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #a0c4ff;
+      font-size: 1rem;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .toggle-label input { display: none; }
+
+    .toggle-switch {
+      width: 40px; height: 22px;
+      background: #16213e;
+      border: 2px solid #0f3460;
+      border-radius: 11px;
+      position: relative;
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      top: 2px; left: 2px;
+      width: 14px; height: 14px;
+      background: #555;
+      border-radius: 50%;
+      transition: transform 0.2s, background 0.2s;
+    }
+
+    .toggle-label input:checked + .toggle-switch {
+      background: #0f3460;
+      border-color: #e94560;
+    }
+
+    .toggle-label input:checked + .toggle-switch::after {
+      transform: translateX(18px);
+      background: #e94560;
+    }
+
     #start-btn {
       padding: 0.8rem 3rem;
       font-size: 1.2rem;
@@ -308,6 +353,14 @@
       </button>
     </div>
 
+    <div class="toggle-row">
+      <label class="toggle-label">
+        <input type="checkbox" id="reload-toggle">
+        <span class="toggle-switch"></span>
+        Reload
+      </label>
+    </div>
+
     <button id="start-btn">Start Game</button>
   </div>
 
@@ -379,6 +432,8 @@
     let pierceStacks, pierceDecayAt;
     let bombStacks, bombDecayAt;
     let mysteryActive, mysteryExpireAt;
+    let reloadEnabled = false;
+    let ammo, maxAmmo, reloading, reloadStartAt, reloadDuration;
     let lifeDifficulty = null;
     let lifeSettings = {
       beginner:     { hp: 100, yellow: 30, orange: 15, red: 5 },
@@ -388,9 +443,9 @@
       hardcore:     { hp: 1,   yellow: 0,  orange: 0,  red: 0 },
     };
     let diffSettings = {
-      normal:     { shootChance: 0.10, bulletDmg: 1, dropSpeed: 1, moveSpeed: 1, greenChance: 0.05, greenHp: 1, slowPer: 20, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.10, redHp: 2, poisonInterval: 8, poisonCure: 5, powerupChance: 0.08, shieldTime: 15 },
-      hard:       { shootChance: 0.20, bulletDmg: 1, dropSpeed: 2, moveSpeed: 1.5, greenChance: 0.08, greenHp: 1, slowPer: 30, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.25, redHp: 3, poisonInterval: 5, poisonCure: 5, powerupChance: 0.08, shieldTime: 15 },
-      impossible: { shootChance: 0.35, bulletDmg: 2, dropSpeed: 2.5, moveSpeed: 2, greenChance: 0.10, greenHp: 2, slowPer: 30, slowDecay: 10, immobileTime: 15, greenDmg: 1, redChance: 0.40, redHp: 5, poisonInterval: 2, poisonCure: 10, powerupChance: 0.05, shieldTime: 12 },
+      normal:     { shootChance: 0.10, bulletDmg: 1, dropSpeed: 1, moveSpeed: 1, greenChance: 0.05, greenHp: 1, slowPer: 20, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.10, redHp: 2, poisonInterval: 8, poisonCure: 5, powerupChance: 0.08, shieldTime: 15, magSize: 15, reloadTime: 3, reloadWarn: 5 },
+      hard:       { shootChance: 0.20, bulletDmg: 1, dropSpeed: 2, moveSpeed: 1.5, greenChance: 0.08, greenHp: 1, slowPer: 30, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.25, redHp: 3, poisonInterval: 5, poisonCure: 5, powerupChance: 0.08, shieldTime: 15, magSize: 15, reloadTime: 5, reloadWarn: 5 },
+      impossible: { shootChance: 0.35, bulletDmg: 2, dropSpeed: 2.5, moveSpeed: 2, greenChance: 0.10, greenHp: 2, slowPer: 30, slowDecay: 10, immobileTime: 15, greenDmg: 1, redChance: 0.40, redHp: 5, poisonInterval: 2, poisonCure: 10, powerupChance: 0.05, shieldTime: 12, magSize: 10, reloadTime: 8, reloadWarn: 3 },
     };
 
     // --- Menu ---
@@ -423,6 +478,7 @@
 
     startBtn.addEventListener('click', () => {
       if (!difficulty || !lifeDifficulty) return;
+      reloadEnabled = document.getElementById('reload-toggle').checked;
       menuEl.classList.add('hidden');
       init();
       if (!loopRunning) { loopRunning = true; loop(); }
@@ -502,6 +558,14 @@
       mysteryActive = false; mysteryExpireAt = 0;
       deathParticles = [];
 
+      // Reload
+      const ds = diffSettings[difficulty];
+      maxAmmo = ds.magSize;
+      ammo = maxAmmo;
+      reloading = false;
+      reloadStartAt = 0;
+      reloadDuration = ds.reloadTime * 1000;
+
       spawnAliens(alienRows);
       initStars();
       updateUI();
@@ -516,6 +580,9 @@
       gameWon = false;
       alienDir = 1;
       alienStepDown = 0;
+      ammo = maxAmmo;
+      reloading = false;
+      reloadStartAt = 0;
       // Clear debuffs
       slowStacks = 0;
       immobilized = false;
@@ -573,6 +640,37 @@
       ctx.fillStyle = '#e94560';
       ctx.beginPath();
       ctx.arc(x, y - PLAYER_H / 2 - 10, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function drawReloadBar(x, y) {
+      if (!reloadEnabled) return;
+      const ds = diffSettings[difficulty];
+      const barW = 6, barH = PLAYER_H + 10;
+      const bx = x + PLAYER_W / 2 + 8;
+      const by = y - barH / 2;
+
+      // Background
+      ctx.fillStyle = 'rgba(22, 33, 62, 0.8)';
+      ctx.strokeStyle = '#0f3460';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(bx, by, barW, barH, 3);
+      ctx.fill();
+      ctx.stroke();
+
+      let fillPct;
+      if (reloading) {
+        fillPct = Math.min((performance.now() - reloadStartAt) / reloadDuration, 1);
+      } else {
+        fillPct = ammo / maxAmmo;
+      }
+
+      const fillH = barH * fillPct;
+      const isLow = ammo <= ds.reloadWarn && !reloading;
+      ctx.fillStyle = isLow ? '#ef4444' : (reloading ? '#facc15' : '#ffffff');
+      ctx.beginPath();
+      ctx.roundRect(bx, by + barH - fillH, barW, fillH, 3);
       ctx.fill();
     }
 
@@ -1152,18 +1250,34 @@
       }
       player.x = Math.max(PLAYER_W / 2, Math.min(canvas.width - PLAYER_W / 2, player.x + dx));
 
-      // Shooting
+      // Reload tick
       const now = performance.now();
-      if (!immobilized && (keys['Space'] || shooting || touchShooting) && now - lastShot > SHOOT_COOLDOWN) {
+      if (reloadEnabled && reloading) {
+        if (now >= reloadStartAt + reloadDuration) {
+          reloading = false;
+          ammo = maxAmmo;
+        }
+      }
+
+      // Shooting
+      const canShoot = !immobilized && (!reloadEnabled || (!reloading && ammo > 0));
+      if (canShoot && (keys['Space'] || shooting || touchShooting) && now - lastShot > SHOOT_COOLDOWN) {
         const totalBullets = 1 + multiStacks;
         const by = player.y - PLAYER_H / 2 - 14;
-        const angleStep = 0.12; // ~7° between each bullet
+        const angleStep = 0.12;
         for (let bi = 0; bi < totalBullets; bi++) {
-          const offset = bi - (totalBullets - 1) / 2; // centered: -1, 0, 1 for 3 bullets
+          const offset = bi - (totalBullets - 1) / 2;
           const vx = offset * PLAYER_BULLET_SPEED * Math.sin(angleStep);
           playerBullets.push({ x: player.x, y: by, vx });
         }
         lastShot = now;
+        if (reloadEnabled) {
+          ammo--;
+          if (ammo <= 0) {
+            reloading = true;
+            reloadStartAt = now;
+          }
+        }
       }
 
       // Move player bullets
@@ -1379,6 +1493,7 @@
 
       // Draw player
       drawPlayerShip(player.x, player.y);
+      drawReloadBar(player.x, player.y);
       drawShield();
 
       // Draw bullets
