@@ -45,6 +45,7 @@
     #effects-text { color: #4ade80; }
     #effects-text.warn { color: #facc15; }
     #effects-text.immobile { color: #e94560; font-weight: bold; }
+    #effects-text.poison { color: #a855f7; }
 
     #damage-flash {
       position: fixed;
@@ -277,10 +278,11 @@
     let btnLeftDown = false, btnRightDown = false;
     let difficulty = null;
     let slowStacks, immobilized, immobileEndTime, slowDecayAt;
+    let poisoned, poisonKillsLeft, poisonNextDmgAt;
     let diffSettings = {
-      normal:     { shootChance: 0.10, bulletDmg: 1, dropSpeed: 1, moveSpeed: 1, greenChance: 0.05, slowPer: 20, slowDecay: 10, immobileTime: 10, greenDmg: 0 },
-      hard:       { shootChance: 0.20, bulletDmg: 1, dropSpeed: 2, moveSpeed: 1.5, greenChance: 0.08, slowPer: 30, slowDecay: 10, immobileTime: 10, greenDmg: 0 },
-      impossible: { shootChance: 0.35, bulletDmg: 2, dropSpeed: 2.5, moveSpeed: 2, greenChance: 0.10, slowPer: 30, slowDecay: 10, immobileTime: 15, greenDmg: 1 },
+      normal:     { shootChance: 0.10, bulletDmg: 1, dropSpeed: 1, moveSpeed: 1, greenChance: 0.05, slowPer: 20, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.10, redHp: 2, poisonInterval: 8, poisonCure: 5 },
+      hard:       { shootChance: 0.20, bulletDmg: 1, dropSpeed: 2, moveSpeed: 1.5, greenChance: 0.08, slowPer: 30, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.25, redHp: 3, poisonInterval: 5, poisonCure: 5 },
+      impossible: { shootChance: 0.35, bulletDmg: 2, dropSpeed: 2.5, moveSpeed: 2, greenChance: 0.10, slowPer: 30, slowDecay: 10, immobileTime: 15, greenDmg: 1, redChance: 0.40, redHp: 5, poisonInterval: 2, poisonCure: 10 },
     };
 
     // --- Menu ---
@@ -322,14 +324,21 @@
       const gridW = ALIEN_COLS * (ALIEN_W + ALIEN_PAD_X) - ALIEN_PAD_X;
       const startX = (canvas.width - gridW) / 2;
       const startY = 60;
-      const gc = wave >= 2 ? diffSettings[difficulty].greenChance : 0;
+      const ds = diffSettings[difficulty];
+      const gc = wave >= 2 ? ds.greenChance : 0;
+      const rc = wave >= 2 ? ds.redChance : 0;
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < ALIEN_COLS; c++) {
+          let type = 'blue';
+          if (Math.random() < gc) {
+            type = Math.random() < rc ? 'red' : 'green';
+          }
           aliens.push({
             x: startX + c * (ALIEN_W + ALIEN_PAD_X) + ALIEN_W / 2,
             y: startY + r * (ALIEN_H + ALIEN_PAD_Y) + ALIEN_H / 2,
             alive: true,
-            green: Math.random() < gc,
+            type: type,
+            hp: type === 'red' ? ds.redHp : 1,
           });
         }
       }
@@ -358,6 +367,9 @@
       immobilized = false;
       immobileEndTime = 0;
       slowDecayAt = 0;
+      poisoned = false;
+      poisonKillsLeft = 0;
+      poisonNextDmgAt = 0;
 
       spawnAliens(alienRows);
       initStars();
@@ -417,17 +429,31 @@
       ctx.fill();
     }
 
-    function drawAlienShip(x, y, green) {
+    const ALIEN_COLORS = {
+      blue:  { body: '#4e7fff', window: '#a0c4ff' },
+      green: { body: '#22c55e', window: '#4ade80' },
+      red:   { body: '#dc2626', window: '#f87171' },
+    };
+
+    function drawAlienShip(x, y, type, alienHp, maxHp) {
+      const c = ALIEN_COLORS[type] || ALIEN_COLORS.blue;
       // Body
-      ctx.fillStyle = green ? '#22c55e' : '#4e7fff';
+      ctx.fillStyle = c.body;
       ctx.beginPath();
       ctx.roundRect(x - ALIEN_W / 2, y - ALIEN_H / 2, ALIEN_W, ALIEN_H, 5);
       ctx.fill();
       // Window (slot pointing down)
-      ctx.fillStyle = green ? '#4ade80' : '#a0c4ff';
+      ctx.fillStyle = c.window;
       ctx.beginPath();
       ctx.roundRect(x - 7, y + ALIEN_H / 2 - 14, 14, 10, 3);
       ctx.fill();
+      // HP indicator for multi-hp aliens
+      if (maxHp > 1) {
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(alienHp, x, y - ALIEN_H / 2 - 4);
+      }
     }
 
     function drawBullets() {
@@ -445,12 +471,14 @@
       }
 
       // Alien bullets
+      const BULLET_COLORS = { blue: '#e94560', green: '#9ca3af', red: '#facc15' };
       for (const b of alienBullets) {
-        ctx.fillStyle = b.green ? '#9ca3af' : '#e94560';
+        const bc = BULLET_COLORS[b.type] || BULLET_COLORS.blue;
+        ctx.fillStyle = bc;
         ctx.beginPath();
         ctx.roundRect(b.x - BULLET_W / 2, b.y - ALIEN_BULLET_H / 2, BULLET_W, ALIEN_BULLET_H, 2);
         ctx.fill();
-        ctx.shadowColor = b.green ? '#9ca3af' : '#e94560';
+        ctx.shadowColor = bc;
         ctx.shadowBlur = 6;
         ctx.fill();
         ctx.shadowBlur = 0;
@@ -514,23 +542,53 @@
           slowDecayAt = 0;
         }
       }
-      if (slowStacks > 0 || immobilized) updateEffectsUI();
-      else { document.getElementById('effects-text').textContent = ''; }
+      if (slowStacks > 0 || immobilized || poisoned) updateEffectsUI();
+      else if (!poisoned) { document.getElementById('effects-text').textContent = ''; }
     }
 
     function updateEffectsUI() {
       const el = document.getElementById('effects-text');
+      let lines = [];
+
       if (immobilized) {
         const secs = Math.max(0, Math.ceil((immobileEndTime - performance.now()) / 1000));
-        el.textContent = `Immobilized (${secs}s)`;
-        el.className = 'immobile';
+        lines.push(`Immobilized (${secs}s)`);
       } else if (slowStacks > 0) {
         const secs = slowDecayAt > 0 ? Math.max(0, Math.ceil((slowDecayAt - performance.now()) / 1000)) : 0;
-        el.textContent = `Slowness ${ROMAN[slowStacks] || slowStacks} (${secs}s)`;
-        el.className = slowStacks >= 3 ? 'warn' : '';
-      } else {
-        el.textContent = '';
-        el.className = '';
+        lines.push(`Slowness ${ROMAN[slowStacks] || slowStacks} (${secs}s)`);
+      }
+
+      if (poisoned) {
+        lines.push(`Poison (${poisonKillsLeft} kills left)`);
+      }
+
+      el.innerHTML = lines.join('<br>');
+      // Color priority: immobile > poison > slow warn
+      if (immobilized) el.className = 'immobile';
+      else if (poisoned) el.className = 'poison';
+      else if (slowStacks >= 3) el.className = 'warn';
+      else el.className = '';
+    }
+
+    function applyPoison() {
+      const ds = diffSettings[difficulty];
+      poisoned = true;
+      poisonKillsLeft = ds.poisonCure;
+      poisonNextDmgAt = performance.now() + ds.poisonInterval * 1000;
+    }
+
+    function updatePoison(now) {
+      if (!poisoned) return;
+      if (now >= poisonNextDmgAt) {
+        hp = Math.max(0, hp - 1);
+        updateEffectsUI();
+        flashDamage();
+        if (hp <= 0) {
+          gameOver = true;
+          showOverlay('Game Over', `Poison got you! Score: ${score % 1 === 0 ? score : score.toFixed(1)} XP`, 'Play Again', 'menu');
+          return;
+        }
+        poisonNextDmgAt = now + diffSettings[difficulty].poisonInterval * 1000;
       }
     }
 
@@ -609,7 +667,7 @@
       for (const a of aliens) {
         if (!a.alive) continue;
         if (Math.random() < shootChance) {
-          alienBullets.push({ x: a.x, y: a.y + ALIEN_H / 2, green: a.green });
+          alienBullets.push({ x: a.x, y: a.y + ALIEN_H / 2, type: a.type });
         }
       }
 
@@ -626,9 +684,22 @@
           if (!a.alive) continue;
           if (Math.abs(b.x - a.x) < ALIEN_W / 2 + BULLET_W / 2 &&
               Math.abs(b.y - a.y) < ALIEN_H / 2 + PLAYER_BULLET_H / 2) {
-            a.alive = false;
             playerBullets.splice(bi, 1);
-            score += a.green ? 1.5 : 1;
+            a.hp--;
+            if (a.hp <= 0) {
+              a.alive = false;
+              const xpGain = a.type === 'red' ? 3 : a.type === 'green' ? 1.5 : 1;
+              score += xpGain;
+              // Poison cure: count kills
+              if (poisoned) {
+                poisonKillsLeft--;
+                if (poisonKillsLeft <= 0) {
+                  poisoned = false;
+                  poisonKillsLeft = 0;
+                  poisonNextDmgAt = 0;
+                }
+              }
+            }
             updateUI();
             break;
           }
@@ -641,14 +712,16 @@
         if (Math.abs(b.x - player.x) < PLAYER_W / 2 + BULLET_W / 2 &&
             Math.abs(b.y - player.y) < PLAYER_H / 2 + ALIEN_BULLET_H / 2) {
           alienBullets.splice(i, 1);
-          if (b.green) {
-            // Green bullet → apply slowness + gray flash + damage on impossible
+          if (b.type === 'green') {
             applySlow();
             flashSlow();
             const gDmg = diffSettings[difficulty].greenDmg;
             if (gDmg > 0) hp = Math.max(0, hp - gDmg);
+          } else if (b.type === 'red') {
+            hp = Math.max(0, hp - diffSettings[difficulty].bulletDmg);
+            applyPoison();
+            flashDamage();
           } else {
-            // Red bullet → damage
             hp = Math.max(0, hp - diffSettings[difficulty].bulletDmg);
             flashDamage();
           }
@@ -663,6 +736,8 @@
 
       // Slowness / immobilization tick
       updateSlowness(now);
+      // Poison tick
+      updatePoison(now);
 
       // Check if aliens reached player
       for (const a of aliens) {
@@ -690,7 +765,7 @@
 
       // Draw aliens
       for (const a of aliens) {
-        if (a.alive) drawAlienShip(a.x, a.y, a.green);
+        if (a.alive) drawAlienShip(a.x, a.y, a.type, a.hp, a.type === 'red' ? diffSettings[difficulty].redHp : 1);
       }
 
       // Draw player
