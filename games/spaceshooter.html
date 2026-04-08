@@ -101,7 +101,7 @@
 
     #overlay.show { display: flex; }
     #overlay h2 { font-size: 2.5rem; margin-bottom: 0.5rem; }
-    #overlay p { color: #a0c4ff; margin-bottom: 1.5rem; }
+    #overlay p { color: #a0c4ff; margin-bottom: 1.5rem; white-space: pre-line; text-align: center; line-height: 1.6; }
 
     /* --- Difficulty select screen --- */
     #menu {
@@ -279,10 +279,11 @@
     let difficulty = null;
     let slowStacks, immobilized, immobileEndTime, slowDecayAt;
     let poisoned, poisonKillsLeft, poisonNextDmgAt;
+    let kills;
     let diffSettings = {
-      normal:     { shootChance: 0.10, bulletDmg: 1, dropSpeed: 1, moveSpeed: 1, greenChance: 0.05, slowPer: 20, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.10, redHp: 2, poisonInterval: 8, poisonCure: 5 },
-      hard:       { shootChance: 0.20, bulletDmg: 1, dropSpeed: 2, moveSpeed: 1.5, greenChance: 0.08, slowPer: 30, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.25, redHp: 3, poisonInterval: 5, poisonCure: 5 },
-      impossible: { shootChance: 0.35, bulletDmg: 2, dropSpeed: 2.5, moveSpeed: 2, greenChance: 0.10, slowPer: 30, slowDecay: 10, immobileTime: 15, greenDmg: 1, redChance: 0.40, redHp: 5, poisonInterval: 2, poisonCure: 10 },
+      normal:     { shootChance: 0.10, bulletDmg: 1, dropSpeed: 1, moveSpeed: 1, greenChance: 0.05, greenHp: 1, slowPer: 20, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.10, redHp: 2, poisonInterval: 8, poisonCure: 5 },
+      hard:       { shootChance: 0.20, bulletDmg: 1, dropSpeed: 2, moveSpeed: 1.5, greenChance: 0.08, greenHp: 1, slowPer: 30, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.25, redHp: 3, poisonInterval: 5, poisonCure: 5 },
+      impossible: { shootChance: 0.35, bulletDmg: 2, dropSpeed: 2.5, moveSpeed: 2, greenChance: 0.10, greenHp: 2, slowPer: 30, slowDecay: 10, immobileTime: 15, greenDmg: 1, redChance: 0.40, redHp: 5, poisonInterval: 2, poisonCure: 10 },
     };
 
     // --- Menu ---
@@ -338,7 +339,7 @@
             y: startY + r * (ALIEN_H + ALIEN_PAD_Y) + ALIEN_H / 2,
             alive: true,
             type: type,
-            hp: type === 'red' ? ds.redHp : 1,
+            hp: type === 'red' ? ds.redHp : type === 'green' ? ds.greenHp : 1,
           });
         }
       }
@@ -370,6 +371,7 @@
       poisoned = false;
       poisonKillsLeft = 0;
       poisonNextDmgAt = 0;
+      kills = { blue: 0, green: 0, red: 0 };
 
       spawnAliens(alienRows);
       initStars();
@@ -585,7 +587,7 @@
         flashDamage();
         if (hp <= 0) {
           gameOver = true;
-          showOverlay('Game Over', `Poison got you! Score: ${score % 1 === 0 ? score : score.toFixed(1)} XP`, 'Play Again', 'menu');
+          showOverlay('Game Over', deathMsg('Killed by poison'), 'Play Again', 'menu');
           return;
         }
         poisonNextDmgAt = now + diffSettings[difficulty].poisonInterval * 1000;
@@ -599,11 +601,16 @@
       document.getElementById('xp-text').textContent = `XP: ${score % 1 === 0 ? score : score.toFixed(1)}`;
     }
 
+    function deathMsg(cause) {
+      const xp = score % 1 === 0 ? score : score.toFixed(1);
+      return `${cause}\n\nXP: ${xp}  |  Wave: ${wave}\nBlue killed: ${kills.blue}  |  Green killed: ${kills.green}  |  Red killed: ${kills.red}`;
+    }
+
     let overlayMode = 'menu';
 
     function showOverlay(title, msg, btnText, mode) {
       document.getElementById('overlay-title').textContent = title;
-      document.getElementById('overlay-msg').textContent = msg;
+      document.getElementById('overlay-msg').innerText = msg;
       document.getElementById('overlay-btn').textContent = btnText || 'Play Again';
       overlayMode = mode || 'menu';
       document.getElementById('overlay').classList.add('show');
@@ -667,7 +674,13 @@
       for (const a of aliens) {
         if (!a.alive) continue;
         if (Math.random() < shootChance) {
-          alienBullets.push({ x: a.x, y: a.y + ALIEN_H / 2, type: a.type });
+          if (a.type === 'red') {
+            // Red aliens randomly shoot yellow (poison) or regular (red) bullets
+            const bulletType = Math.random() < 0.5 ? 'red' : 'blue';
+            alienBullets.push({ x: a.x, y: a.y + ALIEN_H / 2, type: bulletType });
+          } else {
+            alienBullets.push({ x: a.x, y: a.y + ALIEN_H / 2, type: a.type });
+          }
         }
       }
 
@@ -690,6 +703,7 @@
               a.alive = false;
               const xpGain = a.type === 'red' ? 3 : a.type === 'green' ? 1.5 : 1;
               score += xpGain;
+              kills[a.type]++;
               // Poison cure: count kills
               if (poisoned) {
                 poisonKillsLeft--;
@@ -728,7 +742,7 @@
           updateUI();
           if (hp <= 0) {
             gameOver = true;
-            showOverlay('Game Over', `You scored ${score} kills`, 'Play Again', 'menu');
+            showOverlay('Game Over', deathMsg('Shot down by aliens'), 'Play Again', 'menu');
             return;
           }
         }
@@ -743,7 +757,7 @@
       for (const a of aliens) {
         if (a.alive && a.y + ALIEN_H / 2 >= player.y - PLAYER_H / 2) {
           gameOver = true;
-          showOverlay('Game Over', 'The aliens reached you!', 'Play Again', 'menu');
+          showOverlay('Game Over', deathMsg('The aliens reached you'), 'Play Again', 'menu');
           return;
         }
       }
@@ -765,7 +779,11 @@
 
       // Draw aliens
       for (const a of aliens) {
-        if (a.alive) drawAlienShip(a.x, a.y, a.type, a.hp, a.type === 'red' ? diffSettings[difficulty].redHp : 1);
+        if (a.alive) {
+          const ds = diffSettings[difficulty];
+          const maxHp = a.type === 'red' ? ds.redHp : a.type === 'green' ? ds.greenHp : 1;
+          drawAlienShip(a.x, a.y, a.type, a.hp, maxHp);
+        }
       }
 
       // Draw player
