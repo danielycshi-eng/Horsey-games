@@ -160,8 +160,45 @@
       box-shadow: 0 0 20px rgba(78, 127, 255, 0.3);
     }
 
-    .diff-btn .diff-label { font-weight: 600; margin-bottom: 4px; }
-    .diff-btn .diff-desc { font-size: 0.75rem; color: #6b8ecf; }
+    .diff-btn .diff-label, .life-btn .diff-label { font-weight: 600; margin-bottom: 4px; }
+    .diff-btn .diff-desc, .life-btn .diff-desc { font-size: 0.75rem; color: #6b8ecf; }
+
+    .life-btn {
+      padding: 0.6rem 1rem;
+      background: #16213e;
+      border: 2px solid #0f3460;
+      border-radius: 10px;
+      color: #a0c4ff;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s, box-shadow 0.2s, transform 0.15s;
+    }
+
+    .life-btn:hover { background: #0f3460; transform: translateY(-2px); }
+
+    .life-btn.selected {
+      border-color: #4e7fff;
+      background: #0f3460;
+      box-shadow: 0 0 20px rgba(78, 127, 255, 0.3);
+    }
+
+    #hardcore-heart {
+      position: fixed;
+      top: 12px;
+      right: 18px;
+      font-size: 2rem;
+      z-index: 12;
+      animation: flicker 0.3s infinite alternate;
+      display: none;
+    }
+
+    #hardcore-heart.show { display: block; }
+    #hardcore-heart.broken { animation: none; filter: grayscale(1); opacity: 0.5; }
+
+    @keyframes flicker {
+      0% { text-shadow: 0 0 8px #e94560, 0 0 16px #ff6b6b; }
+      100% { text-shadow: 0 0 12px #ff4500, 0 0 24px #e94560; }
+    }
 
     #start-btn {
       padding: 0.8rem 3rem;
@@ -204,7 +241,8 @@
   <div id="menu">
     <a href="../games.html" class="back-link-menu">&larr; All Games</a>
     <h1>Space Shooter</h1>
-    <p class="subtitle">Choose your difficulty</p>
+
+    <p class="subtitle">Choose mode</p>
     <div class="diff-options">
       <button class="diff-btn" data-diff="normal">
         <div class="diff-label">Normal</div>
@@ -216,9 +254,34 @@
       </button>
       <button class="diff-btn" data-diff="impossible">
         <div class="diff-label">Impossible</div>
-        <div class="diff-desc">35% fire rate, 2x damage</div>
+        <div class="diff-desc">35% fire rate, 2x dmg</div>
       </button>
     </div>
+
+    <p class="subtitle">Choose difficulty</p>
+    <div class="diff-options" id="life-options">
+      <button class="life-btn" data-lives="beginner">
+        <div class="diff-label">Beginner</div>
+        <div class="diff-desc">100 lives</div>
+      </button>
+      <button class="life-btn" data-lives="intermediate">
+        <div class="diff-label">Intermediate</div>
+        <div class="diff-desc">50 lives</div>
+      </button>
+      <button class="life-btn" data-lives="advanced">
+        <div class="diff-label">Advanced</div>
+        <div class="diff-desc">25 lives</div>
+      </button>
+      <button class="life-btn" data-lives="expert">
+        <div class="diff-label">Expert</div>
+        <div class="diff-desc">10 lives</div>
+      </button>
+      <button class="life-btn" data-lives="hardcore">
+        <div class="diff-label">Hardcore</div>
+        <div class="diff-desc">1 life</div>
+      </button>
+    </div>
+
     <button id="start-btn">Start Game</button>
   </div>
 
@@ -233,6 +296,7 @@
       <div id="effects-text"></div>
     </div>
   </div>
+  <div id="hardcore-heart">&hearts;</div>
   <div id="damage-flash"></div>
 
   <canvas id="game"></canvas>
@@ -280,6 +344,14 @@
     let slowStacks, immobilized, immobileEndTime, slowDecayAt;
     let poisoned, poisonKillsLeft, poisonNextDmgAt;
     let kills;
+    let lifeDifficulty = null;
+    let lifeSettings = {
+      beginner:     { hp: 100, yellow: 30, orange: 15, red: 5 },
+      intermediate: { hp: 50,  yellow: 20, orange: 10, red: 5 },
+      advanced:     { hp: 25,  yellow: 10, orange: 5,  red: 2 },
+      expert:       { hp: 10,  yellow: 5,  orange: 3,  red: 1 },
+      hardcore:     { hp: 1,   yellow: 0,  orange: 0,  red: 0 },
+    };
     let diffSettings = {
       normal:     { shootChance: 0.10, bulletDmg: 1, dropSpeed: 1, moveSpeed: 1, greenChance: 0.05, greenHp: 1, slowPer: 20, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.10, redHp: 2, poisonInterval: 8, poisonCure: 5 },
       hard:       { shootChance: 0.20, bulletDmg: 1, dropSpeed: 2, moveSpeed: 1.5, greenChance: 0.08, greenHp: 1, slowPer: 30, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.25, redHp: 3, poisonInterval: 5, poisonCure: 5 },
@@ -290,18 +362,32 @@
     const menuEl = document.getElementById('menu');
     const startBtn = document.getElementById('start-btn');
     const diffBtns = document.querySelectorAll('.diff-btn');
+    const lifeBtns = document.querySelectorAll('.life-btn');
+
+    function checkReady() {
+      if (difficulty && lifeDifficulty) startBtn.classList.add('active');
+    }
 
     diffBtns.forEach(btn => {
       btn.addEventListener('click', () => {
         diffBtns.forEach(b => b.classList.remove('selected'));
         btn.classList.add('selected');
         difficulty = btn.dataset.diff;
-        startBtn.classList.add('active');
+        checkReady();
+      });
+    });
+
+    lifeBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        lifeBtns.forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        lifeDifficulty = btn.dataset.lives;
+        checkReady();
       });
     });
 
     startBtn.addEventListener('click', () => {
-      if (!difficulty) return;
+      if (!difficulty || !lifeDifficulty) return;
       menuEl.classList.add('hidden');
       init();
       loop();
@@ -351,7 +437,7 @@
       playerBullets = [];
       alienBullets = [];
       score = 0;
-      hp = 100;
+      hp = lifeSettings[lifeDifficulty].hp;
       gameOver = false;
       gameWon = false;
       lastShot = 0;
@@ -499,9 +585,10 @@
     // --- UI ---
 
     function getHpColor(hp) {
-      if (hp > 30) return 'linear-gradient(90deg, #22c55e, #4ade80)';
-      if (hp > 15) return 'linear-gradient(90deg, #eab308, #facc15)';
-      if (hp > 5)  return 'linear-gradient(90deg, #f97316, #fb923c)';
+      const ls = lifeSettings[lifeDifficulty];
+      if (hp > ls.yellow) return 'linear-gradient(90deg, #22c55e, #4ade80)';
+      if (hp > ls.orange) return 'linear-gradient(90deg, #eab308, #facc15)';
+      if (hp > ls.red)    return 'linear-gradient(90deg, #f97316, #fb923c)';
       return 'linear-gradient(90deg, #dc2626, #ef4444)';
     }
 
@@ -604,9 +691,22 @@
     }
 
     function updateUI() {
-      document.getElementById('hp-text').textContent = `HP: ${hp}`;
-      document.getElementById('hp-bar').style.width = `${hp}%`;
-      document.getElementById('hp-bar').style.background = getHpColor(hp);
+      const maxHp = lifeSettings[lifeDifficulty].hp;
+      const hcHeart = document.getElementById('hardcore-heart');
+      if (lifeDifficulty === 'hardcore') {
+        // Hide HP bar, show heart
+        document.getElementById('hp-text').textContent = '';
+        document.getElementById('hp-bar').style.width = '0%';
+        hcHeart.classList.add('show');
+        if (hp <= 0) hcHeart.classList.add('broken');
+        else hcHeart.classList.remove('broken');
+      } else {
+        hcHeart.classList.remove('show');
+        document.getElementById('hp-text').textContent = `HP: ${hp}`;
+        const pct = Math.max(0, (hp / maxHp) * 100);
+        document.getElementById('hp-bar').style.width = `${pct}%`;
+        document.getElementById('hp-bar').style.background = getHpColor(hp);
+      }
       document.getElementById('xp-text').textContent = `XP: ${score % 1 === 0 ? score : score.toFixed(1)}`;
     }
 
@@ -851,6 +951,7 @@
         nextWave();
       } else {
         hideOverlay();
+        document.getElementById('hardcore-heart').classList.remove('show', 'broken');
         menuEl.classList.remove('hidden');
       }
     });
