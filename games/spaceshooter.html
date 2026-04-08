@@ -372,6 +372,10 @@
     let slowStacks, immobilized, immobileEndTime, slowDecayAt;
     let poisoned, poisonKillsLeft, poisonNextDmgAt;
     let kills;
+    let powerups; // falling powerup items
+    let speedStacks, speedDecayAt;
+    let shieldActive, shieldExpireAt;
+    let multiStacks, multiDecayAt;
     let lifeDifficulty = null;
     let lifeSettings = {
       beginner:     { hp: 100, yellow: 30, orange: 15, red: 5 },
@@ -381,9 +385,9 @@
       hardcore:     { hp: 1,   yellow: 0,  orange: 0,  red: 0 },
     };
     let diffSettings = {
-      normal:     { shootChance: 0.10, bulletDmg: 1, dropSpeed: 1, moveSpeed: 1, greenChance: 0.05, greenHp: 1, slowPer: 20, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.10, redHp: 2, poisonInterval: 8, poisonCure: 5 },
-      hard:       { shootChance: 0.20, bulletDmg: 1, dropSpeed: 2, moveSpeed: 1.5, greenChance: 0.08, greenHp: 1, slowPer: 30, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.25, redHp: 3, poisonInterval: 5, poisonCure: 5 },
-      impossible: { shootChance: 0.35, bulletDmg: 2, dropSpeed: 2.5, moveSpeed: 2, greenChance: 0.10, greenHp: 2, slowPer: 30, slowDecay: 10, immobileTime: 15, greenDmg: 1, redChance: 0.40, redHp: 5, poisonInterval: 2, poisonCure: 10 },
+      normal:     { shootChance: 0.10, bulletDmg: 1, dropSpeed: 1, moveSpeed: 1, greenChance: 0.05, greenHp: 1, slowPer: 20, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.10, redHp: 2, poisonInterval: 8, poisonCure: 5, powerupChance: 0.08, shieldTime: 15 },
+      hard:       { shootChance: 0.20, bulletDmg: 1, dropSpeed: 2, moveSpeed: 1.5, greenChance: 0.08, greenHp: 1, slowPer: 30, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.25, redHp: 3, poisonInterval: 5, poisonCure: 5, powerupChance: 0.08, shieldTime: 15 },
+      impossible: { shootChance: 0.35, bulletDmg: 2, dropSpeed: 2.5, moveSpeed: 2, greenChance: 0.10, greenHp: 2, slowPer: 30, slowDecay: 10, immobileTime: 15, greenDmg: 1, redChance: 0.40, redHp: 5, poisonInterval: 2, poisonCure: 10, powerupChance: 0.05, shieldTime: 12 },
     };
 
     // --- Menu ---
@@ -486,6 +490,10 @@
       poisonKillsLeft = 0;
       poisonNextDmgAt = 0;
       kills = { blue: 0, green: 0, red: 0 };
+      powerups = [];
+      speedStacks = 0; speedDecayAt = 0;
+      shieldActive = false; shieldExpireAt = 0;
+      multiStacks = 0; multiDecayAt = 0;
 
       spawnAliens(alienRows);
       initStars();
@@ -509,6 +517,10 @@
       poisoned = false;
       poisonKillsLeft = 0;
       poisonNextDmgAt = 0;
+      powerups = [];
+      speedStacks = 0; speedDecayAt = 0;
+      shieldActive = false; shieldExpireAt = 0;
+      multiStacks = 0; multiDecayAt = 0;
       document.getElementById('effects-text').textContent = '';
       spawnAliens(alienRows);
       updateUI();
@@ -668,7 +680,7 @@
           slowDecayAt = 0;
         }
       }
-      if (slowStacks > 0 || immobilized || poisoned) updateEffectsUI();
+      if (slowStacks > 0 || immobilized || poisoned || speedStacks > 0 || shieldActive || multiStacks > 0) updateEffectsUI();
       else if (!poisoned) { document.getElementById('effects-text').textContent = ''; }
     }
 
@@ -686,6 +698,20 @@
 
       if (poisoned) {
         lines.push(`Poison (${poisonKillsLeft} kills left)`);
+      }
+
+      // Powerup buffs
+      if (speedStacks > 0) {
+        const secs = speedDecayAt > 0 ? Math.max(0, Math.ceil((speedDecayAt - performance.now()) / 1000)) : 0;
+        lines.push(`<span style="color:#22c55e">Speed ${ROMAN[speedStacks] || speedStacks} (${secs}s)</span>`);
+      }
+      if (shieldActive) {
+        const secs = Math.max(0, Math.ceil((shieldExpireAt - performance.now()) / 1000));
+        lines.push(`<span style="color:#3b82f6">Shield (${secs}s)</span>`);
+      }
+      if (multiStacks > 0) {
+        const secs = multiDecayAt > 0 ? Math.max(0, Math.ceil((multiDecayAt - performance.now()) / 1000)) : 0;
+        lines.push(`<span style="color:#f59e0b">Multishot ${ROMAN[multiStacks] || multiStacks} (${secs}s)</span>`);
       }
 
       el.innerHTML = lines.join('<br>');
@@ -715,6 +741,85 @@
         }
         poisonNextDmgAt = now + diffSettings[difficulty].poisonInterval * 1000;
       }
+    }
+
+    // --- Powerups ---
+    const POWERUP_SIZE = 20;
+    const POWERUP_FALL_SPEED = 2;
+    const POWERUP_COLORS = { speed: '#22c55e', shield: '#3b82f6', multishot: '#f59e0b' };
+    const POWERUP_LABELS = { speed: 'SPD', shield: 'SHD', multishot: 'MUL' };
+
+    function spawnPowerup(x, y) {
+      const ds = diffSettings[difficulty];
+      if (Math.random() >= ds.powerupChance) return;
+      const roll = Math.random();
+      let type;
+      if (roll < 0.5) type = 'speed';
+      else if (roll < 0.8) type = 'shield';
+      else type = 'multishot';
+      powerups.push({ x, y, type });
+    }
+
+    function collectPowerup(type) {
+      const now = performance.now();
+      if (type === 'speed') {
+        speedStacks++;
+        speedDecayAt = now + 12000;
+      } else if (type === 'shield') {
+        shieldActive = true;
+        shieldExpireAt = now + diffSettings[difficulty].shieldTime * 1000;
+      } else if (type === 'multishot') {
+        multiStacks++;
+        multiDecayAt = now + 8000;
+      }
+    }
+
+    function updatePowerupTimers(now) {
+      if (speedStacks > 0 && speedDecayAt > 0 && now >= speedDecayAt) {
+        speedStacks--;
+        speedDecayAt = speedStacks > 0 ? now + 12000 : 0;
+      }
+      if (shieldActive && now >= shieldExpireAt) {
+        shieldActive = false;
+        shieldExpireAt = 0;
+      }
+      if (multiStacks > 0 && multiDecayAt > 0 && now >= multiDecayAt) {
+        multiStacks--;
+        multiDecayAt = multiStacks > 0 ? now + 8000 : 0;
+      }
+    }
+
+    function drawPowerups() {
+      for (const p of powerups) {
+        const col = POWERUP_COLORS[p.type];
+        // Outer glow
+        ctx.shadowColor = col;
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.roundRect(p.x - POWERUP_SIZE/2, p.y - POWERUP_SIZE/2, POWERUP_SIZE, POWERUP_SIZE, 5);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        // Label
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 9px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(POWERUP_LABELS[p.type], p.x, p.y);
+      }
+    }
+
+    function drawShield() {
+      if (!shieldActive) return;
+      ctx.strokeStyle = 'rgba(59, 130, 246, 0.5)';
+      ctx.lineWidth = 3;
+      ctx.shadowColor = '#3b82f6';
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, PLAYER_W / 2 + 10, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = 1;
     }
 
     // --- Fire particles for hardcore heart ---
@@ -934,13 +1039,23 @@
         if (keys['ArrowRight'] || keys['KeyD'] || btnRightDown) dx += PLAYER_SPEED;
         const slowPct = Math.min(slowStacks * diffSettings[difficulty].slowPer, 100);
         dx *= (1 - slowPct / 100);
+        if (speedStacks > 0) dx *= (1 + speedStacks * 0.2);
       }
       player.x = Math.max(PLAYER_W / 2, Math.min(canvas.width - PLAYER_W / 2, player.x + dx));
 
       // Shooting
       const now = performance.now();
       if (!immobilized && (keys['Space'] || shooting || touchShooting) && now - lastShot > SHOOT_COOLDOWN) {
-        playerBullets.push({ x: player.x, y: player.y - PLAYER_H / 2 - 14 });
+        const totalBullets = 1 + multiStacks;
+        if (totalBullets === 1) {
+          playerBullets.push({ x: player.x, y: player.y - PLAYER_H / 2 - 14 });
+        } else {
+          const spread = 8;
+          const totalW = (totalBullets - 1) * spread;
+          for (let bi = 0; bi < totalBullets; bi++) {
+            playerBullets.push({ x: player.x - totalW / 2 + bi * spread, y: player.y - PLAYER_H / 2 - 14 });
+          }
+        }
         lastShot = now;
       }
 
@@ -1006,6 +1121,7 @@
               const xpGain = a.type === 'red' ? 3 : a.type === 'green' ? 1.5 : 1;
               score += xpGain;
               kills[a.type]++;
+              spawnPowerup(a.x, a.y);
               // Poison cure: count kills
               if (poisoned) {
                 poisonKillsLeft--;
@@ -1031,14 +1147,26 @@
           if (b.type === 'green') {
             applySlow();
             flashSlow();
-            const gDmg = diffSettings[difficulty].greenDmg;
-            if (gDmg > 0) hp = Math.max(0, hp - gDmg);
+            if (shieldActive) {
+              shieldActive = false; shieldExpireAt = 0;
+            } else {
+              const gDmg = diffSettings[difficulty].greenDmg;
+              if (gDmg > 0) hp = Math.max(0, hp - gDmg);
+            }
           } else if (b.type === 'red') {
-            hp = Math.max(0, hp - diffSettings[difficulty].bulletDmg);
-            applyPoison();
+            applyPoison(); // poison always applies even with shield
+            if (shieldActive) {
+              shieldActive = false; shieldExpireAt = 0;
+            } else {
+              hp = Math.max(0, hp - diffSettings[difficulty].bulletDmg);
+            }
             flashDamage();
           } else {
-            hp = Math.max(0, hp - diffSettings[difficulty].bulletDmg);
+            if (shieldActive) {
+              shieldActive = false; shieldExpireAt = 0;
+            } else {
+              hp = Math.max(0, hp - diffSettings[difficulty].bulletDmg);
+            }
             flashDamage();
           }
           updateUI();
@@ -1053,6 +1181,20 @@
       updateSlowness(now);
       // Poison tick
       updatePoison(now);
+      // Powerup timers
+      updatePowerupTimers(now);
+
+      // Move & collect powerups
+      for (let i = powerups.length - 1; i >= 0; i--) {
+        powerups[i].y += POWERUP_FALL_SPEED;
+        if (powerups[i].y > canvas.height + 30) { powerups.splice(i, 1); continue; }
+        const p = powerups[i];
+        if (Math.abs(p.x - player.x) < PLAYER_W / 2 + POWERUP_SIZE / 2 &&
+            Math.abs(p.y - player.y) < PLAYER_H / 2 + POWERUP_SIZE / 2) {
+          collectPowerup(p.type);
+          powerups.splice(i, 1);
+        }
+      }
 
       // Check if aliens reached player
       for (const a of aliens) {
@@ -1087,8 +1229,12 @@
         }
       }
 
+      // Draw powerups
+      drawPowerups();
+
       // Draw player
       drawPlayerShip(player.x, player.y);
+      drawShield();
 
       // Draw bullets
       drawBullets();
