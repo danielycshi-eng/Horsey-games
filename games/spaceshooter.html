@@ -276,7 +276,7 @@
     let alienDir, alienStepDown, alienSpeed;
     let btnLeftDown = false, btnRightDown = false;
     let difficulty = null;
-    let slowStacks, immobilized, immobileEndTime, slowTimers;
+    let slowStacks, immobilized, immobileEndTime, slowDecayAt;
     let diffSettings = {
       normal:     { shootChance: 0.10, bulletDmg: 1, dropSpeed: 1, moveSpeed: 1, greenChance: 0.05, slowPer: 20, slowDecay: 10, immobileTime: 10, greenDmg: 0 },
       hard:       { shootChance: 0.20, bulletDmg: 1, dropSpeed: 2, moveSpeed: 1.5, greenChance: 0.08, slowPer: 30, slowDecay: 10, immobileTime: 10, greenDmg: 0 },
@@ -357,7 +357,7 @@
       slowStacks = 0;
       immobilized = false;
       immobileEndTime = 0;
-      slowTimers = [];
+      slowDecayAt = 0;
 
       spawnAliens(alienRows);
       initStars();
@@ -485,14 +485,13 @@
       slowStacks++;
       const totalSlow = slowStacks * ds.slowPer;
       if (totalSlow >= 100) {
-        // Immobilize
         immobilized = true;
         immobileEndTime = performance.now() + ds.immobileTime * 1000;
         slowStacks = 0;
-        slowTimers = [];
+        slowDecayAt = 0;
       } else {
-        // Add a decay timer for this stack
-        slowTimers.push(performance.now() + ds.slowDecay * 1000);
+        // Reset timer to 10s on every hit
+        slowDecayAt = performance.now() + ds.slowDecay * 1000;
       }
       updateEffectsUI();
     }
@@ -506,12 +505,15 @@
         updateEffectsUI();
         return;
       }
-      // Decay slow stacks
-      while (slowTimers.length > 0 && now >= slowTimers[0]) {
-        slowTimers.shift();
-        slowStacks = Math.max(0, slowStacks - 1);
+      // Decay: when timer expires, remove one stack and reset timer
+      if (slowStacks > 0 && slowDecayAt > 0 && now >= slowDecayAt) {
+        slowStacks--;
+        if (slowStacks > 0) {
+          slowDecayAt = now + diffSettings[difficulty].slowDecay * 1000;
+        } else {
+          slowDecayAt = 0;
+        }
       }
-      // Always update so countdown ticks every frame
       if (slowStacks > 0 || immobilized) updateEffectsUI();
       else { document.getElementById('effects-text').textContent = ''; }
     }
@@ -523,8 +525,8 @@
         el.textContent = `Immobilized (${secs}s)`;
         el.className = 'immobile';
       } else if (slowStacks > 0) {
-        const nextDecay = slowTimers.length > 0 ? Math.max(0, Math.ceil((slowTimers[0] - performance.now()) / 1000)) : 0;
-        el.textContent = `Slowness ${ROMAN[slowStacks] || slowStacks} (${nextDecay}s)`;
+        const secs = slowDecayAt > 0 ? Math.max(0, Math.ceil((slowDecayAt - performance.now()) / 1000)) : 0;
+        el.textContent = `Slowness ${ROMAN[slowStacks] || slowStacks} (${secs}s)`;
         el.className = slowStacks >= 3 ? 'warn' : '';
       } else {
         el.textContent = '';
