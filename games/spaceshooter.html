@@ -266,9 +266,9 @@
     let btnLeftDown = false, btnRightDown = false;
     let difficulty = null;
     let diffSettings = {
-      normal:     { shootChance: 0.10, bulletDmg: 1 },
-      hard:       { shootChance: 0.20, bulletDmg: 1 },
-      impossible: { shootChance: 0.35, bulletDmg: 2 },
+      normal:     { shootChance: 0.10, bulletDmg: 1, dropSpeed: 1 },
+      hard:       { shootChance: 0.20, bulletDmg: 1, dropSpeed: 2 },
+      impossible: { shootChance: 0.35, bulletDmg: 2, dropSpeed: 4 },
     };
 
     // --- Menu ---
@@ -493,7 +493,7 @@
       for (const a of aliens) {
         if (!a.alive) continue;
         a.x += alienSpeed * alienDir;
-        if (alienStepDown > 0) a.y += 0.5;
+        if (alienStepDown > 0) a.y += 0.5 * diffSettings[difficulty].dropSpeed;
       }
       if (alienStepDown > 0) alienStepDown--;
 
