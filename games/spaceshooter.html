@@ -184,9 +184,10 @@
 
     #hardcore-heart {
       position: fixed;
-      top: 14px;
+      top: 8px;
       left: 18px;
       font-size: 3rem;
+      pointer-events: none;
       line-height: 1;
       color: #e94560;
       animation: flicker 0.4s infinite alternate;
@@ -197,18 +198,34 @@
 
     #hardcore-heart.show { display: block; }
 
-    /* Subtle fire: just a warm underlight, heart stays clearly visible */
     @keyframes flicker {
-      0% { text-shadow: 0 4px 6px rgba(255,69,0,0.5), 0 8px 15px rgba(255,69,0,0.2); }
-      100% { text-shadow: 0 4px 8px rgba(255,100,0,0.6), 0 10px 20px rgba(255,69,0,0.3); }
+      0% {
+        text-shadow:
+          0 2px 4px rgba(255,69,0,0.4),
+          0 6px 8px rgba(255,120,0,0.3),
+          0 -2px 6px rgba(255,200,0,0.15);
+      }
+      50% {
+        text-shadow:
+          0 4px 6px rgba(255,80,0,0.5),
+          0 8px 14px rgba(255,69,0,0.3),
+          -2px -3px 8px rgba(255,200,0,0.2);
+      }
+      100% {
+        text-shadow:
+          0 3px 5px rgba(255,100,0,0.45),
+          0 10px 18px rgba(255,69,0,0.25),
+          2px -2px 7px rgba(255,220,0,0.18);
+      }
     }
 
     #hardcore-heart.center {
       top: 50%;
       left: 50%;
-      font-size: 6rem;
+      font-size: 8rem;
       transform: translate(-50%, -50%);
       animation: none;
+      text-shadow: 0 0 30px rgba(255,69,0,0.6);
     }
 
     /* Particle canvas for shatter */
@@ -411,7 +428,7 @@
       if (!difficulty || !lifeDifficulty) return;
       menuEl.classList.add('hidden');
       init();
-      loop();
+      if (!loopRunning) { loopRunning = true; loop(); }
     });
 
     function initStars() {
@@ -715,11 +732,12 @@
       const hcHeart = document.getElementById('hardcore-heart');
       if (lifeDifficulty === 'hardcore') {
         // Hide HP bar, show heart
-        document.getElementById('hp-text').textContent = '';
+        document.getElementById('hp-text').style.display = 'none';
         document.getElementById('hp-bar').parentElement.style.display = 'none';
         hcHeart.classList.add('show');
       } else {
         hcHeart.classList.remove('show');
+        document.getElementById('hp-text').style.display = '';
         document.getElementById('hp-bar').parentElement.style.display = '';
         document.getElementById('hp-text').textContent = `HP: ${hp}`;
         const pct = Math.max(0, (hp / maxHp) * 100);
@@ -982,6 +1000,7 @@
     }
 
     // --- Game loop ---
+    let loopRunning = false;
 
     function loop() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
