@@ -603,7 +603,7 @@
 
     function deathMsg(cause) {
       const xp = score % 1 === 0 ? score : score.toFixed(1);
-      return `${cause}\n\nXP: ${xp}  |  Wave: ${wave}\nBlue killed: ${kills.blue}  |  Green killed: ${kills.green}  |  Red killed: ${kills.red}`;
+      return `${cause}\n\nXP: ${xp}  |  Wave: ${wave}\n\nBlue killed: ${kills.blue}\nGreen killed: ${kills.green}\nRed killed: ${kills.red}`;
     }
 
     let overlayMode = 'menu';
