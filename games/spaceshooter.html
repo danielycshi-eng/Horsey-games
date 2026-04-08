@@ -1047,14 +1047,12 @@
       const now = performance.now();
       if (!immobilized && (keys['Space'] || shooting || touchShooting) && now - lastShot > SHOOT_COOLDOWN) {
         const totalBullets = 1 + multiStacks;
-        if (totalBullets === 1) {
-          playerBullets.push({ x: player.x, y: player.y - PLAYER_H / 2 - 14 });
-        } else {
-          const spread = 20;
-          const totalW = (totalBullets - 1) * spread;
-          for (let bi = 0; bi < totalBullets; bi++) {
-            playerBullets.push({ x: player.x - totalW / 2 + bi * spread, y: player.y - PLAYER_H / 2 - 14 });
-          }
+        const by = player.y - PLAYER_H / 2 - 14;
+        const angleStep = 0.12; // ~7° between each bullet
+        for (let bi = 0; bi < totalBullets; bi++) {
+          const offset = bi - (totalBullets - 1) / 2; // centered: -1, 0, 1 for 3 bullets
+          const vx = offset * PLAYER_BULLET_SPEED * Math.sin(angleStep);
+          playerBullets.push({ x: player.x, y: by, vx });
         }
         lastShot = now;
       }
@@ -1062,7 +1060,8 @@
       // Move player bullets
       for (let i = playerBullets.length - 1; i >= 0; i--) {
         playerBullets[i].y -= PLAYER_BULLET_SPEED;
-        if (playerBullets[i].y < -20) playerBullets.splice(i, 1);
+        playerBullets[i].x += (playerBullets[i].vx || 0);
+        if (playerBullets[i].y < -20 || playerBullets[i].x < -20 || playerBullets[i].x > canvas.width + 20) playerBullets.splice(i, 1);
       }
 
       // Alien group movement
