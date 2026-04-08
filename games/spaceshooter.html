@@ -184,9 +184,9 @@
 
     #hardcore-heart {
       position: fixed;
-      top: 8px;
+      top: 4px;
       left: 18px;
-      font-size: 3.5rem;
+      font-size: 5rem;
       pointer-events: none;
       line-height: 1;
       color: #e94560;
@@ -206,10 +206,10 @@
 
     #fire-canvas {
       position: fixed;
-      top: -10px;
-      left: 4px;
-      width: 140px;
-      height: 90px;
+      top: -15px;
+      left: -2px;
+      width: 160px;
+      height: 100px;
       z-index: 11;
       pointer-events: none;
       display: none;
@@ -311,7 +311,7 @@
     <button id="start-btn">Start Game</button>
   </div>
 
-  <canvas id="fire-canvas" width="140" height="90"></canvas>
+  <canvas id="fire-canvas" width="160" height="100"></canvas>
   <div id="hardcore-heart">&#10084;</div>
   <canvas id="shatter-canvas"></canvas>
   <div id="ui">
@@ -743,8 +743,8 @@
       // Spawn new particles from both sides of the heart
       for (let i = 0; i < 5; i++) {
         fireParticles.push({
-          x: 70 + (Math.random() - 0.5) * 80,
-          y: 55 + Math.random() * 15,
+          x: 80 + (Math.random() - 0.5) * 80,
+          y: 65 + Math.random() * 15,
           vx: (Math.random() - 0.5) * 1.8,
           vy: -(1.5 + Math.random() * 3.5),
           life: 1,
@@ -838,8 +838,8 @@
         }
 
         let frame = 0;
-        const totalFrames = 150;
-        const fadeStartFrame = 80; // start fading to black after this frame
+        const totalFrames = 180;
+        const fadeStartFrame = 40; // start fading to black early
         function animateShatter() {
           sctx.clearRect(0, 0, sc.width, sc.height);
 
