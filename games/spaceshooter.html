@@ -378,6 +378,7 @@
     let multiStacks, multiDecayAt;
     let pierceStacks, pierceDecayAt;
     let bombStacks, bombDecayAt;
+    let mysteryActive, mysteryExpireAt;
     let lifeDifficulty = null;
     let lifeSettings = {
       beginner:     { hp: 100, yellow: 30, orange: 15, red: 5 },
@@ -498,6 +499,7 @@
       multiStacks = 0; multiDecayAt = 0;
       pierceStacks = 0; pierceDecayAt = 0;
       bombStacks = 0; bombDecayAt = 0;
+      mysteryActive = false; mysteryExpireAt = 0;
       deathParticles = [];
 
       spawnAliens(alienRows);
@@ -528,6 +530,7 @@
       multiStacks = 0; multiDecayAt = 0;
       pierceStacks = 0; pierceDecayAt = 0;
       bombStacks = 0; bombDecayAt = 0;
+      mysteryActive = false; mysteryExpireAt = 0;
       document.getElementById('effects-text').textContent = '';
       spawnAliens(alienRows);
       updateUI();
@@ -687,7 +690,7 @@
           slowDecayAt = 0;
         }
       }
-      if (slowStacks > 0 || immobilized || poisoned || speedStacks > 0 || shieldActive || multiStacks > 0 || pierceStacks > 0 || bombStacks > 0) updateEffectsUI();
+      if (slowStacks > 0 || immobilized || poisoned || speedStacks > 0 || shieldActive || multiStacks > 0 || pierceStacks > 0 || bombStacks > 0 || mysteryActive) updateEffectsUI();
       else if (!poisoned) { document.getElementById('effects-text').textContent = ''; }
     }
 
@@ -708,25 +711,30 @@
       }
 
       // Powerup buffs
-      if (speedStacks > 0) {
-        const secs = speedDecayAt > 0 ? Math.max(0, Math.ceil((speedDecayAt - performance.now()) / 1000)) : 0;
-        lines.push(`<span style="color:#22c55e">Speed ${ROMAN[speedStacks] || speedStacks} (${secs}s)</span>`);
-      }
-      if (shieldActive) {
-        const secs = Math.max(0, Math.ceil((shieldExpireAt - performance.now()) / 1000));
-        lines.push(`<span style="color:#3b82f6">Shield (${secs}s)</span>`);
-      }
-      if (multiStacks > 0) {
-        const secs = multiDecayAt > 0 ? Math.max(0, Math.ceil((multiDecayAt - performance.now()) / 1000)) : 0;
-        lines.push(`<span style="color:#f59e0b">Multishot ${ROMAN[multiStacks] || multiStacks} (${secs}s)</span>`);
-      }
-      if (pierceStacks > 0) {
-        const secs = pierceDecayAt > 0 ? Math.max(0, Math.ceil((pierceDecayAt - performance.now()) / 1000)) : 0;
-        lines.push(`<span style="color:#e879f9">Piercing ${ROMAN[pierceStacks] || pierceStacks} (${secs}s)</span>`);
-      }
-      if (bombStacks > 0) {
-        const secs = bombDecayAt > 0 ? Math.max(0, Math.ceil((bombDecayAt - performance.now()) / 1000)) : 0;
-        lines.push(`<span style="color:#ef4444">Bomb ${ROMAN[bombStacks] || bombStacks} (${secs}s)</span>`);
+      if (mysteryActive) {
+        const secs = Math.max(0, Math.ceil((mysteryExpireAt - performance.now()) / 1000));
+        lines.push(`<span style="color:#fff;text-shadow:0 0 8px #fff">??? (${secs}s)</span>`);
+      } else {
+        if (speedStacks > 0) {
+          const secs = speedDecayAt > 0 ? Math.max(0, Math.ceil((speedDecayAt - performance.now()) / 1000)) : 0;
+          lines.push(`<span style="color:#22c55e">Speed ${ROMAN[speedStacks] || speedStacks} (${secs}s)</span>`);
+        }
+        if (shieldActive) {
+          const secs = Math.max(0, Math.ceil((shieldExpireAt - performance.now()) / 1000));
+          lines.push(`<span style="color:#3b82f6">Shield (${secs}s)</span>`);
+        }
+        if (multiStacks > 0) {
+          const secs = multiDecayAt > 0 ? Math.max(0, Math.ceil((multiDecayAt - performance.now()) / 1000)) : 0;
+          lines.push(`<span style="color:#f59e0b">Multishot ${ROMAN[multiStacks] || multiStacks} (${secs}s)</span>`);
+        }
+        if (pierceStacks > 0) {
+          const secs = pierceDecayAt > 0 ? Math.max(0, Math.ceil((pierceDecayAt - performance.now()) / 1000)) : 0;
+          lines.push(`<span style="color:#e879f9">Piercing ${ROMAN[pierceStacks] || pierceStacks} (${secs}s)</span>`);
+        }
+        if (bombStacks > 0) {
+          const secs = bombDecayAt > 0 ? Math.max(0, Math.ceil((bombDecayAt - performance.now()) / 1000)) : 0;
+          lines.push(`<span style="color:#ef4444">Bomb ${ROMAN[bombStacks] || bombStacks} (${secs}s)</span>`);
+        }
       }
 
       el.innerHTML = lines.join('<br>');
@@ -761,8 +769,8 @@
     // --- Powerups ---
     const POWERUP_SIZE = 20;
     const POWERUP_FALL_SPEED = 2;
-    const POWERUP_COLORS = { speed: '#22c55e', shield: '#3b82f6', multishot: '#f59e0b', pierce: '#e879f9', bomb: '#ef4444' };
-    const POWERUP_LABELS = { speed: 'SPD', shield: 'SHD', multishot: 'MUL', pierce: 'PRC', bomb: 'BMB' };
+    const POWERUP_COLORS = { speed: '#22c55e', shield: '#3b82f6', multishot: '#f59e0b', pierce: '#e879f9', bomb: '#ef4444', mystery: '#fff' };
+    const POWERUP_LABELS = { speed: 'SPD', shield: 'SHD', multishot: 'MUL', pierce: 'PRC', bomb: 'BMB', mystery: '???' };
 
     function spawnPowerup(x, y) {
       const ds = diffSettings[difficulty];
@@ -773,7 +781,8 @@
       else if (roll < 0.6) type = 'shield';
       else if (roll < 0.8) type = 'multishot';
       else if (roll < 0.9) type = 'pierce';
-      else type = 'bomb';
+      else if (roll < 0.99) type = 'bomb';
+      else type = 'mystery';
       powerups.push({ x, y, type });
     }
 
@@ -794,6 +803,21 @@
       } else if (type === 'bomb') {
         bombStacks++;
         bombDecayAt = now + 7000;
+      } else if (type === 'mystery') {
+        // Grant Speed II, Shield, Multishot II, Piercing I, Bomb II
+        speedStacks = Math.max(speedStacks, 2);
+        speedDecayAt = now + 12000;
+        shieldActive = true;
+        shieldExpireAt = now + diffSettings[difficulty].shieldTime * 1000;
+        multiStacks = Math.max(multiStacks, 2);
+        multiDecayAt = now + 8000;
+        pierceStacks = Math.max(pierceStacks, 1);
+        pierceDecayAt = now + 6000;
+        bombStacks = Math.max(bombStacks, 2);
+        bombDecayAt = now + 7000;
+        mysteryActive = true;
+        // Mystery label lasts as long as the shortest buff
+        mysteryExpireAt = now + 6000;
       }
     }
 
@@ -817,6 +841,9 @@
       if (bombStacks > 0 && bombDecayAt > 0 && now >= bombDecayAt) {
         bombStacks--;
         bombDecayAt = bombStacks > 0 ? now + 7000 : 0;
+      }
+      if (mysteryActive && now >= mysteryExpireAt) {
+        mysteryActive = false;
       }
     }
 
@@ -868,17 +895,22 @@
 
     function drawPowerups() {
       for (const p of powerups) {
-        const col = POWERUP_COLORS[p.type];
+        let col = POWERUP_COLORS[p.type];
+        if (p.type === 'mystery') {
+          // Rainbow cycle
+          const hue = (performance.now() / 5) % 360;
+          col = `hsl(${hue}, 100%, 70%)`;
+        }
         // Outer glow
         ctx.shadowColor = col;
-        ctx.shadowBlur = 10;
+        ctx.shadowBlur = p.type === 'mystery' ? 18 : 10;
         ctx.fillStyle = col;
         ctx.beginPath();
         ctx.roundRect(p.x - POWERUP_SIZE/2, p.y - POWERUP_SIZE/2, POWERUP_SIZE, POWERUP_SIZE, 5);
         ctx.fill();
         ctx.shadowBlur = 0;
         // Label
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = p.type === 'mystery' ? '#000' : '#fff';
         ctx.font = 'bold 9px monospace';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
