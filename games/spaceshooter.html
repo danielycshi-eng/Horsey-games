@@ -32,14 +32,28 @@
 
     .hp-bar-inner {
       height: 100%;
-      background: linear-gradient(90deg, #e94560, #ff6b6b);
-      transition: width 0.2s;
+      background: linear-gradient(90deg, #22c55e, #4ade80);
+      transition: width 0.2s, background 0.3s;
       border-radius: 7px;
     }
 
     #hp-text, #xp-text {
       font-size: 0.85rem;
       color: #a0c4ff;
+    }
+
+    #damage-flash {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 15;
+      border: 0px solid transparent;
+      box-shadow: inset 0 0 0 0 rgba(233, 69, 96, 0);
+      transition: box-shadow 0.05s;
+    }
+
+    #damage-flash.flash {
+      box-shadow: inset 0 0 80px 20px rgba(233, 69, 96, 0.5);
     }
 
     .arrow-btn {
@@ -82,15 +96,15 @@
   </style>
 </head>
 <body>
-  <a href="../games.html" class="back-link" style="z-index:40">&larr; All Games</a>
-
   <div id="ui">
     <div>
-      <div id="hp-text">HP: 100/100</div>
+      <div id="hp-text">HP: 100</div>
       <div class="hp-bar-outer"><div class="hp-bar-inner" id="hp-bar" style="width:100%"></div></div>
+      <a href="../games.html" style="color:#a0c4ff; font-size:0.8rem; text-decoration:none; margin-top:4px; display:inline-block;">&larr; All Games</a>
     </div>
-    <div id="xp-text">Score: 0 / 30</div>
+    <div id="xp-text">XP: 0</div>
   </div>
+  <div id="damage-flash"></div>
 
   <canvas id="game"></canvas>
 
@@ -259,10 +273,24 @@
 
     // --- UI ---
 
+    function getHpColor(hp) {
+      if (hp > 30) return 'linear-gradient(90deg, #22c55e, #4ade80)';
+      if (hp > 15) return 'linear-gradient(90deg, #eab308, #facc15)';
+      if (hp > 5)  return 'linear-gradient(90deg, #f97316, #fb923c)';
+      return 'linear-gradient(90deg, #dc2626, #ef4444)';
+    }
+
+    function flashDamage() {
+      const el = document.getElementById('damage-flash');
+      el.classList.add('flash');
+      setTimeout(() => el.classList.remove('flash'), 150);
+    }
+
     function updateUI() {
-      document.getElementById('hp-text').textContent = `HP: ${hp}/100`;
+      document.getElementById('hp-text').textContent = `HP: ${hp}`;
       document.getElementById('hp-bar').style.width = `${hp}%`;
-      document.getElementById('xp-text').textContent = `Score: ${score} / ${totalAliens}`;
+      document.getElementById('hp-bar').style.background = getHpColor(hp);
+      document.getElementById('xp-text').textContent = `XP: ${score}`;
     }
 
     function showOverlay(title, msg) {
@@ -359,6 +387,7 @@
           alienBullets.splice(i, 1);
           hp--;
           updateUI();
+          flashDamage();
           if (hp <= 0) {
             gameOver = true;
             showOverlay('Game Over', `You scored ${score} out of ${totalAliens}`);
