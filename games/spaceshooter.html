@@ -93,14 +93,131 @@
     #overlay.show { display: flex; }
     #overlay h2 { font-size: 2.5rem; margin-bottom: 0.5rem; }
     #overlay p { color: #a0c4ff; margin-bottom: 1.5rem; }
+
+    /* --- Difficulty select screen --- */
+    #menu {
+      position: fixed;
+      inset: 0;
+      background: #1a1a2e;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+    }
+
+    #menu.hidden { display: none; }
+
+    #menu h1 {
+      font-size: 2.5rem;
+      margin-bottom: 0.3rem;
+      background: linear-gradient(135deg, #a0c4ff, #4e7fff, #a0c4ff);
+      background-size: 200% 200%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: shimmer 3s ease-in-out infinite;
+    }
+
+    @keyframes shimmer {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    #menu .subtitle { color: #6b8ecf; font-size: 1rem; margin-bottom: 2rem; }
+
+    .diff-options {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .diff-btn {
+      padding: 0.8rem 1.5rem;
+      background: #16213e;
+      border: 2px solid #0f3460;
+      border-radius: 10px;
+      color: #a0c4ff;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s, box-shadow 0.2s, transform 0.15s;
+    }
+
+    .diff-btn:hover { background: #0f3460; transform: translateY(-2px); }
+
+    .diff-btn.selected {
+      border-color: #4e7fff;
+      background: #0f3460;
+      box-shadow: 0 0 20px rgba(78, 127, 255, 0.3);
+    }
+
+    .diff-btn .diff-label { font-weight: 600; margin-bottom: 4px; }
+    .diff-btn .diff-desc { font-size: 0.75rem; color: #6b8ecf; }
+
+    #start-btn {
+      padding: 0.8rem 3rem;
+      font-size: 1.2rem;
+      background: #16213e;
+      color: #555;
+      border: 2px solid #0f3460;
+      border-radius: 10px;
+      cursor: default;
+      transition: all 0.3s;
+    }
+
+    #start-btn.active {
+      background: linear-gradient(135deg, #e94560, #c73652);
+      color: #fff;
+      border-color: transparent;
+      cursor: pointer;
+      box-shadow: 0 0 25px rgba(233, 69, 96, 0.4);
+    }
+
+    #start-btn.active:hover {
+      box-shadow: 0 0 40px rgba(233, 69, 96, 0.6);
+      transform: scale(1.05);
+    }
+
+    #menu .back-link-menu {
+      position: absolute;
+      top: 1.2rem;
+      left: 1.5rem;
+      font-size: 1rem;
+      color: #a0c4ff;
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+
+    #menu .back-link-menu:hover { color: #fff; }
   </style>
 </head>
 <body>
+  <div id="menu">
+    <a href="../games.html" class="back-link-menu">&larr; All Games</a>
+    <h1>Space Shooter</h1>
+    <p class="subtitle">Choose your difficulty</p>
+    <div class="diff-options">
+      <button class="diff-btn" data-diff="normal">
+        <div class="diff-label">Normal</div>
+        <div class="diff-desc">10% fire rate</div>
+      </button>
+      <button class="diff-btn" data-diff="hard">
+        <div class="diff-label">Hard</div>
+        <div class="diff-desc">20% fire rate</div>
+      </button>
+      <button class="diff-btn" data-diff="impossible">
+        <div class="diff-label">Impossible</div>
+        <div class="diff-desc">35% fire rate, 2x damage</div>
+      </button>
+    </div>
+    <button id="start-btn">Start Game</button>
+  </div>
+
   <div id="ui">
     <div>
       <div id="hp-text">HP: 100</div>
       <div class="hp-bar-outer"><div class="hp-bar-inner" id="hp-bar" style="width:100%"></div></div>
-      <a href="../games.html" style="color:#a0c4ff; font-size:0.8rem; text-decoration:none; margin-top:4px; display:inline-block;">&larr; All Games</a>
+      <a href="../games.html" class="back-link" style="position:static; font-size:0.8rem; margin-top:4px; display:inline-block;">&larr; All Games</a>
     </div>
     <div id="xp-text">XP: 0</div>
   </div>
@@ -147,6 +264,33 @@
     let lastShot, shooting, touchShooting;
     let alienDir, alienStepDown, alienSpeed;
     let btnLeftDown = false, btnRightDown = false;
+    let difficulty = null;
+    let diffSettings = {
+      normal:     { shootChance: 0.10, bulletDmg: 1 },
+      hard:       { shootChance: 0.20, bulletDmg: 1 },
+      impossible: { shootChance: 0.35, bulletDmg: 2 },
+    };
+
+    // --- Menu ---
+    const menuEl = document.getElementById('menu');
+    const startBtn = document.getElementById('start-btn');
+    const diffBtns = document.querySelectorAll('.diff-btn');
+
+    diffBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        diffBtns.forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        difficulty = btn.dataset.diff;
+        startBtn.classList.add('active');
+      });
+    });
+
+    startBtn.addEventListener('click', () => {
+      if (!difficulty) return;
+      menuEl.classList.add('hidden');
+      init();
+      loop();
+    });
 
     function initStars() {
       stars = [];
@@ -349,7 +493,7 @@
       if (alienStepDown > 0) alienStepDown--;
 
       // Alien shooting (5% chance per second per alien → per frame ~0.083% at 60fps)
-      const shootChance = 0.10 / 60;
+      const shootChance = diffSettings[difficulty].shootChance / 60;
       for (const a of aliens) {
         if (!a.alive) continue;
         if (Math.random() < shootChance) {
@@ -385,7 +529,7 @@
         if (Math.abs(b.x - player.x) < PLAYER_W / 2 + BULLET_W / 2 &&
             Math.abs(b.y - player.y) < PLAYER_H / 2 + ALIEN_BULLET_H / 2) {
           alienBullets.splice(i, 1);
-          hp--;
+          hp = Math.max(0, hp - diffSettings[difficulty].bulletDmg);
           updateUI();
           flashDamage();
           if (hp <= 0) {
@@ -464,12 +608,11 @@
     canvas.addEventListener('touchstart', e => { touchShooting = true; });
     canvas.addEventListener('touchend', () => { touchShooting = false; });
 
-    // Restart
-    document.getElementById('overlay-btn').addEventListener('click', init);
-
-    // Start
-    init();
-    loop();
+    // Restart — go back to menu
+    document.getElementById('overlay-btn').addEventListener('click', () => {
+      hideOverlay();
+      menuEl.classList.remove('hidden');
+    });
   </script>
 </body>
 </html>
