@@ -186,11 +186,10 @@
       position: fixed;
       top: 8px;
       left: 18px;
-      font-size: 3rem;
+      font-size: 3.5rem;
       pointer-events: none;
       line-height: 1;
       color: #e94560;
-      animation: flicker 0.4s infinite alternate;
       display: none;
       z-index: 12;
       transition: top 0.6s ease-in-out, left 0.6s ease-in-out, font-size 0.6s ease-in-out;
@@ -198,35 +197,25 @@
 
     #hardcore-heart.show { display: block; }
 
-    @keyframes flicker {
-      0% {
-        text-shadow:
-          0 2px 4px rgba(255,69,0,0.4),
-          0 6px 8px rgba(255,120,0,0.3),
-          0 -2px 6px rgba(255,200,0,0.15);
-      }
-      50% {
-        text-shadow:
-          0 4px 6px rgba(255,80,0,0.5),
-          0 8px 14px rgba(255,69,0,0.3),
-          -2px -3px 8px rgba(255,200,0,0.2);
-      }
-      100% {
-        text-shadow:
-          0 3px 5px rgba(255,100,0,0.45),
-          0 10px 18px rgba(255,69,0,0.25),
-          2px -2px 7px rgba(255,220,0,0.18);
-      }
-    }
-
     #hardcore-heart.center {
       top: 50%;
       left: 50%;
-      font-size: 8rem;
+      font-size: 10rem;
       transform: translate(-50%, -50%);
-      animation: none;
-      text-shadow: 0 0 30px rgba(255,69,0,0.6);
     }
+
+    #fire-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 120px;
+      height: 80px;
+      z-index: 11;
+      pointer-events: none;
+      display: none;
+    }
+
+    #fire-canvas.show { display: block; }
 
     /* Particle canvas for shatter */
     #shatter-canvas {
@@ -322,13 +311,14 @@
     <button id="start-btn">Start Game</button>
   </div>
 
+  <canvas id="fire-canvas" width="120" height="80"></canvas>
   <div id="hardcore-heart">&#10084;</div>
   <canvas id="shatter-canvas"></canvas>
   <div id="ui">
     <div>
       <div id="hp-text">HP: 100</div>
       <div class="hp-bar-outer"><div class="hp-bar-inner" id="hp-bar" style="width:100%"></div></div>
-      <a href="../games.html" class="back-link" style="position:static; font-size:0.8rem; margin-top:4px; display:inline-block;">&larr; All Games</a>
+      <a href="../games.html" id="back-link-game" class="back-link" style="position:static; font-size:0.8rem; margin-top:4px; display:inline-block;">&larr; All Games</a>
     </div>
     <div style="text-align:right">
       <div id="xp-text">XP: 0</div>
@@ -727,16 +717,82 @@
       }
     }
 
+    // --- Fire particles for hardcore heart ---
+    let fireRunning = false;
+    let fireParticles = [];
+    const fireCanvas = document.getElementById('fire-canvas');
+    const fireCtx = fireCanvas.getContext('2d');
+
+    function startFire() {
+      fireRunning = true;
+      fireParticles = [];
+      animateFire();
+    }
+
+    function stopFire() {
+      fireRunning = false;
+      fireParticles = [];
+      fireCtx.clearRect(0, 0, fireCanvas.width, fireCanvas.height);
+      fireCanvas.classList.remove('show');
+    }
+
+    function animateFire() {
+      if (!fireRunning) return;
+      fireCtx.clearRect(0, 0, fireCanvas.width, fireCanvas.height);
+
+      // Spawn new particles from the heart area
+      for (let i = 0; i < 3; i++) {
+        fireParticles.push({
+          x: 30 + (Math.random() - 0.5) * 24,
+          y: 50 + Math.random() * 10,
+          vx: (Math.random() - 0.5) * 1.5,
+          vy: -(1 + Math.random() * 3),
+          life: 1,
+          decay: 0.015 + Math.random() * 0.025,
+          size: 2 + Math.random() * 5,
+        });
+      }
+
+      for (let i = fireParticles.length - 1; i >= 0; i--) {
+        const p = fireParticles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy -= 0.02; // rise faster
+        p.vx += (Math.random() - 0.5) * 0.3; // sway
+        p.life -= p.decay;
+        if (p.life <= 0) { fireParticles.splice(i, 1); continue; }
+
+        // Color: yellow core → orange → red → transparent
+        let r, g, b;
+        if (p.life > 0.7) { r = 255; g = 220 + (1 - p.life) * 100; b = 50; }
+        else if (p.life > 0.4) { r = 255; g = 120 * p.life; b = 0; }
+        else { r = 200; g = 30; b = 0; }
+
+        fireCtx.globalAlpha = p.life * 0.8;
+        fireCtx.fillStyle = `rgb(${r},${g},${b})`;
+        fireCtx.beginPath();
+        fireCtx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+        fireCtx.fill();
+      }
+      fireCtx.globalAlpha = 1;
+
+      requestAnimationFrame(animateFire);
+    }
+
     function updateUI() {
       const maxHp = lifeSettings[lifeDifficulty].hp;
       const hcHeart = document.getElementById('hardcore-heart');
       if (lifeDifficulty === 'hardcore') {
-        // Hide HP bar, show heart
         document.getElementById('hp-text').style.display = 'none';
         document.getElementById('hp-bar').parentElement.style.display = 'none';
+        document.getElementById('back-link-game').style.marginTop = '50px';
         hcHeart.classList.add('show');
+        document.getElementById('fire-canvas').classList.add('show');
+        if (!fireRunning) startFire();
       } else {
         hcHeart.classList.remove('show');
+        document.getElementById('fire-canvas').classList.remove('show');
+        document.getElementById('back-link-game').style.marginTop = '4px';
         document.getElementById('hp-text').style.display = '';
         document.getElementById('hp-bar').parentElement.style.display = '';
         document.getElementById('hp-text').textContent = `HP: ${hp}`;
@@ -749,6 +805,7 @@
 
     function shatterHeart(callback) {
       const heart = document.getElementById('hardcore-heart');
+      stopFire();
       // Step 1: move heart to center
       heart.classList.add('center');
 
@@ -1066,6 +1123,7 @@
         hh.classList.remove('show', 'center');
         hh.style.display = '';
         document.getElementById('shatter-canvas').style.display = 'none';
+        stopFire();
         menuEl.classList.remove('hidden');
       }
     });
