@@ -349,7 +349,7 @@
       if (alienStepDown > 0) alienStepDown--;
 
       // Alien shooting (5% chance per second per alien → per frame ~0.083% at 60fps)
-      const shootChance = 0.05 / 60;
+      const shootChance = 0.10 / 60;
       for (const a of aliens) {
         if (!a.alive) continue;
         if (Math.random() < shootChance) {
