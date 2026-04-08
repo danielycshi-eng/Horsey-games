@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tic Tac Toe - Horsey Games</title>
+  <link rel="stylesheet" href="../style.css">
+  <style>
+    h1 { font-size: 2.5rem; margin-bottom: 0.5rem; letter-spacing: 2px; }
+
+    #status {
+      font-size: 1.2rem;
+      margin-bottom: 1.5rem;
+      height: 1.5rem;
+      color: #a0c4ff;
+    }
+
+    #board {
+      display: grid;
+      grid-template-columns: repeat(3, 110px);
+      grid-template-rows: repeat(3, 110px);
+      gap: 8px;
+    }
+
+    .cell {
+      background: #16213e;
+      border: 2px solid #0f3460;
+      border-radius: 12px;
+      font-size: 3.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      user-select: none;
+    }
+
+    .cell:hover:not(.taken) { background: #0f3460; transform: scale(1.05); }
+    .cell.taken { cursor: default; }
+
+    .cell.x { color: #e94560; }
+    .cell.o { color: #a0c4ff; }
+    .cell.win { background: #0f3460; outline: 3px solid #f5a623; }
+
+    #restart {
+      margin-top: 1.5rem;
+      padding: 0.6rem 2rem;
+      font-size: 1rem;
+      background: #e94560;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    #restart:hover { background: #c73652; }
+
+    #difficulty {
+      margin-top: 1rem;
+      display: flex;
+      gap: 1.2rem;
+      font-size: 0.95rem;
+      color: #aaa;
+    }
+
+    #difficulty label { cursor: pointer; display: flex; align-items: center; gap: 4px; }
+    #difficulty label:has(input:checked) { color: #e94560; }
+
+    #score {
+      margin-top: 1.2rem;
+      display: flex;
+      gap: 2rem;
+      font-size: 1rem;
+      color: #aaa;
+    }
+
+    #score span { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    #score b { font-size: 1.5rem; color: #eee; }
+  </style>
+</head>
+<body>
+  <a href="../games.html" class="back-link">&larr; All Games</a>
+  <h1>Tic Tac Toe</h1>
+  <div id="status">Your turn</div>
+  <div id="board"></div>
+  <button id="restart">Restart</button>
+  <div id="difficulty">
+    <label><input type="radio" name="diff" value="easy"> Easy</label>
+    <label><input type="radio" name="diff" value="medium" checked> Medium</label>
+    <label><input type="radio" name="diff" value="hard"> Hard</label>
+  </div>
+  <div id="score">
+    <span>You (X)<b id="xWins">0</b></span>
+    <span>Draws<b id="draws">0</b></span>
+    <span>Bot (O)<b id="oWins">0</b></span>
+  </div>
+
+  <script>
+    const WINS = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+    let board, gameOver, thinking;
+    let score = { X: 0, O: 0, D: 0 };
+
+    const boardEl = document.getElementById('board');
+    const statusEl = document.getElementById('status');
+
+    function getDifficulty() {
+      return document.querySelector('input[name="diff"]:checked').value;
+    }
+
+    function init() {
+      board = Array(9).fill('');
+      gameOver = false;
+      thinking = false;
+      statusEl.textContent = 'Your turn';
+      boardEl.innerHTML = '';
+      for (let i = 0; i < 9; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.addEventListener('click', () => playerMove(i));
+        boardEl.appendChild(cell);
+      }
+    }
+
+    function place(i, mark) {
+      board[i] = mark;
+      const cell = boardEl.children[i];
+      cell.textContent = mark;
+      cell.classList.add('taken', mark.toLowerCase());
+    }
+
+    function checkEnd(mark) {
+      const win = WINS.find(([a,b,c]) => board[a] && board[a] === board[b] && board[b] === board[c]);
+      if (win) {
+        win.forEach(idx => boardEl.children[idx].classList.add('win'));
+        statusEl.textContent = mark === 'X' ? 'You win!' : 'Bot wins!';
+        score[mark]++;
+        updateScore();
+        gameOver = true;
+        return true;
+      }
+      if (board.every(Boolean)) {
+        statusEl.textContent = "It's a draw!";
+        score.D++;
+        updateScore();
+        gameOver = true;
+        return true;
+      }
+      return false;
+    }
+
+    function playerMove(i) {
+      if (gameOver || thinking || board[i]) return;
+      place(i, 'X');
+      if (checkEnd('X')) return;
+      statusEl.textContent = 'Bot is thinking...';
+      thinking = true;
+      setTimeout(() => {
+        const botIdx = botMove();
+        place(botIdx, 'O');
+        if (!checkEnd('O')) statusEl.textContent = 'Your turn';
+        thinking = false;
+      }, 300);
+    }
+
+    function minimax(bd, isMax, depth) {
+      const win = WINS.find(([a,b,c]) => bd[a] && bd[a] === bd[b] && bd[b] === bd[c]);
+      if (win) return bd[win[0]] === 'O' ? 10 - depth : depth - 10;
+      if (bd.every(Boolean)) return 0;
+
+      const empty = bd.map((v, i) => v ? null : i).filter(v => v !== null);
+      if (isMax) {
+        let best = -Infinity;
+        for (const i of empty) { bd[i] = 'O'; best = Math.max(best, minimax(bd, false, depth + 1)); bd[i] = ''; }
+        return best;
+      } else {
+        let best = Infinity;
+        for (const i of empty) { bd[i] = 'X'; best = Math.min(best, minimax(bd, true, depth + 1)); bd[i] = ''; }
+        return best;
+      }
+    }
+
+    function botMove() {
+      const empty = board.map((v, i) => v ? null : i).filter(v => v !== null);
+      const diff = getDifficulty();
+
+      if (diff === 'easy') {
+        return empty[Math.floor(Math.random() * empty.length)];
+      }
+
+      if (diff === 'medium' && Math.random() < 0.5) {
+        return empty[Math.floor(Math.random() * empty.length)];
+      }
+
+      let bestScore = -Infinity, bestIdx = empty[0];
+      for (const i of empty) {
+        board[i] = 'O';
+        const s = minimax(board, false, 0);
+        board[i] = '';
+        if (s > bestScore) { bestScore = s; bestIdx = i; }
+      }
+      return bestIdx;
+    }
+
+    function updateScore() {
+      document.getElementById('xWins').textContent = score.X;
+      document.getElementById('oWins').textContent = score.O;
+      document.getElementById('draws').textContent = score.D;
+    }
+
+    document.getElementById('restart').addEventListener('click', init);
+    init();
+  </script>
+</body>
+</html>

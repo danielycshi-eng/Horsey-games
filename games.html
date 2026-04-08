@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Horsey Games - All Games</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    h1 { margin-bottom: 0.3rem; }
+    .subtitle { color: #a0c4ff; font-size: 1rem; margin-bottom: 2rem; }
+
+    .game-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 1.2rem;
+      max-width: 800px;
+      width: 90%;
+    }
+
+    .game-card {
+      background: #16213e;
+      border: 2px solid #0f3460;
+      border-radius: 14px;
+      padding: 1.5rem 1rem;
+      text-align: center;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.12s, border-color 0.15s;
+    }
+
+    .game-card:hover {
+      background: #0f3460;
+      transform: translateY(-4px);
+      border-color: #e94560;
+    }
+
+    .game-card .icon { font-size: 2.8rem; margin-bottom: 0.6rem; }
+    .game-card .name { font-size: 1.1rem; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <a href="index.html" class="back-link">&larr; Home</a>
+  <h1>Horsey Games</h1>
+  <p class="subtitle">Pick a game to play</p>
+
+  <div class="game-grid">
+    <a href="games/tictactoe.html" class="game-card">
+      <div class="icon">#</div>
+      <div class="name">Tic Tac Toe</div>
+    </a>
+  </div>
+</body>
+</html>
