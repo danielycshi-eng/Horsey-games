@@ -387,6 +387,15 @@
       gameWon = false;
       alienDir = 1;
       alienStepDown = 0;
+      // Clear debuffs
+      slowStacks = 0;
+      immobilized = false;
+      immobileEndTime = 0;
+      slowDecayAt = 0;
+      poisoned = false;
+      poisonKillsLeft = 0;
+      poisonNextDmgAt = 0;
+      document.getElementById('effects-text').textContent = '';
       spawnAliens(alienRows);
       updateUI();
       hideOverlay();
@@ -587,7 +596,7 @@
         flashDamage();
         if (hp <= 0) {
           gameOver = true;
-          showOverlay('Game Over', deathMsg('Killed by poison'), 'Play Again', 'menu');
+          deathStats('Killed by poison');
           return;
         }
         poisonNextDmgAt = now + diffSettings[difficulty].poisonInterval * 1000;
@@ -601,9 +610,20 @@
       document.getElementById('xp-text').textContent = `XP: ${score % 1 === 0 ? score : score.toFixed(1)}`;
     }
 
-    function deathMsg(cause) {
+    function deathStats(cause) {
       const xp = score % 1 === 0 ? score : score.toFixed(1);
-      return `${cause}\n\nXP: ${xp}  |  Wave: ${wave}\n\nBlue killed: ${kills.blue}\nGreen killed: ${kills.green}\nRed killed: ${kills.red}`;
+      document.getElementById('overlay-title').textContent = 'Game Over';
+      document.getElementById('overlay-msg').innerHTML =
+        `<div style="margin-bottom:10px;font-size:1.1rem">${cause}</div>` +
+        `<div style="margin-bottom:12px">XP: ${xp} &nbsp;|&nbsp; Wave: ${wave}</div>` +
+        `<div style="display:inline-grid;grid-template-columns:auto auto;gap:2px 16px;text-align:left;font-size:0.9rem">` +
+        `<span style="color:#4e7fff">Blue killed:</span><span>${kills.blue}</span>` +
+        `<span style="color:#22c55e">Green killed:</span><span>${kills.green}</span>` +
+        `<span style="color:#dc2626">Red killed:</span><span>${kills.red}</span>` +
+        `</div>`;
+      document.getElementById('overlay-btn').textContent = 'Play Again';
+      overlayMode = 'menu';
+      document.getElementById('overlay').classList.add('show');
     }
 
     let overlayMode = 'menu';
@@ -742,7 +762,7 @@
           updateUI();
           if (hp <= 0) {
             gameOver = true;
-            showOverlay('Game Over', deathMsg('Shot down by aliens'), 'Play Again', 'menu');
+            deathStats('Shot down by aliens');
             return;
           }
         }
@@ -757,7 +777,7 @@
       for (const a of aliens) {
         if (a.alive && a.y + ALIEN_H / 2 >= player.y - PLAYER_H / 2) {
           gameOver = true;
-          showOverlay('Game Over', deathMsg('The aliens reached you'), 'Play Again', 'menu');
+          deathStats('The aliens reached you');
           return;
         }
       }
