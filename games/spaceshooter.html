@@ -60,6 +60,10 @@
       box-shadow: inset 0 0 80px 20px rgba(233, 69, 96, 0.5);
     }
 
+    #damage-flash.flash-gray {
+      box-shadow: inset 0 0 80px 20px rgba(156, 163, 175, 0.5);
+    }
+
     .arrow-btn {
       position: fixed;
       bottom: 30px;
@@ -274,9 +278,9 @@
     let difficulty = null;
     let slowStacks, immobilized, immobileEndTime, slowTimers;
     let diffSettings = {
-      normal:     { shootChance: 0.10, bulletDmg: 1, dropSpeed: 1, moveSpeed: 1, greenChance: 0.05, slowPer: 20, slowDecay: 10, immobileTime: 10 },
-      hard:       { shootChance: 0.20, bulletDmg: 1, dropSpeed: 2, moveSpeed: 1.5, greenChance: 0.08, slowPer: 30, slowDecay: 10, immobileTime: 10 },
-      impossible: { shootChance: 0.35, bulletDmg: 2, dropSpeed: 4, moveSpeed: 2, greenChance: 0.10, slowPer: 30, slowDecay: 10, immobileTime: 15 },
+      normal:     { shootChance: 0.10, bulletDmg: 1, dropSpeed: 1, moveSpeed: 1, greenChance: 0.05, slowPer: 20, slowDecay: 10, immobileTime: 10, greenDmg: 0 },
+      hard:       { shootChance: 0.20, bulletDmg: 1, dropSpeed: 2, moveSpeed: 1.5, greenChance: 0.08, slowPer: 30, slowDecay: 10, immobileTime: 10, greenDmg: 0 },
+      impossible: { shootChance: 0.35, bulletDmg: 2, dropSpeed: 2.5, moveSpeed: 2, greenChance: 0.10, slowPer: 30, slowDecay: 10, immobileTime: 15, greenDmg: 1 },
     };
 
     // --- Menu ---
@@ -468,6 +472,12 @@
       setTimeout(() => el.classList.remove('flash'), 150);
     }
 
+    function flashSlow() {
+      const el = document.getElementById('damage-flash');
+      el.classList.add('flash-gray');
+      setTimeout(() => el.classList.remove('flash-gray'), 150);
+    }
+
     const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
 
     function applySlow() {
@@ -492,20 +502,18 @@
         if (now >= immobileEndTime) {
           immobilized = false;
           immobileEndTime = 0;
-          updateEffectsUI();
-        } else {
-          updateEffectsUI();
         }
+        updateEffectsUI();
         return;
       }
       // Decay slow stacks
-      let changed = false;
       while (slowTimers.length > 0 && now >= slowTimers[0]) {
         slowTimers.shift();
         slowStacks = Math.max(0, slowStacks - 1);
-        changed = true;
       }
-      if (changed) updateEffectsUI();
+      // Always update so countdown ticks every frame
+      if (slowStacks > 0 || immobilized) updateEffectsUI();
+      else { document.getElementById('effects-text').textContent = ''; }
     }
 
     function updateEffectsUI() {
@@ -528,7 +536,7 @@
       document.getElementById('hp-text').textContent = `HP: ${hp}`;
       document.getElementById('hp-bar').style.width = `${hp}%`;
       document.getElementById('hp-bar').style.background = getHpColor(hp);
-      document.getElementById('xp-text').textContent = `XP: ${score}`;
+      document.getElementById('xp-text').textContent = `XP: ${score % 1 === 0 ? score : score.toFixed(1)}`;
     }
 
     let overlayMode = 'menu';
@@ -562,7 +570,7 @@
 
       // Shooting
       const now = performance.now();
-      if ((keys['Space'] || shooting || touchShooting) && now - lastShot > SHOOT_COOLDOWN) {
+      if (!immobilized && (keys['Space'] || shooting || touchShooting) && now - lastShot > SHOOT_COOLDOWN) {
         playerBullets.push({ x: player.x, y: player.y - PLAYER_H / 2 - 14 });
         lastShot = now;
       }
@@ -618,7 +626,7 @@
               Math.abs(b.y - a.y) < ALIEN_H / 2 + PLAYER_BULLET_H / 2) {
             a.alive = false;
             playerBullets.splice(bi, 1);
-            score++;
+            score += a.green ? 1.5 : 1;
             updateUI();
             break;
           }
@@ -632,8 +640,11 @@
             Math.abs(b.y - player.y) < PLAYER_H / 2 + ALIEN_BULLET_H / 2) {
           alienBullets.splice(i, 1);
           if (b.green) {
-            // Green bullet → apply slowness
+            // Green bullet → apply slowness + gray flash + damage on impossible
             applySlow();
+            flashSlow();
+            const gDmg = diffSettings[difficulty].greenDmg;
+            if (gDmg > 0) hp = Math.max(0, hp - gDmg);
           } else {
             // Red bullet → damage
             hp = Math.max(0, hp - diffSettings[difficulty].bulletDmg);
