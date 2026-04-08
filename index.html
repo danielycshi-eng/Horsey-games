@@ -6,14 +6,131 @@
   <title>Horsey Games</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    h1 { font-size: 4rem; margin-bottom: 0.5rem; }
-    .subtitle { color: #a0c4ff; font-size: 1.1rem; margin-bottom: 2.5rem; }
-    .btn { font-size: 1.4rem; padding: 1rem 3.5rem; }
+    body { overflow: hidden; position: relative; }
+
+    canvas {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .content {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    h1 {
+      font-size: 4.5rem;
+      margin-bottom: 0.4rem;
+      background: linear-gradient(135deg, #a0c4ff, #4e7fff, #a0c4ff);
+      background-size: 200% 200%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: shimmer 3s ease-in-out infinite;
+      text-shadow: none;
+    }
+
+    @keyframes shimmer {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    .subtitle { color: #6b8ecf; font-size: 1.1rem; margin-bottom: 2.5rem; letter-spacing: 2px; }
+
+    .btn {
+      font-size: 1.4rem;
+      padding: 1rem 3.5rem;
+      border: 2px solid transparent;
+      background: linear-gradient(135deg, #e94560, #c73652);
+      box-shadow: 0 0 20px rgba(233, 69, 96, 0.3);
+      transition: box-shadow 0.3s, transform 0.15s;
+    }
+
+    .btn:hover {
+      box-shadow: 0 0 35px rgba(233, 69, 96, 0.5);
+      transform: scale(1.08);
+    }
   </style>
 </head>
 <body>
-  <h1>Horsey Games</h1>
-  <p class="subtitle">A collection of browser games</p>
-  <a href="games.html" class="btn">Start</a>
+  <canvas id="bg"></canvas>
+  <div class="content">
+    <h1>Horsey Games</h1>
+    <p class="subtitle">A collection of browser games</p>
+    <a href="games.html" class="btn">Start</a>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('bg');
+    const ctx = canvas.getContext('2d');
+
+    let w, h, lines;
+
+    function resize() {
+      w = canvas.width = window.innerWidth;
+      h = canvas.height = window.innerHeight;
+    }
+
+    function createLines() {
+      lines = [];
+      for (let i = 0; i < 40; i++) {
+        lines.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          len: 80 + Math.random() * 200,
+          angle: Math.random() * Math.PI * 2,
+          speed: 0.2 + Math.random() * 0.6,
+          drift: (Math.random() - 0.5) * 0.003,
+          alpha: 0.04 + Math.random() * 0.1,
+          width: 1 + Math.random() * 2,
+        });
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, w, h);
+
+      for (const l of lines) {
+        const ex = l.x + Math.cos(l.angle) * l.len;
+        const ey = l.y + Math.sin(l.angle) * l.len;
+
+        const grad = ctx.createLinearGradient(l.x, l.y, ex, ey);
+        grad.addColorStop(0, `rgba(78, 127, 255, 0)`);
+        grad.addColorStop(0.5, `rgba(78, 127, 255, ${l.alpha})`);
+        grad.addColorStop(1, `rgba(78, 127, 255, 0)`);
+
+        ctx.beginPath();
+        ctx.moveTo(l.x, l.y);
+        ctx.lineTo(ex, ey);
+        ctx.strokeStyle = grad;
+        ctx.lineWidth = l.width;
+        ctx.stroke();
+
+        // move
+        l.x += Math.cos(l.angle) * l.speed;
+        l.y += Math.sin(l.angle) * l.speed;
+        l.angle += l.drift;
+
+        // wrap around
+        if (l.x < -l.len) l.x = w + l.len;
+        if (l.x > w + l.len) l.x = -l.len;
+        if (l.y < -l.len) l.y = h + l.len;
+        if (l.y > h + l.len) l.y = -l.len;
+      }
+
+      requestAnimationFrame(draw);
+    }
+
+    window.addEventListener('resize', () => { resize(); createLines(); });
+    resize();
+    createLines();
+    draw();
+  </script>
 </body>
 </html>
