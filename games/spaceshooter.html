@@ -777,8 +777,12 @@
       if (Math.random() >= ds.powerupChance) return;
       const roll = Math.random();
       let type;
-      // TESTING: 100% mystery
-      type = 'mystery';
+      if (roll < 0.4) type = 'speed';
+      else if (roll < 0.6) type = 'shield';
+      else if (roll < 0.8) type = 'multishot';
+      else if (roll < 0.9) type = 'pierce';
+      else if (roll < 0.99) type = 'bomb';
+      else type = 'mystery';
       powerups.push({ x, y, type });
     }
 
