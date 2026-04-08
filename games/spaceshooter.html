@@ -266,9 +266,9 @@
     let btnLeftDown = false, btnRightDown = false;
     let difficulty = null;
     let diffSettings = {
-      normal:     { shootChance: 0.10, bulletDmg: 1, dropSpeed: 1 },
-      hard:       { shootChance: 0.20, bulletDmg: 1, dropSpeed: 2 },
-      impossible: { shootChance: 0.35, bulletDmg: 2, dropSpeed: 4 },
+      normal:     { shootChance: 0.10, bulletDmg: 1, dropSpeed: 1, moveSpeed: 1 },
+      hard:       { shootChance: 0.20, bulletDmg: 1, dropSpeed: 2, moveSpeed: 1.5 },
+      impossible: { shootChance: 0.35, bulletDmg: 2, dropSpeed: 4, moveSpeed: 2 },
     };
 
     // --- Menu ---
@@ -318,7 +318,7 @@
       touchShooting = false;
       alienDir = 1;
       alienStepDown = 0;
-      alienSpeed = 1;
+      alienSpeed = diffSettings[difficulty].moveSpeed;
 
       // Create aliens grid
       aliens = [];
@@ -487,7 +487,7 @@
       const edgePad = 40;
       if (rightMost + alienSpeed * alienDir > canvas.width - edgePad || leftMost + alienSpeed * alienDir < edgePad) {
         alienDir *= -1;
-        alienStepDown = 20;
+        alienStepDown = 20 * diffSettings[difficulty].dropSpeed;
       }
 
       for (const a of aliens) {
