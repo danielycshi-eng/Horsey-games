@@ -186,18 +186,25 @@
       position: fixed;
       top: 12px;
       right: 18px;
-      font-size: 2rem;
+      font-size: 2.5rem;
       z-index: 12;
+      color: #e94560;
       animation: flicker 0.3s infinite alternate;
       display: none;
     }
 
     #hardcore-heart.show { display: block; }
-    #hardcore-heart.broken { animation: none; filter: grayscale(1); opacity: 0.5; }
+    #hardcore-heart.broken { animation: shatter 0.5s forwards; }
 
     @keyframes flicker {
-      0% { text-shadow: 0 0 8px #e94560, 0 0 16px #ff6b6b; }
-      100% { text-shadow: 0 0 12px #ff4500, 0 0 24px #e94560; }
+      0% { color: #e94560; text-shadow: 0 0 10px #e94560, 0 0 20px #ff6b6b, 0 0 30px #ff4500; }
+      100% { color: #ff4500; text-shadow: 0 0 14px #ff4500, 0 0 28px #e94560, 0 0 40px #ff6b6b; }
+    }
+
+    @keyframes shatter {
+      0% { transform: scale(1); opacity: 1; color: #e94560; }
+      30% { transform: scale(1.4); color: #ff0000; }
+      100% { transform: scale(0.5) rotate(30deg); opacity: 0; filter: grayscale(1); }
     }
 
     #start-btn {
@@ -296,7 +303,7 @@
       <div id="effects-text"></div>
     </div>
   </div>
-  <div id="hardcore-heart">&hearts;</div>
+  <div id="hardcore-heart">&#10084;</div>
   <div id="damage-flash"></div>
 
   <canvas id="game"></canvas>
@@ -696,12 +703,13 @@
       if (lifeDifficulty === 'hardcore') {
         // Hide HP bar, show heart
         document.getElementById('hp-text').textContent = '';
-        document.getElementById('hp-bar').style.width = '0%';
+        document.getElementById('hp-bar').parentElement.style.display = 'none';
         hcHeart.classList.add('show');
         if (hp <= 0) hcHeart.classList.add('broken');
         else hcHeart.classList.remove('broken');
       } else {
         hcHeart.classList.remove('show');
+        document.getElementById('hp-bar').parentElement.style.display = '';
         document.getElementById('hp-text').textContent = `HP: ${hp}`;
         const pct = Math.max(0, (hp / maxHp) * 100);
         document.getElementById('hp-bar').style.width = `${pct}%`;
