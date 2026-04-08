@@ -498,6 +498,7 @@
       multiStacks = 0; multiDecayAt = 0;
       pierceStacks = 0; pierceDecayAt = 0;
       bombStacks = 0; bombDecayAt = 0;
+      deathParticles = [];
 
       spawnAliens(alienRows);
       initStars();
@@ -817,6 +818,52 @@
         bombStacks--;
         bombDecayAt = bombStacks > 0 ? now + 7000 : 0;
       }
+    }
+
+    // --- Alien death particles ---
+    let deathParticles = [];
+    const DEATH_COLORS = {
+      blue: ['#4e7fff','#3b6fd9','#a0c4ff','#2255cc'],
+      green: ['#22c55e','#16a34a','#4ade80','#15803d'],
+      red: ['#dc2626','#ef4444','#ff6b6b','#b91c1c'],
+    };
+
+    function spawnDeathParticles(x, y, type) {
+      const colors = DEATH_COLORS[type] || DEATH_COLORS.blue;
+      for (let i = 0; i < 16; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 1.5 + Math.random() * 4;
+        deathParticles.push({
+          x, y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          size: 2 + Math.random() * 4,
+          alpha: 1,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          rot: Math.random() * Math.PI * 2,
+          rotV: (Math.random() - 0.5) * 0.4,
+        });
+      }
+    }
+
+    function updateAndDrawDeathParticles() {
+      for (let i = deathParticles.length - 1; i >= 0; i--) {
+        const p = deathParticles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.1;
+        p.rot += p.rotV;
+        p.alpha -= 0.025;
+        if (p.alpha <= 0) { deathParticles.splice(i, 1); continue; }
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.globalAlpha = p.alpha;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size);
+        ctx.restore();
+      }
+      ctx.globalAlpha = 1;
     }
 
     function drawPowerups() {
@@ -1139,6 +1186,7 @@
       // Helper: process an alien kill (XP, powerup, poison cure, bomb chain)
       function onAlienKill(a, fromBomb) {
         a.alive = false;
+        spawnDeathParticles(a.x, a.y, a.type);
         const xpGain = a.type === 'red' ? 3 : a.type === 'green' ? 1.5 : 1;
         score += xpGain;
         kills[a.type]++;
@@ -1303,6 +1351,9 @@
 
       // Draw bullets
       drawBullets();
+
+      // Alien death particles
+      updateAndDrawDeathParticles();
 
       requestAnimationFrame(loop);
     }
