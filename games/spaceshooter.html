@@ -260,7 +260,7 @@
     // --- State ---
     let player, aliens, playerBullets, alienBullets, stars;
     let keys = {};
-    let score, totalAliens, hp, gameOver, gameWon;
+    let score, totalAliens, hp, gameOver, gameWon, wave, alienRows;
     let lastShot, shooting, touchShooting;
     let alienDir, alienStepDown, alienSpeed;
     let btnLeftDown = false, btnRightDown = false;
@@ -305,6 +305,23 @@
       }
     }
 
+    function spawnAliens(rows) {
+      aliens = [];
+      const gridW = ALIEN_COLS * (ALIEN_W + ALIEN_PAD_X) - ALIEN_PAD_X;
+      const startX = (canvas.width - gridW) / 2;
+      const startY = 60;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < ALIEN_COLS; c++) {
+          aliens.push({
+            x: startX + c * (ALIEN_W + ALIEN_PAD_X) + ALIEN_W / 2,
+            y: startY + r * (ALIEN_H + ALIEN_PAD_Y) + ALIEN_H / 2,
+            alive: true,
+          });
+        }
+      }
+      totalAliens += aliens.length;
+    }
+
     function init() {
       player = { x: canvas.width / 2, y: canvas.height - 70 };
       playerBullets = [];
@@ -319,24 +336,25 @@
       alienDir = 1;
       alienStepDown = 0;
       alienSpeed = diffSettings[difficulty].moveSpeed;
+      wave = 1;
+      alienRows = ALIEN_ROWS;
+      totalAliens = 0;
 
-      // Create aliens grid
-      aliens = [];
-      const gridW = ALIEN_COLS * (ALIEN_W + ALIEN_PAD_X) - ALIEN_PAD_X;
-      const startX = (canvas.width - gridW) / 2;
-      const startY = 60;
-      for (let r = 0; r < ALIEN_ROWS; r++) {
-        for (let c = 0; c < ALIEN_COLS; c++) {
-          aliens.push({
-            x: startX + c * (ALIEN_W + ALIEN_PAD_X) + ALIEN_W / 2,
-            y: startY + r * (ALIEN_H + ALIEN_PAD_Y) + ALIEN_H / 2,
-            alive: true,
-          });
-        }
-      }
-      totalAliens = aliens.length;
-
+      spawnAliens(alienRows);
       initStars();
+      updateUI();
+      hideOverlay();
+    }
+
+    function nextWave() {
+      wave++;
+      alienRows++;
+      playerBullets = [];
+      alienBullets = [];
+      gameWon = false;
+      alienDir = 1;
+      alienStepDown = 0;
+      spawnAliens(alienRows);
       updateUI();
       hideOverlay();
     }
@@ -442,9 +460,13 @@
       document.getElementById('xp-text').textContent = `XP: ${score}`;
     }
 
-    function showOverlay(title, msg) {
+    let overlayMode = 'menu';
+
+    function showOverlay(title, msg, btnText, mode) {
       document.getElementById('overlay-title').textContent = title;
       document.getElementById('overlay-msg').textContent = msg;
+      document.getElementById('overlay-btn').textContent = btnText || 'Play Again';
+      overlayMode = mode || 'menu';
       document.getElementById('overlay').classList.add('show');
     }
 
@@ -539,7 +561,7 @@
           flashDamage();
           if (hp <= 0) {
             gameOver = true;
-            showOverlay('Game Over', `You scored ${score} out of ${totalAliens}`);
+            showOverlay('Game Over', `You scored ${score} kills`, 'Play Again', 'menu');
             return;
           }
         }
@@ -549,7 +571,7 @@
       for (const a of aliens) {
         if (a.alive && a.y + ALIEN_H / 2 >= player.y - PLAYER_H / 2) {
           gameOver = true;
-          showOverlay('Game Over', 'The aliens reached you!');
+          showOverlay('Game Over', 'The aliens reached you!', 'Play Again', 'menu');
           return;
         }
       }
@@ -557,7 +579,7 @@
       // Win check
       if (aliens.every(a => !a.alive)) {
         gameWon = true;
-        showOverlay('You Win!', `All ${totalAliens} aliens destroyed!`);
+        showOverlay('Wave Defeated!', `Next wave: ${alienRows + 1} rows of aliens.`, 'Start Next Wave', 'wave');
       }
     }
 
@@ -613,10 +635,14 @@
     canvas.addEventListener('touchstart', e => { touchShooting = true; });
     canvas.addEventListener('touchend', () => { touchShooting = false; });
 
-    // Restart — go back to menu
+    // Overlay button — next wave or back to menu
     document.getElementById('overlay-btn').addEventListener('click', () => {
-      hideOverlay();
-      menuEl.classList.remove('hidden');
+      if (overlayMode === 'wave') {
+        nextWave();
+      } else {
+        hideOverlay();
+        menuEl.classList.remove('hidden');
+      }
     });
   </script>
 </body>
