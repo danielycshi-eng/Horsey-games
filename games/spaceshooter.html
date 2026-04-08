@@ -356,20 +356,25 @@
 
     function drawPlayerShip(x, y) {
       // Body
-      ctx.fillStyle = '#4e7fff';
+      ctx.fillStyle = '#8a8f9e';
       ctx.beginPath();
       ctx.roundRect(x - PLAYER_W / 2, y - PLAYER_H / 2, PLAYER_W, PLAYER_H, 6);
       ctx.fill();
+      // Highlight edge
+      ctx.fillStyle = '#b0b5c3';
+      ctx.beginPath();
+      ctx.roundRect(x - PLAYER_W / 2 + 3, y - PLAYER_H / 2 + 2, PLAYER_W - 6, 4, 2);
+      ctx.fill();
       // Window (slot pointing up)
-      ctx.fillStyle = '#a0c4ff';
+      ctx.fillStyle = '#d0d4de';
       ctx.beginPath();
       ctx.roundRect(x - 8, y - PLAYER_H / 2 + 4, 16, 12, 3);
       ctx.fill();
       // Shooter barrel
-      ctx.fillStyle = '#e94560';
+      ctx.fillStyle = '#6b7080';
       ctx.fillRect(x - 3, y - PLAYER_H / 2 - 10, 6, 12);
       // Shooter tip
-      ctx.fillStyle = '#ff6b6b';
+      ctx.fillStyle = '#e94560';
       ctx.beginPath();
       ctx.arc(x, y - PLAYER_H / 2 - 10, 4, 0, Math.PI * 2);
       ctx.fill();
@@ -377,12 +382,12 @@
 
     function drawAlienShip(x, y) {
       // Body
-      ctx.fillStyle = '#e94560';
+      ctx.fillStyle = '#4e7fff';
       ctx.beginPath();
       ctx.roundRect(x - ALIEN_W / 2, y - ALIEN_H / 2, ALIEN_W, ALIEN_H, 5);
       ctx.fill();
       // Window (slot pointing down)
-      ctx.fillStyle = '#ff6b6b';
+      ctx.fillStyle = '#a0c4ff';
       ctx.beginPath();
       ctx.roundRect(x - 7, y + ALIEN_H / 2 - 14, 14, 10, 3);
       ctx.fill();
