@@ -184,33 +184,40 @@
 
     #hardcore-heart {
       position: fixed;
-      top: 10px;
+      top: 14px;
       left: 18px;
       font-size: 3rem;
       line-height: 1;
       color: #e94560;
-      animation: flicker 0.2s infinite alternate;
+      animation: flicker 0.4s infinite alternate;
       display: none;
       z-index: 12;
+      transition: top 0.6s ease-in-out, left 0.6s ease-in-out, font-size 0.6s ease-in-out;
     }
 
     #hardcore-heart.show { display: block; }
-    #hardcore-heart.broken { animation: shatter 2s ease-out forwards !important; }
 
+    /* Subtle fire: just a warm underlight, heart stays clearly visible */
     @keyframes flicker {
-      0% { color: #e94560; text-shadow: 0 0 12px #e94560, 0 0 24px #ff6b6b, 0 0 40px #ff4500; filter: drop-shadow(0 0 8px #ff4500); transform: scale(1); }
-      100% { color: #ff4500; text-shadow: 0 0 16px #ff4500, 0 0 32px #e94560, 0 0 50px #ff6b6b; filter: drop-shadow(0 0 14px #ff0000); transform: scale(1.08); }
+      0% { text-shadow: 0 4px 6px rgba(255,69,0,0.5), 0 8px 15px rgba(255,69,0,0.2); }
+      100% { text-shadow: 0 4px 8px rgba(255,100,0,0.6), 0 10px 20px rgba(255,69,0,0.3); }
     }
 
-    @keyframes shatter {
-      0% { transform: scale(1); opacity: 1; color: #e94560; filter: none; }
-      10% { transform: scale(3); color: #ff0000; text-shadow: 0 0 60px #ff0000, 0 0 120px #ff4500; filter: drop-shadow(0 0 40px #ff0000); }
-      25% { transform: scale(2.8) rotate(15deg); color: #ff0000; }
-      40% { transform: scale(3.2) rotate(-10deg); text-shadow: 0 0 80px #ff0000; }
-      55% { transform: scale(2) rotate(5deg); opacity: 0.9; }
-      70% { transform: scale(1.5); opacity: 0.6; filter: grayscale(0.4) drop-shadow(0 0 20px #ff0000); }
-      85% { transform: scale(0.6) rotate(30deg); opacity: 0.3; filter: grayscale(0.8); }
-      100% { transform: scale(0) rotate(60deg); opacity: 0; filter: grayscale(1); }
+    #hardcore-heart.center {
+      top: 50%;
+      left: 50%;
+      font-size: 6rem;
+      transform: translate(-50%, -50%);
+      animation: none;
+    }
+
+    /* Particle canvas for shatter */
+    #shatter-canvas {
+      position: fixed;
+      inset: 0;
+      z-index: 13;
+      pointer-events: none;
+      display: none;
     }
 
     #start-btn {
@@ -299,6 +306,7 @@
   </div>
 
   <div id="hardcore-heart">&#10084;</div>
+  <canvas id="shatter-canvas"></canvas>
   <div id="ui">
     <div>
       <div id="hp-text">HP: 100</div>
@@ -710,8 +718,6 @@
         document.getElementById('hp-text').textContent = '';
         document.getElementById('hp-bar').parentElement.style.display = 'none';
         hcHeart.classList.add('show');
-        if (hp <= 0) hcHeart.classList.add('broken');
-        else hcHeart.classList.remove('broken');
       } else {
         hcHeart.classList.remove('show');
         document.getElementById('hp-bar').parentElement.style.display = '';
@@ -723,12 +729,76 @@
       document.getElementById('xp-text').textContent = `XP: ${score % 1 === 0 ? score : score.toFixed(1)}`;
     }
 
+    function shatterHeart(callback) {
+      const heart = document.getElementById('hardcore-heart');
+      // Step 1: move heart to center
+      heart.classList.add('center');
+
+      setTimeout(() => {
+        // Step 2: hide heart, spawn particles
+        heart.style.display = 'none';
+        const sc = document.getElementById('shatter-canvas');
+        sc.width = window.innerWidth;
+        sc.height = window.innerHeight;
+        sc.style.display = 'block';
+        const sctx = sc.getContext('2d');
+        const cx = sc.width / 2, cy = sc.height / 2;
+
+        const pieces = [];
+        for (let i = 0; i < 80; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 2 + Math.random() * 8;
+          const size = 3 + Math.random() * 8;
+          pieces.push({
+            x: cx + (Math.random() - 0.5) * 30,
+            y: cy + (Math.random() - 0.5) * 30,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - 2,
+            size: size,
+            rot: Math.random() * Math.PI * 2,
+            rotV: (Math.random() - 0.5) * 0.3,
+            alpha: 1,
+            color: ['#e94560','#ff4500','#dc2626','#ff6b6b','#b91c1c'][Math.floor(Math.random()*5)],
+          });
+        }
+
+        let frame = 0;
+        function animateShatter() {
+          sctx.clearRect(0, 0, sc.width, sc.height);
+          let alive = false;
+          for (const p of pieces) {
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += 0.15; // gravity
+            p.rot += p.rotV;
+            p.alpha -= 0.008;
+            if (p.alpha <= 0) continue;
+            alive = true;
+            sctx.save();
+            sctx.translate(p.x, p.y);
+            sctx.rotate(p.rot);
+            sctx.globalAlpha = p.alpha;
+            sctx.fillStyle = p.color;
+            sctx.fillRect(-p.size/2, -p.size/2, p.size, p.size);
+            sctx.restore();
+          }
+          frame++;
+          if (alive && frame < 150) {
+            requestAnimationFrame(animateShatter);
+          } else {
+            sc.style.display = 'none';
+            callback();
+          }
+        }
+        animateShatter();
+      }, 700); // wait for heart to reach center
+    }
+
     function triggerDeath(cause) {
       gameOver = true;
       updateUI();
       if (lifeDifficulty === 'hardcore') {
-        // Let shatter animation play before showing game over
-        setTimeout(() => deathStats(cause), 2000);
+        shatterHeart(() => deathStats(cause));
       } else {
         deathStats(cause);
       }
@@ -973,7 +1043,10 @@
         nextWave();
       } else {
         hideOverlay();
-        document.getElementById('hardcore-heart').classList.remove('show', 'broken');
+        const hh = document.getElementById('hardcore-heart');
+        hh.classList.remove('show', 'center');
+        hh.style.display = '';
+        document.getElementById('shatter-canvas').style.display = 'none';
         menuEl.classList.remove('hidden');
       }
     });
