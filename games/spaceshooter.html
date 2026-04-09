@@ -1331,41 +1331,41 @@
 
     function drawBossLaser() {
       if (!boss || !boss.alive || !bossLaserFiring) return;
-      const ds = diffSettings[difficulty];
       const warningDur = 1000;
-      const lockTime = ds.bossLaserLock * 1000;
       const elapsed = performance.now() - bossLaserStart;
-      const locked = elapsed >= warningDur - lockTime;
       const bossBottom = boss.y + BOSS_H * boss.scale / 2;
+      const startX = boss.x;
+      const startY = bossBottom;
+      const endX = bossLaserTargetX;
+      const endY = player.y;
 
       if (elapsed < warningDur) {
-        // Warning laser
-        ctx.strokeStyle = locked ? 'rgba(239, 68, 68, 0.6)' : 'rgba(239, 68, 68, 0.2)';
-        ctx.lineWidth = locked ? 6 : 3;
-        ctx.setLineDash(locked ? [] : [8, 8]);
+        // Warning — faint solid red line
+        ctx.save();
+        ctx.strokeStyle = 'rgba(239, 68, 68, 0.25)';
+        ctx.lineWidth = 10;
         ctx.beginPath();
-        ctx.moveTo(bossLaserTargetX, bossBottom);
-        ctx.lineTo(bossLaserTargetX, canvas.height);
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
         ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.lineWidth = 1;
+        ctx.restore();
       } else if (elapsed < warningDur + 200) {
-        // Firing beam — thick bright red
+        // Firing beam — wide bright red with glow
         ctx.save();
         ctx.shadowColor = '#ef4444';
-        ctx.shadowBlur = 30;
+        ctx.shadowBlur = 40;
         ctx.strokeStyle = '#ef4444';
-        ctx.lineWidth = 14;
+        ctx.lineWidth = 28;
         ctx.beginPath();
-        ctx.moveTo(bossLaserTargetX, bossBottom);
-        ctx.lineTo(bossLaserTargetX, canvas.height);
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
         ctx.stroke();
         // Inner white core
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-        ctx.lineWidth = 4;
+        ctx.lineWidth = 8;
         ctx.beginPath();
-        ctx.moveTo(bossLaserTargetX, bossBottom);
-        ctx.lineTo(bossLaserTargetX, canvas.height);
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
         ctx.stroke();
         ctx.restore();
       }
