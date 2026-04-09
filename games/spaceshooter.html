@@ -1563,6 +1563,8 @@
       if (!godImmuneBad && !godImmuneAll) updatePoison(now);
       // Powerup timers
       updatePowerupTimers(now);
+      // Always update effects display
+      updateEffectsUI();
 
       // Move & collect powerups
       for (let i = powerups.length - 1; i >= 0; i--) {
