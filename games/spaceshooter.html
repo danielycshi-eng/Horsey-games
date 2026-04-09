@@ -433,7 +433,7 @@
     let bombStacks, bombDecayAt;
     let mysteryActive, mysteryExpireAt;
     let reloadEnabled = false;
-    let ammo, maxAmmo, reloading, reloadStartAt, reloadDuration;
+    let ammo, maxAmmo, reloading, reloadStartAt, reloadDuration, reloadActualDur;
     let lifeDifficulty = null;
     let lifeSettings = {
       beginner:     { hp: 100, yellow: 30, orange: 15, red: 5 },
@@ -565,6 +565,7 @@
       reloading = false;
       reloadStartAt = 0;
       reloadDuration = ds.reloadTime * 1000;
+      reloadActualDur = reloadDuration;
 
       spawnAliens(alienRows);
       initStars();
@@ -583,6 +584,7 @@
       ammo = maxAmmo;
       reloading = false;
       reloadStartAt = 0;
+      reloadActualDur = reloadDuration;
       // Clear debuffs
       slowStacks = 0;
       immobilized = false;
@@ -643,6 +645,13 @@
       ctx.fill();
     }
 
+    function startReload(now) {
+      reloading = true;
+      reloadStartAt = now;
+      // Proportional: reload time based on how much ammo is missing
+      reloadActualDur = reloadDuration * ((maxAmmo - ammo) / maxAmmo);
+    }
+
     function drawReloadBar(x, y) {
       if (!reloadEnabled) return;
       const ds = diffSettings[difficulty];
@@ -661,7 +670,7 @@
 
       let fillPct;
       if (reloading) {
-        fillPct = Math.min((performance.now() - reloadStartAt) / reloadDuration, 1);
+        fillPct = Math.min((performance.now() - reloadStartAt) / reloadActualDur, 1);
       } else {
         fillPct = ammo / maxAmmo;
       }
@@ -1253,10 +1262,15 @@
       // Reload tick
       const now = performance.now();
       if (reloadEnabled && reloading) {
-        if (now >= reloadStartAt + reloadDuration) {
+        if (now >= reloadStartAt + reloadActualDur) {
           reloading = false;
           ammo = maxAmmo;
         }
+      }
+
+      // Manual reload (R key)
+      if (reloadEnabled && !reloading && ammo < maxAmmo && keys['KeyR']) {
+        startReload(now);
       }
 
       // Shooting
@@ -1274,8 +1288,7 @@
         if (reloadEnabled) {
           ammo--;
           if (ammo <= 0) {
-            reloading = true;
-            reloadStartAt = now;
+            startReload(now);
           }
         }
       }
@@ -1529,10 +1542,26 @@
     btnRight.addEventListener('touchstart', e => { e.preventDefault(); btnRightDown = true; });
     btnRight.addEventListener('touchend', () => { btnRightDown = false; });
 
-    // Touch/click to shoot (not on buttons or back link)
-    canvas.addEventListener('mousedown', () => { touchShooting = true; });
+    // Touch/click to shoot (not on buttons or back link), tap ship to reload
+    function isOnShip(cx, cy) {
+      if (!player) return false;
+      return Math.abs(cx - player.x) < PLAYER_W && Math.abs(cy - player.y) < PLAYER_H;
+    }
+    function tryTapReload(cx, cy) {
+      if (reloadEnabled && !reloading && ammo < maxAmmo && isOnShip(cx, cy)) {
+        startReload(performance.now());
+        return true;
+      }
+      return false;
+    }
+    canvas.addEventListener('mousedown', e => {
+      if (!tryTapReload(e.clientX, e.clientY)) touchShooting = true;
+    });
     canvas.addEventListener('mouseup', () => { touchShooting = false; });
-    canvas.addEventListener('touchstart', e => { touchShooting = true; });
+    canvas.addEventListener('touchstart', e => {
+      const t = e.touches[0];
+      if (!tryTapReload(t.clientX, t.clientY)) touchShooting = true;
+    });
     canvas.addEventListener('touchend', () => { touchShooting = false; });
 
     // Overlay button — next wave or back to menu
