@@ -433,7 +433,7 @@
     let bombStacks, bombDecayAt;
     let mysteryActive, mysteryExpireAt;
     let reloadEnabled = false;
-    let ammo, maxAmmo, reloading, reloadStartAt, reloadDuration, reloadActualDur;
+    let ammo, maxAmmo, reloading, reloadStartAt, reloadDuration, reloadActualDur, reloadStartAmmo;
     let lifeDifficulty = null;
     let lifeSettings = {
       beginner:     { hp: 100, yellow: 30, orange: 15, red: 5 },
@@ -648,6 +648,7 @@
     function startReload(now) {
       reloading = true;
       reloadStartAt = now;
+      reloadStartAmmo = ammo;
       // Proportional: reload time based on how much ammo is missing
       reloadActualDur = reloadDuration * ((maxAmmo - ammo) / maxAmmo);
     }
@@ -670,7 +671,9 @@
 
       let fillPct;
       if (reloading) {
-        fillPct = Math.min((performance.now() - reloadStartAt) / reloadActualDur, 1);
+        const progress = Math.min((performance.now() - reloadStartAt) / reloadActualDur, 1);
+        const startPct = reloadStartAmmo / maxAmmo;
+        fillPct = startPct + (1 - startPct) * progress;
       } else {
         fillPct = ammo / maxAmmo;
       }
