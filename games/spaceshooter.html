@@ -65,6 +65,10 @@
       box-shadow: inset 0 0 80px 20px rgba(156, 163, 175, 0.5);
     }
 
+    #damage-flash.flash-poison {
+      box-shadow: inset 0 0 80px 20px rgba(34, 197, 94, 0.5);
+    }
+
     .arrow-btn {
       position: fixed;
       bottom: 30px;
@@ -203,6 +207,42 @@
       font-size: 16rem;
       transform: translate(-50%, -50%);
     }
+
+    #god-heart {
+      position: fixed;
+      top: 8px;
+      left: 18px;
+      font-size: 3.5rem;
+      pointer-events: none;
+      line-height: 1;
+      color: #fbbf24;
+      display: none;
+      z-index: 12;
+      text-shadow: 0 0 15px rgba(251, 191, 36, 0.6);
+    }
+
+    #god-heart.show { display: block; }
+
+    #god-heart .infinity {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 1.4rem;
+      color: #1a1a2e;
+      text-shadow: none;
+      font-weight: bold;
+    }
+
+    #god-options {
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    #god-options.show { display: flex; }
 
     #fire-canvas {
       position: fixed;
@@ -351,6 +391,23 @@
         <div class="diff-label">Hardcore</div>
         <div class="diff-desc">1 life</div>
       </button>
+      <button class="life-btn" data-lives="god">
+        <div class="diff-label" style="color:#fbbf24">God</div>
+        <div class="diff-desc">Invincible</div>
+      </button>
+    </div>
+
+    <div id="god-options">
+      <label class="toggle-label">
+        <input type="checkbox" id="god-immune-bad">
+        <span class="toggle-switch"></span>
+        Immune to bad effects
+      </label>
+      <label class="toggle-label">
+        <input type="checkbox" id="god-immune-all">
+        <span class="toggle-switch"></span>
+        Immune to all effects
+      </label>
     </div>
 
     <div class="toggle-row">
@@ -366,6 +423,7 @@
 
   <canvas id="fire-canvas" width="140" height="100"></canvas>
   <div id="hardcore-heart">&#10084;</div>
+  <div id="god-heart">&#10084;<span class="infinity">&infin;</span></div>
   <canvas id="shatter-canvas"></canvas>
   <div id="ui">
     <div>
@@ -433,6 +491,7 @@
     let bombStacks, bombDecayAt;
     let mysteryActive, mysteryExpireAt;
     let reloadEnabled = false;
+    let godImmuneBad = false, godImmuneAll = false;
     let ammo, maxAmmo, reloading, reloadStartAt, reloadDuration, reloadActualDur, reloadStartAmmo;
     let lifeDifficulty = null;
     let lifeSettings = {
@@ -441,6 +500,7 @@
       advanced:     { hp: 25,  yellow: 10, orange: 5,  red: 2 },
       expert:       { hp: 10,  yellow: 5,  orange: 3,  red: 1 },
       hardcore:     { hp: 1,   yellow: 0,  orange: 0,  red: 0 },
+      god:          { hp: Infinity, yellow: 0, orange: 0, red: 0 },
     };
     let diffSettings = {
       normal:     { shootChance: 0.10, bulletDmg: 1, dropSpeed: 1, moveSpeed: 1, greenChance: 0.05, greenHp: 1, slowPer: 20, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.10, redHp: 2, poisonInterval: 8, poisonCure: 5, powerupChance: 0.08, shieldTime: 15, magSize: 15, reloadTime: 3, reloadWarn: 5 },
@@ -467,18 +527,39 @@
       });
     });
 
+    const godOptionsEl = document.getElementById('god-options');
+    const godImmuneBadEl = document.getElementById('god-immune-bad');
+    const godImmuneAllEl = document.getElementById('god-immune-all');
+
     lifeBtns.forEach(btn => {
       btn.addEventListener('click', () => {
         lifeBtns.forEach(b => b.classList.remove('selected'));
         btn.classList.add('selected');
         lifeDifficulty = btn.dataset.lives;
+        if (lifeDifficulty === 'god') {
+          godOptionsEl.classList.add('show');
+        } else {
+          godOptionsEl.classList.remove('show');
+          godImmuneBadEl.checked = false;
+          godImmuneAllEl.checked = false;
+        }
         checkReady();
       });
+    });
+
+    // Mutual exclusion: "Immune to all" deselects "Immune to bad"
+    godImmuneAllEl.addEventListener('change', () => {
+      if (godImmuneAllEl.checked) godImmuneBadEl.checked = false;
+    });
+    godImmuneBadEl.addEventListener('change', () => {
+      if (godImmuneBadEl.checked) godImmuneAllEl.checked = false;
     });
 
     startBtn.addEventListener('click', () => {
       if (!difficulty || !lifeDifficulty) return;
       reloadEnabled = document.getElementById('reload-toggle').checked;
+      godImmuneBad = godImmuneBadEl.checked;
+      godImmuneAll = godImmuneAllEl.checked;
       menuEl.classList.add('hidden');
       init();
       if (!loopRunning) { loopRunning = true; loop(); }
@@ -758,6 +839,12 @@
       setTimeout(() => el.classList.remove('flash'), 150);
     }
 
+    function flashPoison() {
+      const el = document.getElementById('damage-flash');
+      el.classList.add('flash-poison');
+      setTimeout(() => el.classList.remove('flash-poison'), 150);
+    }
+
     function flashSlow() {
       const el = document.getElementById('damage-flash');
       el.classList.add('flash-gray');
@@ -865,13 +952,15 @@
     function updatePoison(now) {
       if (!poisoned) return;
       if (now >= poisonNextDmgAt) {
-        hp = Math.max(0, hp - 1);
-        updateEffectsUI();
-        flashDamage();
-        if (hp <= 0) {
-          triggerDeath('Killed by poison');
-          return;
+        if (lifeDifficulty !== 'god') {
+          hp = Math.max(0, hp - 1);
+          flashPoison();
+          if (hp <= 0) {
+            triggerDeath('Killed by poison');
+            return;
+          }
         }
+        updateEffectsUI();
         poisonNextDmgAt = now + diffSettings[difficulty].poisonInterval * 1000;
       }
     }
@@ -1106,15 +1195,25 @@
     function updateUI() {
       const maxHp = lifeSettings[lifeDifficulty].hp;
       const hcHeart = document.getElementById('hardcore-heart');
-      if (lifeDifficulty === 'hardcore') {
+      const godHeart = document.getElementById('god-heart');
+      if (lifeDifficulty === 'god') {
         document.getElementById('hp-text').style.display = 'none';
         document.getElementById('hp-bar').parentElement.style.display = 'none';
         document.getElementById('back-link-game').style.marginTop = '50px';
+        hcHeart.classList.remove('show');
+        document.getElementById('fire-canvas').classList.remove('show');
+        godHeart.classList.add('show');
+      } else if (lifeDifficulty === 'hardcore') {
+        document.getElementById('hp-text').style.display = 'none';
+        document.getElementById('hp-bar').parentElement.style.display = 'none';
+        document.getElementById('back-link-game').style.marginTop = '50px';
+        godHeart.classList.remove('show');
         hcHeart.classList.add('show');
         document.getElementById('fire-canvas').classList.add('show');
         if (!fireRunning) startFire();
       } else {
         hcHeart.classList.remove('show');
+        godHeart.classList.remove('show');
         document.getElementById('fire-canvas').classList.remove('show');
         document.getElementById('back-link-game').style.marginTop = '4px';
         document.getElementById('hp-text').style.display = '';
@@ -1414,38 +1513,44 @@
       }
 
       // Collision: alien bullets → player
+      const isGod = lifeDifficulty === 'god';
       for (let i = alienBullets.length - 1; i >= 0; i--) {
         const b = alienBullets[i];
         if (Math.abs(b.x - player.x) < PLAYER_W / 2 + BULLET_W / 2 &&
             Math.abs(b.y - player.y) < PLAYER_H / 2 + ALIEN_BULLET_H / 2) {
           alienBullets.splice(i, 1);
           if (b.type === 'green') {
-            applySlow();
-            flashSlow();
-            if (shieldActive) {
-              shieldActive = false; shieldExpireAt = 0;
-            } else {
-              const gDmg = diffSettings[difficulty].greenDmg;
-              if (gDmg > 0) hp = Math.max(0, hp - gDmg);
+            if (!isGod && !godImmuneBad && !godImmuneAll) { applySlow(); flashSlow(); }
+            if (!isGod) {
+              if (shieldActive) {
+                shieldActive = false; shieldExpireAt = 0;
+              } else {
+                const gDmg = diffSettings[difficulty].greenDmg;
+                if (gDmg > 0) hp = Math.max(0, hp - gDmg);
+              }
             }
           } else if (b.type === 'red') {
-            applyPoison(); // poison always applies even with shield
-            if (shieldActive) {
-              shieldActive = false; shieldExpireAt = 0;
-            } else {
-              hp = Math.max(0, hp - diffSettings[difficulty].bulletDmg);
-              flashDamage();
+            if (!isGod && !godImmuneBad && !godImmuneAll) applyPoison();
+            if (!isGod) {
+              if (shieldActive) {
+                shieldActive = false; shieldExpireAt = 0;
+              } else {
+                hp = Math.max(0, hp - diffSettings[difficulty].bulletDmg);
+                flashDamage();
+              }
             }
           } else {
-            if (shieldActive) {
-              shieldActive = false; shieldExpireAt = 0;
-            } else {
-              hp = Math.max(0, hp - diffSettings[difficulty].bulletDmg);
-              flashDamage();
+            if (!isGod) {
+              if (shieldActive) {
+                shieldActive = false; shieldExpireAt = 0;
+              } else {
+                hp = Math.max(0, hp - diffSettings[difficulty].bulletDmg);
+                flashDamage();
+              }
             }
           }
           updateUI();
-          if (hp <= 0) {
+          if (!isGod && hp <= 0) {
             triggerDeath('Shot down by aliens');
             return;
           }
@@ -1453,9 +1558,9 @@
       }
 
       // Slowness / immobilization tick
-      updateSlowness(now);
+      if (!godImmuneBad && !godImmuneAll) updateSlowness(now);
       // Poison tick
-      updatePoison(now);
+      if (!godImmuneBad && !godImmuneAll) updatePoison(now);
       // Powerup timers
       updatePowerupTimers(now);
 
@@ -1466,16 +1571,18 @@
         const p = powerups[i];
         if (Math.abs(p.x - player.x) < PLAYER_W / 2 + POWERUP_SIZE / 2 &&
             Math.abs(p.y - player.y) < PLAYER_H / 2 + POWERUP_SIZE / 2) {
-          collectPowerup(p.type);
+          if (!godImmuneAll) collectPowerup(p.type);
           powerups.splice(i, 1);
         }
       }
 
       // Check if aliens reached player
-      for (const a of aliens) {
-        if (a.alive && a.y + ALIEN_H / 2 >= player.y - PLAYER_H / 2) {
-          triggerDeath('The aliens reached you');
-          return;
+      if (!isGod) {
+        for (const a of aliens) {
+          if (a.alive && a.y + ALIEN_H / 2 >= player.y - PLAYER_H / 2) {
+            triggerDeath('The aliens reached you');
+            return;
+          }
         }
       }
 
@@ -1576,6 +1683,7 @@
         const hh = document.getElementById('hardcore-heart');
         hh.classList.remove('show', 'center');
         hh.style.display = '';
+        document.getElementById('god-heart').classList.remove('show');
         document.getElementById('shatter-canvas').style.display = 'none';
         stopFire();
         menuEl.classList.remove('hidden');
