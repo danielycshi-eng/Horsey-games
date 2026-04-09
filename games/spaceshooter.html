@@ -494,6 +494,8 @@
     let godImmuneBad = false, godImmuneAll = false;
     let ammo, maxAmmo, reloading, reloadStartAt, reloadDuration, reloadActualDur, reloadStartAmmo;
     let boss, bossCount, bossLastShot, bossBullets;
+    let bossLaserStart, bossLaserTargetX, bossLaserFiring;
+    let bossDying, bossDeathStart, bossDeathScale;
     let lifeDifficulty = null;
     let lifeSettings = {
       beginner:     { hp: 100, yellow: 30, orange: 15, red: 5 },
@@ -504,9 +506,9 @@
       god:          { hp: Infinity, yellow: 0, orange: 0, red: 0 },
     };
     let diffSettings = {
-      normal:     { shootChance: 0.10, bulletDmg: 1, dropSpeed: 1, moveSpeed: 1, greenChance: 0.05, greenHp: 1, slowPer: 20, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.10, redHp: 2, poisonInterval: 8, poisonCure: 5, powerupChance: 0.08, shieldTime: 15, magSize: 15, reloadTime: 3, reloadWarn: 5, bossInterval: 8 },
-      hard:       { shootChance: 0.20, bulletDmg: 1, dropSpeed: 2, moveSpeed: 1.5, greenChance: 0.08, greenHp: 1, slowPer: 30, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.25, redHp: 3, poisonInterval: 5, poisonCure: 5, powerupChance: 0.08, shieldTime: 15, magSize: 15, reloadTime: 5, reloadWarn: 5, bossInterval: 5 },
-      impossible: { shootChance: 0.35, bulletDmg: 2, dropSpeed: 2.5, moveSpeed: 2, greenChance: 0.10, greenHp: 2, slowPer: 30, slowDecay: 10, immobileTime: 15, greenDmg: 1, redChance: 0.40, redHp: 5, poisonInterval: 2, poisonCure: 10, powerupChance: 0.05, shieldTime: 12, magSize: 10, reloadTime: 8, reloadWarn: 3, bossInterval: 3 },
+      normal:     { shootChance: 0.10, bulletDmg: 1, dropSpeed: 1, moveSpeed: 1, greenChance: 0.05, greenHp: 1, slowPer: 20, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.10, redHp: 2, poisonInterval: 8, poisonCure: 5, powerupChance: 0.08, shieldTime: 15, magSize: 15, reloadTime: 3, reloadWarn: 5, bossInterval: 8, bossEnrageInterval: 4, bossLaserInterval: 3, bossLaserLock: 0.3, bossLaserDmg: 2 },
+      hard:       { shootChance: 0.20, bulletDmg: 1, dropSpeed: 2, moveSpeed: 1.5, greenChance: 0.08, greenHp: 1, slowPer: 30, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.25, redHp: 3, poisonInterval: 5, poisonCure: 5, powerupChance: 0.08, shieldTime: 15, magSize: 15, reloadTime: 5, reloadWarn: 5, bossInterval: 5, bossEnrageInterval: 2.5, bossLaserInterval: 2, bossLaserLock: 0.3, bossLaserDmg: 2 },
+      impossible: { shootChance: 0.35, bulletDmg: 2, dropSpeed: 2.5, moveSpeed: 2, greenChance: 0.10, greenHp: 2, slowPer: 30, slowDecay: 10, immobileTime: 15, greenDmg: 1, redChance: 0.40, redHp: 5, poisonInterval: 2, poisonCure: 10, powerupChance: 0.05, shieldTime: 12, magSize: 10, reloadTime: 8, reloadWarn: 3, bossInterval: 3, bossEnrageInterval: 1.5, bossLaserInterval: 1.5, bossLaserLock: 0.2, bossLaserDmg: 3 },
     };
 
     // --- Menu ---
@@ -643,6 +645,8 @@
       bossCount = 0;
       bossLastShot = 0;
       bossBullets = [];
+      bossLaserStart = 0; bossLaserTargetX = 0; bossLaserFiring = false;
+      bossDying = false; bossDeathStart = 0; bossDeathScale = 1;
 
       // Reload
       const ds = diffSettings[difficulty];
@@ -701,8 +705,13 @@
           maxHp: bossHp,
           dir: 1,
           alive: true,
+          enraged: false,
+          enrageFlashEnd: 0,
+          scale: 1,
         };
         bossLastShot = performance.now();
+        bossLaserStart = 0; bossLaserFiring = false;
+        bossDying = false;
       }
       if (!boss) spawnAliens(alienRows);
       else aliens = [];
@@ -1158,41 +1167,48 @@
     const BOSS_SPEED = 1.5;
 
     function drawBoss() {
-      if (!boss || !boss.alive) return;
+      if (!boss) return;
+      if (!boss.alive && !bossDying) return;
       const x = boss.x, y = boss.y;
-      // Body - dark purple
-      ctx.fillStyle = '#7c3aed';
-      ctx.shadowColor = '#7c3aed';
+      const s = boss.scale || 1;
+      const bw = BOSS_W * s, bh = BOSS_H * s;
+      // Enrage flash: alternate red/purple
+      const flashing = boss.enraged && boss.enrageFlashEnd > performance.now();
+      const flashRed = flashing && Math.floor(performance.now() / 150) % 2 === 0;
+      // Body
+      ctx.fillStyle = flashRed ? '#ef4444' : '#7c3aed';
+      ctx.shadowColor = flashRed ? '#ef4444' : '#7c3aed';
       ctx.shadowBlur = 20;
       ctx.beginPath();
-      ctx.roundRect(x - BOSS_W / 2, y - BOSS_H / 2, BOSS_W, BOSS_H, 10);
+      ctx.roundRect(x - bw / 2, y - bh / 2, bw, bh, 10 * s);
       ctx.fill();
       ctx.shadowBlur = 0;
       // Inner highlight
-      ctx.fillStyle = '#8b5cf6';
+      ctx.fillStyle = flashRed ? '#ff6b6b' : '#8b5cf6';
       ctx.beginPath();
-      ctx.roundRect(x - BOSS_W / 2 + 5, y - BOSS_H / 2 + 4, BOSS_W - 10, 8, 4);
+      ctx.roundRect(x - bw / 2 + 5 * s, y - bh / 2 + 4 * s, bw - 10 * s, 8 * s, 4 * s);
       ctx.fill();
       // Window
-      ctx.fillStyle = '#c4b5fd';
+      ctx.fillStyle = flashRed ? '#fca5a5' : '#c4b5fd';
       ctx.beginPath();
-      ctx.roundRect(x - 16, y + BOSS_H / 2 - 20, 32, 14, 4);
+      ctx.roundRect(x - 16 * s, y + bh / 2 - 20 * s, 32 * s, 14 * s, 4 * s);
       ctx.fill();
+      if (!boss.alive) return; // dying animation: just draw body, no HP bar
       // HP bar above boss
-      const barW = BOSS_W + 20, barH = 6;
-      const bx = x - barW / 2, by = y - BOSS_H / 2 - 14;
+      const barW = bw + 20, barH = 6;
+      const bx2 = x - barW / 2, by2 = y - bh / 2 - 14;
       ctx.fillStyle = '#16213e';
-      ctx.fillRect(bx, by, barW, barH);
+      ctx.fillRect(bx2, by2, barW, barH);
       const pct = boss.hp / boss.maxHp;
       ctx.fillStyle = pct > 0.5 ? '#7c3aed' : pct > 0.25 ? '#f59e0b' : '#ef4444';
-      ctx.fillRect(bx, by, barW * pct, barH);
+      ctx.fillRect(bx2, by2, barW * pct, barH);
       ctx.strokeStyle = '#0f3460';
-      ctx.strokeRect(bx, by, barW, barH);
+      ctx.strokeRect(bx2, by2, barW, barH);
       // HP text
       ctx.fillStyle = '#fff';
-      ctx.font = 'bold 11px sans-serif';
+      ctx.font = `bold ${Math.round(11 * s)}px sans-serif`;
       ctx.textAlign = 'center';
-      ctx.fillText(`${boss.hp} / ${boss.maxHp}`, x, by - 4);
+      ctx.fillText(`${boss.hp} / ${boss.maxHp}`, x, by2 - 4);
     }
 
     function bossAttack() {
@@ -1219,17 +1235,139 @@
     }
 
     function updateBoss(now) {
-      if (!boss || !boss.alive) return;
+      if (!boss) return;
+      const ds = diffSettings[difficulty];
+
+      // Death animation
+      if (bossDying) {
+        const elapsed = now - bossDeathStart;
+        const duration = 1500;
+        boss.scale = 1 + (elapsed / duration) * 2; // grow to 3x
+        if (elapsed > duration) {
+          // Explode into many particles
+          for (let i = 0; i < 8; i++) {
+            spawnDeathParticles(boss.x + (Math.random()-0.5)*80, boss.y + (Math.random()-0.5)*60, 'red');
+            spawnDeathParticles(boss.x + (Math.random()-0.5)*80, boss.y + (Math.random()-0.5)*60, 'blue');
+          }
+          bossDying = false;
+          boss.scale = 1;
+          gameWon = true;
+          showOverlay('Boss Defeated!', `Wave ${wave + 1} incoming...`, 'Start Next Wave', 'wave');
+        }
+        return;
+      }
+
+      if (!boss.alive) return;
+
       // Move side to side
       boss.x += BOSS_SPEED * boss.dir;
-      if (boss.x + BOSS_W / 2 > canvas.width - 30) boss.dir = -1;
-      if (boss.x - BOSS_W / 2 < 30) boss.dir = 1;
+      const bw = BOSS_W * boss.scale;
+      if (boss.x + bw / 2 > canvas.width - 30) boss.dir = -1;
+      if (boss.x - bw / 2 < 30) boss.dir = 1;
 
-      // Attack on interval
-      const interval = diffSettings[difficulty].bossInterval * 1000;
-      if (now - bossLastShot >= interval) {
+      // Enrage at 15% HP
+      if (!boss.enraged && boss.hp <= boss.maxHp * 0.15) {
+        boss.enraged = true;
+        boss.enrageFlashEnd = now + 5000;
+        boss.scale = 1.15;
+      }
+
+      // Barrage attack
+      const barrageInterval = (boss.enraged ? ds.bossEnrageInterval : ds.bossInterval) * 1000;
+      if (now - bossLastShot >= barrageInterval) {
         bossAttack();
         bossLastShot = now;
+      }
+
+      // Laser system
+      const laserInterval = ds.bossLaserInterval * 1000;
+      if (!bossLaserFiring && bossLaserStart === 0) {
+        bossLaserStart = now;
+      }
+      if (!bossLaserFiring && now - bossLaserStart >= laserInterval) {
+        bossLaserFiring = true;
+        bossLaserStart = now; // warning start time
+        bossLaserTargetX = player.x;
+      }
+      if (bossLaserFiring) {
+        const warningDur = 1000;
+        const lockTime = ds.bossLaserLock * 1000;
+        const elapsed = now - bossLaserStart;
+        // Track player during first portion
+        if (elapsed < warningDur - lockTime) {
+          bossLaserTargetX = player.x;
+        }
+        // Fire real laser after warning
+        if (elapsed >= warningDur && elapsed < warningDur + 200) {
+          // Damage on first frame only
+          if (!boss._laserHit) {
+            boss._laserHit = true;
+            if (Math.abs(bossLaserTargetX - player.x) < PLAYER_W / 2 + 4) {
+              const isGod = lifeDifficulty === 'god';
+              if (!isGod) {
+                if (shieldActive) {
+                  shieldActive = false; shieldExpireAt = 0;
+                } else {
+                  hp = Math.max(0, hp - ds.bossLaserDmg);
+                  flashDamage();
+                  if (hp <= 0) {
+                    triggerDeath('Vaporized by boss laser');
+                    return;
+                  }
+                }
+                updateUI();
+              }
+            }
+          }
+        }
+        // End laser after fire phase
+        if (elapsed >= warningDur + 200) {
+          bossLaserFiring = false;
+          boss._laserHit = false;
+          bossLaserStart = now; // reset cooldown
+        }
+      }
+    }
+
+    function drawBossLaser() {
+      if (!boss || !boss.alive || !bossLaserFiring) return;
+      const ds = diffSettings[difficulty];
+      const warningDur = 1000;
+      const lockTime = ds.bossLaserLock * 1000;
+      const elapsed = performance.now() - bossLaserStart;
+      const locked = elapsed >= warningDur - lockTime;
+      const bossBottom = boss.y + BOSS_H * boss.scale / 2;
+
+      if (elapsed < warningDur) {
+        // Warning laser
+        ctx.strokeStyle = locked ? 'rgba(239, 68, 68, 0.6)' : 'rgba(239, 68, 68, 0.2)';
+        ctx.lineWidth = locked ? 6 : 3;
+        ctx.setLineDash(locked ? [] : [8, 8]);
+        ctx.beginPath();
+        ctx.moveTo(bossLaserTargetX, bossBottom);
+        ctx.lineTo(bossLaserTargetX, canvas.height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.lineWidth = 1;
+      } else if (elapsed < warningDur + 200) {
+        // Firing beam — thick bright red
+        ctx.save();
+        ctx.shadowColor = '#ef4444';
+        ctx.shadowBlur = 30;
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 14;
+        ctx.beginPath();
+        ctx.moveTo(bossLaserTargetX, bossBottom);
+        ctx.lineTo(bossLaserTargetX, canvas.height);
+        ctx.stroke();
+        // Inner white core
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(bossLaserTargetX, bossBottom);
+        ctx.lineTo(bossLaserTargetX, canvas.height);
+        ctx.stroke();
+        ctx.restore();
       }
     }
 
@@ -1637,9 +1775,9 @@
               boss.alive = false;
               score += boss.maxHp / 10;
               kills.boss++;
-              spawnDeathParticles(boss.x, boss.y, 'red');
-              spawnDeathParticles(boss.x - 20, boss.y, 'blue');
-              spawnDeathParticles(boss.x + 20, boss.y, 'blue');
+              bossDying = true;
+              bossDeathStart = performance.now();
+              bossDeathScale = 1;
             }
             break;
           }
@@ -1725,11 +1863,13 @@
         }
       }
 
-      // Win check
-      const won = boss ? !boss.alive : aliens.every(a => !a.alive);
-      if (won) {
-        gameWon = true;
-        showOverlay('Wave Defeated!', `Next wave: ${alienRows + 1} rows of aliens.`, 'Start Next Wave', 'wave');
+      // Win check (boss waves handled by updateBoss death animation)
+      if (!boss) {
+        const won = aliens.every(a => !a.alive);
+        if (won) {
+          gameWon = true;
+          showOverlay('Wave Defeated!', `Wave ${wave + 1} incoming...`, 'Start Next Wave', 'wave');
+        }
       }
     }
 
@@ -1753,6 +1893,7 @@
 
       // Draw boss
       drawBoss();
+      drawBossLaser();
 
       // Draw powerups
       drawPowerups();
