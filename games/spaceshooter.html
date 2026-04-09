@@ -1579,12 +1579,15 @@
       }
 
       // Check if aliens reached player
-      if (!isGod) {
-        for (const a of aliens) {
-          if (a.alive && a.y + ALIEN_H / 2 >= player.y - PLAYER_H / 2) {
+      for (const a of aliens) {
+        if (a.alive && a.y + ALIEN_H / 2 >= player.y - PLAYER_H / 2) {
+          if (isGod) {
+            gameOver = true;
+            showOverlay('The aliens have reached the bottom', '', 'New Game', 'menu');
+          } else {
             triggerDeath('The aliens reached you');
-            return;
           }
+          return;
         }
       }
 
