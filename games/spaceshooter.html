@@ -504,9 +504,9 @@
       god:          { hp: Infinity, yellow: 0, orange: 0, red: 0 },
     };
     let diffSettings = {
-      normal:     { shootChance: 0.10, bulletDmg: 1, dropSpeed: 1, moveSpeed: 1, greenChance: 0.05, greenHp: 1, slowPer: 20, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.10, redHp: 2, poisonInterval: 8, poisonCure: 5, powerupChance: 0.08, shieldTime: 15, magSize: 15, reloadTime: 3, reloadWarn: 5, bossInterval: 15 },
-      hard:       { shootChance: 0.20, bulletDmg: 1, dropSpeed: 2, moveSpeed: 1.5, greenChance: 0.08, greenHp: 1, slowPer: 30, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.25, redHp: 3, poisonInterval: 5, poisonCure: 5, powerupChance: 0.08, shieldTime: 15, magSize: 15, reloadTime: 5, reloadWarn: 5, bossInterval: 8 },
-      impossible: { shootChance: 0.35, bulletDmg: 2, dropSpeed: 2.5, moveSpeed: 2, greenChance: 0.10, greenHp: 2, slowPer: 30, slowDecay: 10, immobileTime: 15, greenDmg: 1, redChance: 0.40, redHp: 5, poisonInterval: 2, poisonCure: 10, powerupChance: 0.05, shieldTime: 12, magSize: 10, reloadTime: 8, reloadWarn: 3, bossInterval: 5 },
+      normal:     { shootChance: 0.10, bulletDmg: 1, dropSpeed: 1, moveSpeed: 1, greenChance: 0.05, greenHp: 1, slowPer: 20, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.10, redHp: 2, poisonInterval: 8, poisonCure: 5, powerupChance: 0.08, shieldTime: 15, magSize: 15, reloadTime: 3, reloadWarn: 5, bossInterval: 8 },
+      hard:       { shootChance: 0.20, bulletDmg: 1, dropSpeed: 2, moveSpeed: 1.5, greenChance: 0.08, greenHp: 1, slowPer: 30, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.25, redHp: 3, poisonInterval: 5, poisonCure: 5, powerupChance: 0.08, shieldTime: 15, magSize: 15, reloadTime: 5, reloadWarn: 5, bossInterval: 5 },
+      impossible: { shootChance: 0.35, bulletDmg: 2, dropSpeed: 2.5, moveSpeed: 2, greenChance: 0.10, greenHp: 2, slowPer: 30, slowDecay: 10, immobileTime: 15, greenDmg: 1, redChance: 0.40, redHp: 5, poisonInterval: 2, poisonCure: 10, powerupChance: 0.05, shieldTime: 12, magSize: 10, reloadTime: 8, reloadWarn: 3, bossInterval: 3 },
     };
 
     // --- Menu ---
@@ -696,7 +696,7 @@
         const bossHp = 100 + (bossCount - 1) * 50;
         boss = {
           x: canvas.width / 2,
-          y: 50,
+          y: 120,
           hp: bossHp,
           maxHp: bossHp,
           dir: 1,
@@ -704,7 +704,8 @@
         };
         bossLastShot = performance.now();
       }
-      spawnAliens(alienRows);
+      if (!boss) spawnAliens(alienRows);
+      else aliens = [];
       updateUI();
       hideOverlay();
     }
@@ -1639,8 +1640,6 @@
               spawnDeathParticles(boss.x, boss.y, 'red');
               spawnDeathParticles(boss.x - 20, boss.y, 'blue');
               spawnDeathParticles(boss.x + 20, boss.y, 'blue');
-              // Guaranteed powerup from boss
-              powerups.push({ x: boss.x, y: boss.y, type: 'mystery' });
             }
             break;
           }
@@ -1727,9 +1726,8 @@
       }
 
       // Win check
-      const aliensCleared = aliens.every(a => !a.alive);
-      const bossCleared = !boss || !boss.alive;
-      if (aliensCleared && bossCleared) {
+      const won = boss ? !boss.alive : aliens.every(a => !a.alive);
+      if (won) {
         gameWon = true;
         showOverlay('Wave Defeated!', `Next wave: ${alienRows + 1} rows of aliens.`, 'Start Next Wave', 'wave');
       }
