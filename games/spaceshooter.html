@@ -493,6 +493,7 @@
     let reloadEnabled = false;
     let godImmuneBad = false, godImmuneAll = false;
     let ammo, maxAmmo, reloading, reloadStartAt, reloadDuration, reloadActualDur, reloadStartAmmo;
+    let boss, bossCount, bossLastShot, bossBullets;
     let lifeDifficulty = null;
     let lifeSettings = {
       beginner:     { hp: 100, yellow: 30, orange: 15, red: 5 },
@@ -503,9 +504,9 @@
       god:          { hp: Infinity, yellow: 0, orange: 0, red: 0 },
     };
     let diffSettings = {
-      normal:     { shootChance: 0.10, bulletDmg: 1, dropSpeed: 1, moveSpeed: 1, greenChance: 0.05, greenHp: 1, slowPer: 20, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.10, redHp: 2, poisonInterval: 8, poisonCure: 5, powerupChance: 0.08, shieldTime: 15, magSize: 15, reloadTime: 3, reloadWarn: 5 },
-      hard:       { shootChance: 0.20, bulletDmg: 1, dropSpeed: 2, moveSpeed: 1.5, greenChance: 0.08, greenHp: 1, slowPer: 30, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.25, redHp: 3, poisonInterval: 5, poisonCure: 5, powerupChance: 0.08, shieldTime: 15, magSize: 15, reloadTime: 5, reloadWarn: 5 },
-      impossible: { shootChance: 0.35, bulletDmg: 2, dropSpeed: 2.5, moveSpeed: 2, greenChance: 0.10, greenHp: 2, slowPer: 30, slowDecay: 10, immobileTime: 15, greenDmg: 1, redChance: 0.40, redHp: 5, poisonInterval: 2, poisonCure: 10, powerupChance: 0.05, shieldTime: 12, magSize: 10, reloadTime: 8, reloadWarn: 3 },
+      normal:     { shootChance: 0.10, bulletDmg: 1, dropSpeed: 1, moveSpeed: 1, greenChance: 0.05, greenHp: 1, slowPer: 20, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.10, redHp: 2, poisonInterval: 8, poisonCure: 5, powerupChance: 0.08, shieldTime: 15, magSize: 15, reloadTime: 3, reloadWarn: 5, bossInterval: 15 },
+      hard:       { shootChance: 0.20, bulletDmg: 1, dropSpeed: 2, moveSpeed: 1.5, greenChance: 0.08, greenHp: 1, slowPer: 30, slowDecay: 10, immobileTime: 10, greenDmg: 0, redChance: 0.25, redHp: 3, poisonInterval: 5, poisonCure: 5, powerupChance: 0.08, shieldTime: 15, magSize: 15, reloadTime: 5, reloadWarn: 5, bossInterval: 8 },
+      impossible: { shootChance: 0.35, bulletDmg: 2, dropSpeed: 2.5, moveSpeed: 2, greenChance: 0.10, greenHp: 2, slowPer: 30, slowDecay: 10, immobileTime: 15, greenDmg: 1, redChance: 0.40, redHp: 5, poisonInterval: 2, poisonCure: 10, powerupChance: 0.05, shieldTime: 12, magSize: 10, reloadTime: 8, reloadWarn: 3, bossInterval: 5 },
     };
 
     // --- Menu ---
@@ -629,7 +630,7 @@
       poisoned = false;
       poisonKillsLeft = 0;
       poisonNextDmgAt = 0;
-      kills = { blue: 0, green: 0, red: 0 };
+      kills = { blue: 0, green: 0, red: 0, boss: 0 };
       powerups = [];
       speedStacks = 0; speedDecayAt = 0;
       shieldActive = false; shieldExpireAt = 0;
@@ -638,6 +639,10 @@
       bombStacks = 0; bombDecayAt = 0;
       mysteryActive = false; mysteryExpireAt = 0;
       deathParticles = [];
+      boss = null;
+      bossCount = 0;
+      bossLastShot = 0;
+      bossBullets = [];
 
       // Reload
       const ds = diffSettings[difficulty];
@@ -682,6 +687,23 @@
       bombStacks = 0; bombDecayAt = 0;
       mysteryActive = false; mysteryExpireAt = 0;
       document.getElementById('effects-text').textContent = '';
+      boss = null;
+      bossBullets = [];
+      bossLastShot = 0;
+      // Boss: 50% chance on odd waves >= 3
+      if (wave >= 3 && wave % 2 === 1 && Math.random() < 0.5) {
+        bossCount++;
+        const bossHp = 100 + (bossCount - 1) * 50;
+        boss = {
+          x: canvas.width / 2,
+          y: 50,
+          hp: bossHp,
+          maxHp: bossHp,
+          dir: 1,
+          alive: true,
+        };
+        bossLastShot = performance.now();
+      }
       spawnAliens(alienRows);
       updateUI();
       hideOverlay();
@@ -1130,6 +1152,86 @@
       ctx.lineWidth = 1;
     }
 
+    // --- Boss ---
+    const BOSS_W = 100, BOSS_H = 60;
+    const BOSS_SPEED = 1.5;
+
+    function drawBoss() {
+      if (!boss || !boss.alive) return;
+      const x = boss.x, y = boss.y;
+      // Body - dark purple
+      ctx.fillStyle = '#7c3aed';
+      ctx.shadowColor = '#7c3aed';
+      ctx.shadowBlur = 20;
+      ctx.beginPath();
+      ctx.roundRect(x - BOSS_W / 2, y - BOSS_H / 2, BOSS_W, BOSS_H, 10);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      // Inner highlight
+      ctx.fillStyle = '#8b5cf6';
+      ctx.beginPath();
+      ctx.roundRect(x - BOSS_W / 2 + 5, y - BOSS_H / 2 + 4, BOSS_W - 10, 8, 4);
+      ctx.fill();
+      // Window
+      ctx.fillStyle = '#c4b5fd';
+      ctx.beginPath();
+      ctx.roundRect(x - 16, y + BOSS_H / 2 - 20, 32, 14, 4);
+      ctx.fill();
+      // HP bar above boss
+      const barW = BOSS_W + 20, barH = 6;
+      const bx = x - barW / 2, by = y - BOSS_H / 2 - 14;
+      ctx.fillStyle = '#16213e';
+      ctx.fillRect(bx, by, barW, barH);
+      const pct = boss.hp / boss.maxHp;
+      ctx.fillStyle = pct > 0.5 ? '#7c3aed' : pct > 0.25 ? '#f59e0b' : '#ef4444';
+      ctx.fillRect(bx, by, barW * pct, barH);
+      ctx.strokeStyle = '#0f3460';
+      ctx.strokeRect(bx, by, barW, barH);
+      // HP text
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${boss.hp} / ${boss.maxHp}`, x, by - 4);
+    }
+
+    function bossAttack() {
+      if (!boss || !boss.alive) return;
+      // Create two rows of bullets in front of the boss, then fire them
+      const rowY1 = boss.y + BOSS_H / 2 + 10;
+      const rowY2 = boss.y + BOSS_H / 2 + 25;
+      const count = 8 + Math.floor(Math.random() * 5); // 8-12 bullets per row
+      for (let row = 0; row < 2; row++) {
+        const ry = row === 0 ? rowY1 : rowY2;
+        for (let i = 0; i < count; i++) {
+          const bx = boss.x - BOSS_W / 2 + Math.random() * BOSS_W;
+          const angle = Math.PI / 2 + (Math.random() - 0.5) * 1.2; // mostly downward, spread out
+          const speed = 2 + Math.random() * 3;
+          alienBullets.push({
+            x: bx,
+            y: ry,
+            type: 'blue',
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+          });
+        }
+      }
+    }
+
+    function updateBoss(now) {
+      if (!boss || !boss.alive) return;
+      // Move side to side
+      boss.x += BOSS_SPEED * boss.dir;
+      if (boss.x + BOSS_W / 2 > canvas.width - 30) boss.dir = -1;
+      if (boss.x - BOSS_W / 2 < 30) boss.dir = 1;
+
+      // Attack on interval
+      const interval = diffSettings[difficulty].bossInterval * 1000;
+      if (now - bossLastShot >= interval) {
+        bossAttack();
+        bossLastShot = now;
+      }
+    }
+
     // --- Fire particles for hardcore heart ---
     let fireRunning = false;
     let fireParticles = [];
@@ -1325,6 +1427,7 @@
         `<span style="color:#4e7fff">Blue killed:</span><span>${kills.blue}</span>` +
         `<span style="color:#22c55e">Green killed:</span><span>${kills.green}</span>` +
         `<span style="color:#dc2626">Red killed:</span><span>${kills.red}</span>` +
+        `<span style="color:#7c3aed">Bosses killed:</span><span>${kills.boss}</span>` +
         `</div>`;
       document.getElementById('overlay-btn').textContent = 'Play Again';
       overlayMode = 'menu';
@@ -1440,8 +1543,14 @@
 
       // Move alien bullets
       for (let i = alienBullets.length - 1; i >= 0; i--) {
-        alienBullets[i].y += ALIEN_BULLET_SPEED;
-        if (alienBullets[i].y > canvas.height + 20) alienBullets.splice(i, 1);
+        const ab = alienBullets[i];
+        if (ab.vy !== undefined) {
+          ab.x += ab.vx;
+          ab.y += ab.vy;
+        } else {
+          ab.y += ALIEN_BULLET_SPEED;
+        }
+        if (ab.y > canvas.height + 20 || ab.x < -20 || ab.x > canvas.width + 20) alienBullets.splice(i, 1);
       }
 
       // Helper: process an alien kill (XP, powerup, poison cure, bomb chain)
@@ -1510,6 +1619,32 @@
           }
         }
         updateUI();
+      }
+
+      // Boss update
+      updateBoss(now);
+
+      // Collision: player bullets → boss
+      if (boss && boss.alive) {
+        for (let bi = playerBullets.length - 1; bi >= 0; bi--) {
+          const b = playerBullets[bi];
+          if (Math.abs(b.x - boss.x) < BOSS_W / 2 + BULLET_W / 2 &&
+              Math.abs(b.y - boss.y) < BOSS_H / 2 + PLAYER_BULLET_H / 2) {
+            playerBullets.splice(bi, 1);
+            boss.hp--;
+            if (boss.hp <= 0) {
+              boss.alive = false;
+              score += boss.maxHp / 10;
+              kills.boss++;
+              spawnDeathParticles(boss.x, boss.y, 'red');
+              spawnDeathParticles(boss.x - 20, boss.y, 'blue');
+              spawnDeathParticles(boss.x + 20, boss.y, 'blue');
+              // Guaranteed powerup from boss
+              powerups.push({ x: boss.x, y: boss.y, type: 'mystery' });
+            }
+            break;
+          }
+        }
       }
 
       // Collision: alien bullets → player
@@ -1592,7 +1727,9 @@
       }
 
       // Win check
-      if (aliens.every(a => !a.alive)) {
+      const aliensCleared = aliens.every(a => !a.alive);
+      const bossCleared = !boss || !boss.alive;
+      if (aliensCleared && bossCleared) {
         gameWon = true;
         showOverlay('Wave Defeated!', `Next wave: ${alienRows + 1} rows of aliens.`, 'Start Next Wave', 'wave');
       }
@@ -1615,6 +1752,9 @@
           drawAlienShip(a.x, a.y, a.type, a.hp, maxHp);
         }
       }
+
+      // Draw boss
+      drawBoss();
 
       // Draw powerups
       drawPowerups();
