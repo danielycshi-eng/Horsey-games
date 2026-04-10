@@ -109,6 +109,16 @@
     const BOB_HEAD_R = 10;
     const SPIKE_START_DELAY = 3000; // ms before spikes start
 
+    // Point-in-triangle test using barycentric coordinates
+    function pointInTriangle(px, py, ax, ay, bx, by, cx, cy) {
+      const d1 = (px - bx) * (ay - by) - (ax - bx) * (py - by);
+      const d2 = (px - cx) * (by - cy) - (bx - cx) * (py - cy);
+      const d3 = (px - ax) * (cy - ay) - (cx - ax) * (py - ay);
+      const hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+      const hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+      return !(hasNeg && hasPos);
+    }
+
     // --- State ---
     let bob, spikes, particles, keys;
     let gameRunning, dead, startTime, survivalTime;
@@ -131,6 +141,7 @@
         vx: 0,
         vy: 0,
         onGround: true,
+        falling: false,
         facing: 1, // 1 = right, -1 = left
       };
       spikes = [];
@@ -202,15 +213,15 @@
     // --- Draw Bob ---
     function drawBob() {
       const { x, y } = bob;
+      const now = performance.now();
       ctx.save();
       ctx.translate(x, y);
 
-      if (dead) {
-        // Knock-over animation: rotate and fall
-        const elapsed = (performance.now() - deathTime) / 1000;
+      // Death animation
+      if (dead && !bob.falling) {
+        const elapsed = (now - deathTime) / 1000;
         deathAngle = Math.min(Math.PI / 2, elapsed * 4);
         ctx.rotate(deathAngle * bob.facing);
-        // Slide down slightly
         ctx.translate(0, Math.min(20, elapsed * 30));
       }
 
@@ -218,39 +229,101 @@
       ctx.lineWidth = 3;
       ctx.lineCap = 'round';
 
+      // Animation phase
+      const moving = !dead && (bob.vx !== 0);
+      const inAir = !dead && !bob.onGround;
+      const walkCycle = moving ? Math.sin(now / 100 * (Math.abs(bob.vx) / MOVE_SPEED)) : 0;
+      const armSwing = moving ? Math.sin(now / 100 * (Math.abs(bob.vx) / MOVE_SPEED)) * 0.4 : 0;
+      const deadWave = dead && !bob.falling ? Math.sin(now / 80) * 0.3 : 0;
+
       // Head
       ctx.beginPath();
       ctx.arc(0, -BOB_H + BOB_HEAD_R, BOB_HEAD_R, 0, Math.PI * 2);
       ctx.stroke();
 
       // Body
+      const bodyBottom = -BOB_H * 0.35;
       ctx.beginPath();
       ctx.moveTo(0, -BOB_H + BOB_HEAD_R * 2);
-      ctx.lineTo(0, -BOB_H * 0.35);
+      ctx.lineTo(0, bodyBottom);
       ctx.stroke();
 
       // Arms
-      const armWave = dead ? Math.sin(performance.now() / 80) * 0.3 : 0;
-      ctx.beginPath();
-      ctx.moveTo(-14, -BOB_H * 0.55 + armWave * 10);
-      ctx.lineTo(0, -BOB_H * 0.65);
-      ctx.lineTo(14, -BOB_H * 0.55 - armWave * 10);
-      ctx.stroke();
+      const shoulderY = -BOB_H * 0.65;
+      if (inAir) {
+        // Arms up when jumping
+        ctx.beginPath();
+        ctx.moveTo(-12, shoulderY - 12);
+        ctx.lineTo(0, shoulderY);
+        ctx.lineTo(12, shoulderY - 12);
+        ctx.stroke();
+      } else if (dead && !bob.falling) {
+        // Flailing arms when dead
+        ctx.beginPath();
+        ctx.moveTo(-14, shoulderY + 5 + deadWave * 10);
+        ctx.lineTo(0, shoulderY);
+        ctx.lineTo(14, shoulderY + 5 - deadWave * 10);
+        ctx.stroke();
+      } else {
+        // Walking arm swing or idle
+        ctx.beginPath();
+        ctx.moveTo(-14 + armSwing * 8, shoulderY + 8 - Math.abs(armSwing) * 4);
+        ctx.lineTo(0, shoulderY);
+        ctx.lineTo(14 - armSwing * 8, shoulderY + 8 - Math.abs(armSwing) * 4);
+        ctx.stroke();
+      }
 
       // Legs
-      const legSpread = dead ? 8 : 10;
-      ctx.beginPath();
-      ctx.moveTo(-legSpread, 0);
-      ctx.lineTo(0, -BOB_H * 0.35);
-      ctx.lineTo(legSpread, 0);
-      ctx.stroke();
+      const hipY = bodyBottom;
+      if (inAir) {
+        // Tucked legs when jumping
+        ctx.beginPath();
+        ctx.moveTo(-8, -4);
+        ctx.lineTo(0, hipY);
+        ctx.lineTo(8, -4);
+        ctx.stroke();
+      } else if (dead && !bob.falling) {
+        // Spread legs when dead
+        ctx.beginPath();
+        ctx.moveTo(-8, 0);
+        ctx.lineTo(0, hipY);
+        ctx.lineTo(8, 0);
+        ctx.stroke();
+      } else {
+        // Walking cycle or idle
+        const legFront = walkCycle * 10;
+        const legBack = -walkCycle * 10;
+        ctx.beginPath();
+        ctx.moveTo(legFront * bob.facing, 0);
+        ctx.lineTo(0, hipY);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(legBack * bob.facing, 0);
+        ctx.lineTo(0, hipY);
+        ctx.stroke();
+      }
 
-      // Eyes (small dots)
+      // Eyes
       ctx.fillStyle = '#e2e8f0';
       ctx.beginPath();
-      ctx.arc(-3, -BOB_H + BOB_HEAD_R - 2, 1.5, 0, Math.PI * 2);
-      ctx.arc(3, -BOB_H + BOB_HEAD_R - 2, 1.5, 0, Math.PI * 2);
-      ctx.fill();
+      if (dead && !bob.falling) {
+        // X eyes when dead
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-5, -BOB_H + BOB_HEAD_R - 4);
+        ctx.lineTo(-1, -BOB_H + BOB_HEAD_R);
+        ctx.moveTo(-1, -BOB_H + BOB_HEAD_R - 4);
+        ctx.lineTo(-5, -BOB_H + BOB_HEAD_R);
+        ctx.moveTo(1, -BOB_H + BOB_HEAD_R - 4);
+        ctx.lineTo(5, -BOB_H + BOB_HEAD_R);
+        ctx.moveTo(5, -BOB_H + BOB_HEAD_R - 4);
+        ctx.lineTo(1, -BOB_H + BOB_HEAD_R);
+        ctx.stroke();
+      } else {
+        ctx.arc(-3, -BOB_H + BOB_HEAD_R - 2, 1.5, 0, Math.PI * 2);
+        ctx.arc(3, -BOB_H + BOB_HEAD_R - 2, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
       ctx.restore();
     }
@@ -360,27 +433,35 @@
           continue;
         }
 
-        // Hit Bob — check spike tip (bottom point) vs Bob's bounding box
-        const tipX = s.x;
-        const tipY = s.y + s.size;
-        const bobLeft = bob.x - 12;
-        const bobRight = bob.x + 12;
-        const bobTop = bob.y - BOB_H;
-        const bobBottom = bob.y;
+        // Hit Bob — triangle vs circle checks on Bob's head and body points
+        // Spike triangle vertices: top-left, top-right, bottom-tip
+        const halfW = s.size * 0.4;
+        const ax = s.x - halfW, ay = s.y;       // top-left
+        const bx = s.x + halfW, by = s.y;       // top-right
+        const cx = s.x, cy = s.y + s.size;       // bottom tip
 
-        if (tipX >= bobLeft && tipX <= bobRight && tipY >= bobTop && tipY <= bobBottom) {
-          triggerDeath(now);
-          return;
+        // Check a few points on Bob against the triangle
+        const bobPoints = [
+          [bob.x, bob.y - BOB_H + BOB_HEAD_R],   // head center
+          [bob.x - 6, bob.y - BOB_H + BOB_HEAD_R],// head left
+          [bob.x + 6, bob.y - BOB_H + BOB_HEAD_R],// head right
+          [bob.x, bob.y - BOB_H * 0.5],            // torso
+          [bob.x, bob.y - BOB_H * 0.35],           // hip
+        ];
+
+        let hit = false;
+        for (const [px, py] of bobPoints) {
+          if (pointInTriangle(px, py, ax, ay, bx, by, cx, cy)) {
+            hit = true;
+            break;
+          }
         }
+        // Also check if spike tip is inside Bob's head circle
+        const headCX = bob.x, headCY = bob.y - BOB_H + BOB_HEAD_R;
+        const dx = cx - headCX, dy = cy - headCY;
+        if (dx * dx + dy * dy <= (BOB_HEAD_R + 2) * (BOB_HEAD_R + 2)) hit = true;
 
-        // Also check spike body overlap with Bob head
-        const spikeLeft = s.x - s.size * 0.4;
-        const spikeRight = s.x + s.size * 0.4;
-        const spikeBottom = s.y + s.size;
-        const headY = bob.y - BOB_H + BOB_HEAD_R;
-
-        if (spikeRight >= bobLeft && spikeLeft <= bobRight &&
-            spikeBottom >= bobTop && s.y <= bobBottom) {
+        if (hit) {
           triggerDeath(now);
           return;
         }
@@ -395,11 +476,20 @@
     function triggerDeath(now) {
       dead = true;
       gameRunning = false;
-      deathTime = now;
+      bob.vx = 0;
+      // If in air, mark as falling — will play death animation after landing
+      if (!bob.onGround) {
+        bob.falling = true;
+      } else {
+        bob.falling = false;
+        deathTime = now;
+        startDeathOverlay();
+      }
       dialogueEl.textContent = "Well, better luck next time!";
       dialogueEl.classList.remove('hidden');
+    }
 
-      // Show overlay after death animation
+    function startDeathOverlay() {
       setTimeout(() => {
         ovTime.textContent = `Survived: ${survivalTime.toFixed(1)}s`;
         overlay.classList.remove('hidden');
@@ -414,6 +504,20 @@
 
       const now = performance.now();
       if (gameRunning) update(now);
+
+      // If dead and falling, keep applying gravity until landing
+      if (dead && bob.falling) {
+        bob.y += bob.vy;
+        bob.vy += GRAVITY;
+        if (bob.y >= groundY) {
+          bob.y = groundY;
+          bob.vy = 0;
+          bob.falling = false;
+          bob.onGround = true;
+          deathTime = performance.now();
+          startDeathOverlay();
+        }
+      }
 
       // Draw spikes
       for (const s of spikes) drawSpike(s);
