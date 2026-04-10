@@ -21,6 +21,7 @@
     }
 
     #overlay.hidden { display: none; }
+    .hidden { display: none !important; }
 
     #overlay h1 {
       font-size: 3rem;
@@ -445,11 +446,19 @@
     }
 
     // --- Input ---
+    function getKeyLane(e) {
+      // Try e.key first, then e.code (Digit1-Digit9)
+      const k = parseInt(e.key);
+      if (k >= 1 && k <= 9) return k;
+      const m = e.code && e.code.match(/^Digit(\d)$/);
+      if (m) { const d = parseInt(m[1]); if (d >= 1 && d <= 9) return d; }
+      return 0;
+    }
+
     window.addEventListener('keydown', e => {
-      const key = parseInt(e.key);
+      const key = getKeyLane(e);
       if (key >= 1 && key <= 9) {
-        if (!gameRunning && !gameOverFlag) {
-          // Start game
+        if (!started || (!gameRunning && !gameOverFlag)) {
           overlay.classList.add('hidden');
           started = true;
           init();
@@ -457,6 +466,16 @@
         }
         laneFlash[key - 1] = 1;
         tryHit(key - 1);
+      }
+    });
+
+    // Click/tap on overlay to start too
+    overlay.addEventListener('click', e => {
+      if (e.target === overlayBtn) return; // let button handler deal with it
+      if (!started || (!gameRunning && !gameOverFlag)) {
+        overlay.classList.add('hidden');
+        started = true;
+        init();
       }
     });
 
