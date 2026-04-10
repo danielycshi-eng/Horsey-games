@@ -415,19 +415,40 @@
       bob.y += bob.vy;
       bob.vy += GRAVITY;
 
-      // Platform collision — check landed green spikes
+      // Platform + side collision with landed green spikes
       bob.onGround = false;
       for (const L of landed) {
-        const platLeft = L.x - L.size * 0.5;
-        const platRight = L.x + L.size * 0.5;
+        const halfW = L.size * 0.4;
+        const platLeft = L.x - halfW;
+        const platRight = L.x + halfW;
         const platY = L.topY;
-        // Bob's feet at bob.y, check if landing on top
+        const bobFeetPrev = bob.y - bob.vy;
+        const bobW = 10; // half-width of Bob for side collision
+
+        // Landing on top
         if (bob.x >= platLeft && bob.x <= platRight &&
-            bob.y >= platY && bob.y - bob.vy <= platY && bob.vy >= 0) {
+            bob.y >= platY && bobFeetPrev <= platY && bob.vy >= 0) {
           bob.y = platY;
           bob.vy = 0;
           bob.onGround = true;
-          break;
+        }
+
+        // Side collision — push Bob out if he walks into a landed spike
+        // Only block if Bob's feet are below the top of the spike (not jumping over)
+        if (bob.y > platY && bob.y - BOB_H < groundY) {
+          const bobLeft = bob.x - bobW;
+          const bobRight = bob.x + bobW;
+          if (bobRight > platLeft && bobLeft < platRight) {
+            // Push out to nearest side
+            const pushLeft = platLeft - bobRight;
+            const pushRight = platRight - bobLeft;
+            if (Math.abs(pushLeft) < Math.abs(pushRight)) {
+              bob.x += pushLeft;
+            } else {
+              bob.x += pushRight;
+            }
+            bob.vx = 0;
+          }
         }
       }
 
@@ -462,23 +483,29 @@
         const s = spikes[i];
         s.y += s.speed;
 
-        // Check collision with landed green spikes
+        // Check collision with landed green spikes (top hit or side shield)
         let hitLanded = false;
+        const sHalfW = s.size * 0.4;
+        const sTipY = s.y + s.size;
+        const sLeft = s.x - sHalfW;
+        const sRight = s.x + sHalfW;
         for (let j = landed.length - 1; j >= 0; j--) {
           const L = landed[j];
-          const landedLeft = L.x - L.size * 0.4;
-          const landedRight = L.x + L.size * 0.4;
-          const tipY = s.y + s.size;
-          // Spike tip hits the top of the landed spike
-          if (s.x >= landedLeft && s.x <= landedRight && tipY >= L.topY && s.y < L.topY) {
+          const lHalfW = L.size * 0.4;
+          const lLeft = L.x - lHalfW;
+          const lRight = L.x + lHalfW;
+          const lBottom = L.topY + L.size;
+          // Check overlap: falling spike overlaps landed spike area
+          const xOverlap = sRight > lLeft && sLeft < lRight;
+          const yOverlap = sTipY >= L.topY && s.y < lBottom;
+          if (xOverlap && yOverlap) {
             if (s.green) {
-              // Stack: add new green spike on top
-              const newSize = s.size;
-              landed.push({ x: s.x, topY: L.topY - newSize * 0.5, size: newSize, stack: L.stack + 1 });
+              // Stack on top
+              landed.push({ x: s.x, topY: L.topY - s.size * 0.5, size: s.size, stack: L.stack + 1 });
             } else {
-              // Regular spike destroys the landed green spike
+              // Regular spike: both shatter
               spawnShatter(L.x, L.topY, L.size);
-              spawnShatter(s.x, L.topY, s.size);
+              spawnShatter(s.x, s.y + s.size * 0.5, s.size);
               landed.splice(j, 1);
             }
             spikes.splice(i, 1);
@@ -584,14 +611,12 @@
         }
       }
 
-      // Draw falling spikes behind ground
+      // Draw falling spikes and landed spikes behind ground
       for (const s of spikes) drawSpike(s);
-
-      // Draw ground on top of falling spikes
-      drawGround();
-
-      // Draw landed green spikes on top of ground
       drawLanded();
+
+      // Draw ground on top
+      drawGround();
 
       // Draw Bob on top
       drawBob();
