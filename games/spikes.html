@@ -443,66 +443,73 @@
       drawSpikeShape(spike.x, spike.y, spike.size, spike.color);
     }
 
+    // Generate random crack lines (stored as relative offsets from spike center/top)
+    // Each crack is { pts: [[rx, ry], ...], width }  where rx/ry are -1..1 relative coords
+    function generateCracks(count, lengthSegs) {
+      const cracks = [];
+      for (let c = 0; c < count; c++) {
+        const pts = [];
+        // Start at a random point in upper portion
+        let rx = (Math.random() - 0.5) * 0.5;
+        let ry = 0.1 + Math.random() * 0.2;
+        pts.push([rx, ry]);
+        const segs = lengthSegs + Math.floor(Math.random() * 2);
+        for (let s = 0; s < segs; s++) {
+          rx += (Math.random() - 0.5) * 0.5;
+          rx = Math.max(-0.8, Math.min(0.8, rx));
+          ry += 0.12 + Math.random() * 0.15;
+          ry = Math.min(0.95, ry);
+          pts.push([rx, ry]);
+        }
+        // Sometimes add a branch from a middle point
+        if (pts.length >= 3 && Math.random() > 0.3) {
+          const bi = 1 + Math.floor(Math.random() * (pts.length - 2));
+          const branchPt = pts[bi];
+          const dir = Math.random() > 0.5 ? 1 : -1;
+          cracks.push({
+            pts: [
+              [branchPt[0], branchPt[1]],
+              [branchPt[0] + dir * (0.2 + Math.random() * 0.3), branchPt[1] + (Math.random() - 0.3) * 0.15],
+            ],
+            width: 1.5 + Math.random(),
+          });
+        }
+        cracks.push({ pts, width: 2 + Math.random() * 1.5 });
+      }
+      return cracks;
+    }
+
     function drawLanded() {
       for (const L of landed) {
         drawSpikeShape(L.x, L.topY, L.size, 'green');
-        // Draw cracks based on damage
-        if (L.hp < 3) {
+        // Draw stored cracks
+        if (L.cracks1 || L.cracks2) {
           const hw = L.size * 0.4;
           const sz = L.size;
           ctx.save();
           ctx.lineCap = 'round';
           ctx.lineJoin = 'round';
 
-          // Draw each crack line twice: wide white glow underneath, then dark line on top
-          function crack(pts, width) {
-            // Glow/highlight layer
-            ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-            ctx.lineWidth = width + 2;
+          function drawCrack(c) {
+            const abs = c.pts.map(([rx, ry]) => [L.x + rx * hw, L.topY + ry * sz]);
+            // Glow
+            ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+            ctx.lineWidth = c.width + 2;
             ctx.beginPath();
-            ctx.moveTo(pts[0][0], pts[0][1]);
-            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+            ctx.moveTo(abs[0][0], abs[0][1]);
+            for (let i = 1; i < abs.length; i++) ctx.lineTo(abs[i][0], abs[i][1]);
             ctx.stroke();
-            // Dark crack layer
+            // Dark line
             ctx.strokeStyle = '#052e16';
-            ctx.lineWidth = width;
+            ctx.lineWidth = c.width;
             ctx.beginPath();
-            ctx.moveTo(pts[0][0], pts[0][1]);
-            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+            ctx.moveTo(abs[0][0], abs[0][1]);
+            for (let i = 1; i < abs.length; i++) ctx.lineTo(abs[i][0], abs[i][1]);
             ctx.stroke();
           }
 
-          if (L.hp <= 2) {
-            // Single visible crack
-            crack([
-              [L.x - hw * 0.15, L.topY + sz * 0.25],
-              [L.x + hw * 0.1,  L.topY + sz * 0.45],
-              [L.x - hw * 0.12, L.topY + sz * 0.65],
-            ], 2.5);
-          }
-          if (L.hp <= 1) {
-            // Big main crack running full length
-            crack([
-              [L.x + hw * 0.1,  L.topY + sz * 0.1],
-              [L.x - hw * 0.15, L.topY + sz * 0.3],
-              [L.x + hw * 0.2,  L.topY + sz * 0.55],
-              [L.x - hw * 0.05, L.topY + sz * 0.75],
-              [L.x + hw * 0.05, L.topY + sz * 0.92],
-            ], 3);
-            // Branch cracks
-            crack([
-              [L.x - hw * 0.15, L.topY + sz * 0.3],
-              [L.x - hw * 0.45, L.topY + sz * 0.4],
-            ], 2);
-            crack([
-              [L.x + hw * 0.2,  L.topY + sz * 0.55],
-              [L.x + hw * 0.5,  L.topY + sz * 0.48],
-            ], 2);
-            crack([
-              [L.x - hw * 0.05, L.topY + sz * 0.75],
-              [L.x - hw * 0.35, L.topY + sz * 0.82],
-            ], 1.5);
-          }
+          if (L.cracks1) L.cracks1.forEach(drawCrack);
+          if (L.cracks2) L.cracks2.forEach(drawCrack);
           ctx.restore();
         }
       }
@@ -656,6 +663,8 @@
               // Damage the landed green spike
               spawnShatter(s.x, s.y + s.size * 0.5, s.size, s.color);
               L.hp--;
+              if (L.hp === 2) L.cracks1 = generateCracks(1, 2);
+              if (L.hp === 1) L.cracks2 = generateCracks(2, 3);
               if (L.hp <= 0) {
                 spawnShatter(L.x, L.topY, L.size, 'green');
                 landed.splice(j, 1);
