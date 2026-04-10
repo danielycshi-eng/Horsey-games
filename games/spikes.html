@@ -137,29 +137,49 @@
       osc.start(); osc.stop(audioCtx.currentTime + duration);
     }
 
-    // Small crash — gray spike hits ground
-    function sndCrashSmall() {
-      playNoise(0.15, 0.25, 2000, 2);
+    // Phoom — spike impacts ground (cave stalactite crash feel)
+    function sndPhoom() {
+      ensureAudio();
+      const t = audioCtx.currentTime;
+      // Low thud that drops in pitch
+      const osc = audioCtx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(120, t);
+      osc.frequency.exponentialRampToValueAtTime(35, t + 0.2);
+      const gain = audioCtx.createGain();
+      gain.gain.setValueAtTime(0.35, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.start(); osc.stop(t + 0.25);
+      // Short filtered noise for the debris/dust
+      playNoise(0.1, 0.12, 800, 1);
     }
 
-    // Tink — green spike takes damage
+    // Tink — green spike takes damage (short, sharp, stone-on-stone)
     function sndTink() {
       ensureAudio();
-      const osc = audioCtx.createOscillator();
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(1800, audioCtx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.08);
+      const t = audioCtx.currentTime;
+      // Very short noise burst — like stone chipping
+      const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.04, audioCtx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1);
+      const src = audioCtx.createBufferSource();
+      src.buffer = buf;
+      const filt = audioCtx.createBiquadFilter();
+      filt.type = 'bandpass';
+      filt.frequency.value = 4000;
+      filt.Q.value = 5;
       const gain = audioCtx.createGain();
-      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
-      osc.connect(gain); gain.connect(audioCtx.destination);
-      osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0.3, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+      src.connect(filt); filt.connect(gain); gain.connect(audioCtx.destination);
+      src.start(); src.stop(t + 0.05);
     }
 
-    // Crash — green spike breaks
+    // Green spike breaks — phoom + extra crumble
     function sndCrashBig() {
-      playNoise(0.3, 0.35, 3000, 3);
-      playTone(200, 0.15, 0.15, 'sawtooth');
+      sndPhoom();
+      playNoise(0.2, 0.2, 1200, 2);
     }
 
     // Bling — red spike splits
@@ -800,6 +820,7 @@
           if (s.color === 'green') {
             // Green spike lands half in ground
             landed.push({ x: s.x, topY: groundY - s.size * 0.5, size: s.size, stack: 1, hp: 3 });
+            sndPhoom();
           } else if (s.color === 'yellow') {
             // Yellow spike explodes on ground
             spawnShatter(s.x, groundY, s.size, 'yellow');
@@ -822,7 +843,7 @@
           } else {
             // Regular spike or final red gen: shatter
             spawnShatter(s.x, groundY, s.size, s.color);
-            sndCrashSmall();
+            sndPhoom();
           }
           spikes.splice(i, 1);
           continue;
