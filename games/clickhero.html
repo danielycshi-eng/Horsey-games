@@ -149,15 +149,14 @@
 
     // --- Multi-note thresholds: [score, maxNotes, chance] ---
     const NOTE_TIERS = [
-      [250, 9, 0.08],
-      [200, 8, 0.10],
-      [170, 7, 0.12],
-      [140, 6, 0.15],
-      [100, 5, 0.18],
-      [70,  4, 0.22],
-      [50,  3, 0.28],
-      [30,  2, 0.40],
+      [260, 7, 0.003],
+      [210, 6, 0.01],
+      [160, 5, 0.03],
+      [120, 4, 0.06],
+      [80,  3, 0.12],
+      [40,  2, 0.20],
     ];
+    const SIMULTANEOUS_CHANCE = 0.20; // 20% chance notes fall together, otherwise staggered
 
     // --- State ---
     let score, misses, combo, bestCombo;
@@ -203,7 +202,7 @@
       let count = 1;
       for (const [threshold, maxN, chance] of NOTE_TIERS) {
         if (score >= threshold && Math.random() < chance) {
-          count = Math.min(maxN, 1 + Math.floor(Math.random() * maxN));
+          count = 2 + Math.floor(Math.random() * (maxN - 1)); // 2 to maxN
           break;
         }
       }
@@ -214,9 +213,12 @@
         const j = Math.floor(Math.random() * (i + 1));
         [available[i], available[j]] = [available[j], available[i]];
       }
+      // 20% simultaneous, 80% staggered (spread out vertically)
+      const simultaneous = count === 1 || Math.random() < SIMULTANEOUS_CHANCE;
       notes = [];
       for (let i = 0; i < count; i++) {
-        notes.push({ lane: available[i], y: -NOTE_RADIUS });
+        const staggerY = simultaneous ? 0 : i * (NOTE_RADIUS * 4 + 20);
+        notes.push({ lane: available[i], y: -NOTE_RADIUS - staggerY });
       }
     }
 
@@ -420,10 +422,7 @@
       // Find note in this lane
       const idx = notes.findIndex(n => n.lane === lane);
       if (idx === -1) {
-        // Wrong lane = miss
-        addFloatingText('WRONG', laneX(lane), hitZoneY - 40, '#ef4444');
-        soundMiss();
-        onMissNote(null);
+        // No note in this lane — just ignore
         return;
       }
 
