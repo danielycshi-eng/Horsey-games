@@ -422,20 +422,24 @@
     }
 
     // --- Game loop ---
+    let started = false;
+
     function loop() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      drawLanes();
-      drawHitZone();
+      if (started) {
+        drawLanes();
+        drawHitZone();
 
-      if (gameRunning) update();
+        if (gameRunning) update();
 
-      drawNote();
-      drawParticles();
-      updateParticles();
-      drawFloatingTexts();
-      drawFlash();
-      drawHUD();
+        drawNote();
+        drawParticles();
+        updateParticles();
+        drawFloatingTexts();
+        drawFlash();
+        drawHUD();
+      }
 
       requestAnimationFrame(loop);
     }
@@ -447,6 +451,7 @@
         if (!gameRunning && !gameOverFlag) {
           // Start game
           overlay.classList.add('hidden');
+          started = true;
           init();
           return;
         }
@@ -457,6 +462,7 @@
 
     overlayBtn.addEventListener('click', () => {
       overlay.classList.add('hidden');
+      started = true;
       init();
     });
 
