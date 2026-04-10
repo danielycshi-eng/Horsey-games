@@ -100,6 +100,111 @@
     const ovTime = document.getElementById('ov-time');
     const ovBtn = document.getElementById('ov-btn');
 
+    // --- Audio ---
+    let audioCtx;
+    function ensureAudio() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    function playNoise(duration, volume, filterFreq, filterQ) {
+      ensureAudio();
+      const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * duration, audioCtx.sampleRate);
+      const data = buf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1);
+      const src = audioCtx.createBufferSource();
+      src.buffer = buf;
+      const filt = audioCtx.createBiquadFilter();
+      filt.type = 'lowpass';
+      filt.frequency.value = filterFreq;
+      filt.Q.value = filterQ || 1;
+      const gain = audioCtx.createGain();
+      gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+      src.connect(filt); filt.connect(gain); gain.connect(audioCtx.destination);
+      src.start(); src.stop(audioCtx.currentTime + duration);
+    }
+
+    function playTone(freq, duration, volume, type) {
+      ensureAudio();
+      const osc = audioCtx.createOscillator();
+      osc.type = type || 'sine';
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      const gain = audioCtx.createGain();
+      gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.start(); osc.stop(audioCtx.currentTime + duration);
+    }
+
+    // Small crash — gray spike hits ground
+    function sndCrashSmall() {
+      playNoise(0.15, 0.25, 2000, 2);
+    }
+
+    // Tink — green spike takes damage
+    function sndTink() {
+      ensureAudio();
+      const osc = audioCtx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(1800, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.08);
+      const gain = audioCtx.createGain();
+      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+    }
+
+    // Crash — green spike breaks
+    function sndCrashBig() {
+      playNoise(0.3, 0.35, 3000, 3);
+      playTone(200, 0.15, 0.15, 'sawtooth');
+    }
+
+    // Bling — red spike splits
+    function sndBling() {
+      ensureAudio();
+      const t = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(600, t);
+      osc.frequency.exponentialRampToValueAtTime(1400, t + 0.12);
+      const gain = audioCtx.createGain();
+      gain.gain.setValueAtTime(0.25, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.start(); osc.stop(t + 0.2);
+      // Second harmonic
+      const osc2 = audioCtx.createOscillator();
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(900, t + 0.03);
+      osc2.frequency.exponentialRampToValueAtTime(1800, t + 0.15);
+      const gain2 = audioCtx.createGain();
+      gain2.gain.setValueAtTime(0.15, t + 0.03);
+      gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+      osc2.connect(gain2); gain2.connect(audioCtx.destination);
+      osc2.start(t + 0.03); osc2.stop(t + 0.2);
+    }
+
+    // Big boom — yellow spike explosion
+    function sndBoom() {
+      ensureAudio();
+      const t = audioCtx.currentTime;
+      // Low rumble
+      const osc = audioCtx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(80, t);
+      osc.frequency.exponentialRampToValueAtTime(30, t + 0.5);
+      const gain = audioCtx.createGain();
+      gain.gain.setValueAtTime(0.4, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.start(); osc.stop(t + 0.5);
+      // Burst noise
+      playNoise(0.35, 0.4, 1500, 1);
+    }
+
     // --- Constants ---
     const GROUND_H = 40;
     const GRAVITY = 0.6;
@@ -669,16 +774,18 @@
               // Yellow explodes on contact with landed green
               spawnShatter(s.x, s.y + s.size * 0.5, s.size, 'yellow');
               spawnExplosion(s.x, s.y + s.size * 0.5, s.size);
+              sndBoom();
             } else {
               // Damage the landed green spike
               spawnShatter(s.x, s.y + s.size * 0.5, s.size, s.color);
               L.hp--;
               spawnCrackBurst(L.x, L.topY, L.size);
-              if (L.hp === 2) L.cracks1 = generateCracks(1, 2);
-              if (L.hp === 1) L.cracks2 = generateCracks(2, 3);
+              if (L.hp === 2) { L.cracks1 = generateCracks(1, 2); sndTink(); }
+              if (L.hp === 1) { L.cracks2 = generateCracks(2, 3); sndTink(); }
               if (L.hp <= 0) {
                 spawnShatter(L.x, L.topY, L.size, 'green');
                 landed.splice(j, 1);
+                sndCrashBig();
               }
             }
             spikes.splice(i, 1);
@@ -697,6 +804,7 @@
             // Yellow spike explodes on ground
             spawnShatter(s.x, groundY, s.size, 'yellow');
             spawnExplosion(s.x, groundY, s.size);
+            sndBoom();
           } else if (s.color === 'red' && s.gen < 2) {
             // Red spike splits into two smaller spikes that bounce sideways
             const childSize = s.size * 0.7;
@@ -710,9 +818,11 @@
               x: s.x, y: groundY - childSize, size: childSize,
               speed: upSpeed, vx: bounceSpeed, color: 'red', gen: s.gen + 1,
             });
+            sndBling();
           } else {
             // Regular spike or final red gen: shatter
             spawnShatter(s.x, groundY, s.size, s.color);
+            sndCrashSmall();
           }
           spikes.splice(i, 1);
           continue;
