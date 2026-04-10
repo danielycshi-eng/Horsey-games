@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Click Hero - Horsey Games</title>
+  <link rel="stylesheet" href="../style.css">
+  <style>
+    body { overflow: hidden; margin: 0; background: #0a0e27; }
+    canvas { display: block; }
+
+    #overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+    }
+
+    #overlay.hidden { display: none; }
+
+    #overlay h1 {
+      font-size: 3rem;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, #a0c4ff, #4e7fff, #a0c4ff);
+      background-size: 200% 200%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: shimmer 3s ease-in-out infinite;
+    }
+
+    @keyframes shimmer {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    #overlay .sub { color: #6b8ecf; font-size: 1.1rem; margin-bottom: 0.5rem; }
+    #overlay .score-display { color: #4ade80; font-size: 1.8rem; font-weight: bold; margin-bottom: 1.5rem; }
+
+    #overlay button {
+      font-size: 1.2rem;
+      padding: 0.8rem 2.5rem;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-family: inherit;
+      color: #fff;
+      background: linear-gradient(135deg, #e94560, #c73652);
+      box-shadow: 0 0 20px rgba(233, 69, 96, 0.3);
+      transition: box-shadow 0.3s, transform 0.15s;
+    }
+
+    #overlay button:hover {
+      box-shadow: 0 0 35px rgba(233, 69, 96, 0.5);
+      transform: scale(1.05);
+    }
+  </style>
+</head>
+<body>
+  <a href="../games.html" class="back-link">&larr; All Games</a>
+  <canvas id="game"></canvas>
+  <div id="overlay">
+    <h1 id="overlay-title">Click Hero</h1>
+    <p class="sub" id="overlay-sub">Press any number key (1-9) to start</p>
+    <div class="score-display hidden" id="overlay-score"></div>
+    <button class="hidden" id="overlay-btn">Play Again</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const overlay = document.getElementById('overlay');
+    const overlayTitle = document.getElementById('overlay-title');
+    const overlaySub = document.getElementById('overlay-sub');
+    const overlayScore = document.getElementById('overlay-score');
+    const overlayBtn = document.getElementById('overlay-btn');
+
+    // --- Constants ---
+    const LANE_COUNT = 9;
+    const LANE_COLORS = [
+      '#ef4444', // red
+      '#f97316', // orange
+      '#eab308', // yellow
+      '#84cc16', // lime
+      '#22c55e', // green
+      '#06b6d4', // cyan
+      '#3b82f6', // blue
+      '#6366f1', // indigo
+      '#a855f7', // violet
+    ];
+    const MAX_MISSES = 7;
+    const NOTE_RADIUS = 18;
+    const PERFECT_HALF = 20;  // half-height of perfect zone
+    const GOOD_HALF = 50;     // half-height of good zone
+    const HIT_ZONE_Y_OFFSET = 100; // distance from bottom
+
+    // --- Difficulty ---
+    const BASE_SPEED = 2.5;   // pixels per frame
+    const SPEED_STEP = 0.3;   // speed increase per tier
+    const POINTS_PER_TIER = 10;
+
+    // --- State ---
+    let score, misses, combo, bestCombo;
+    let note; // { lane, y }
+    let speed;
+    let gameRunning, gameOverFlag;
+    let hitZoneY;
+    let laneWidth, startX;
+    let particles;
+    let flashAlpha, flashColor;
+    let laneFlash; // per-lane flash for key press feedback
+
+    // --- Resize ---
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      hitZoneY = canvas.height - HIT_ZONE_Y_OFFSET;
+      laneWidth = Math.min(80, (canvas.width - 40) / LANE_COUNT);
+      startX = (canvas.width - laneWidth * LANE_COUNT) / 2;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // --- Init ---
+    function init() {
+      score = 0;
+      misses = 0;
+      combo = 0;
+      bestCombo = 0;
+      speed = BASE_SPEED;
+      note = null;
+      gameRunning = true;
+      gameOverFlag = false;
+      particles = [];
+      flashAlpha = 0;
+      flashColor = '';
+      laneFlash = new Array(LANE_COUNT).fill(0);
+      spawnNote();
+    }
+
+    function spawnNote() {
+      const lane = Math.floor(Math.random() * LANE_COUNT);
+      note = { lane, y: -NOTE_RADIUS };
+    }
+
+    function laneX(lane) {
+      return startX + lane * laneWidth + laneWidth / 2;
+    }
+
+    // --- Particles ---
+    function spawnHitParticles(x, y, color, count) {
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const spd = 2 + Math.random() * 4;
+        particles.push({
+          x, y,
+          vx: Math.cos(angle) * spd,
+          vy: Math.sin(angle) * spd,
+          life: 1,
+          decay: 0.02 + Math.random() * 0.03,
+          color,
+          radius: 2 + Math.random() * 4,
+        });
+      }
+    }
+
+    function updateParticles() {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= p.decay;
+        if (p.life <= 0) particles.splice(i, 1);
+      }
+    }
+
+    function drawParticles() {
+      for (const p of particles) {
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // --- Drawing ---
+    function drawLanes() {
+      for (let i = 0; i < LANE_COUNT; i++) {
+        const x = laneX(i);
+        // Lane line
+        ctx.strokeStyle = `rgba(255, 255, 255, 0.06)`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+
+        // Lane flash on key press
+        if (laneFlash[i] > 0) {
+          ctx.fillStyle = LANE_COLORS[i];
+          ctx.globalAlpha = laneFlash[i] * 0.15;
+          ctx.fillRect(startX + i * laneWidth, 0, laneWidth, canvas.height);
+          ctx.globalAlpha = 1;
+          laneFlash[i] = Math.max(0, laneFlash[i] - 0.04);
+        }
+
+        // Lane number at bottom
+        ctx.fillStyle = `rgba(255, 255, 255, 0.3)`;
+        ctx.font = 'bold 16px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(i + 1, x, canvas.height - 20);
+      }
+    }
+
+    function drawHitZone() {
+      const x = startX;
+      const w = laneWidth * LANE_COUNT;
+
+      // Good zone (outer)
+      ctx.fillStyle = 'rgba(78, 127, 255, 0.08)';
+      ctx.fillRect(x, hitZoneY - GOOD_HALF, w, GOOD_HALF * 2);
+
+      // Perfect zone (inner)
+      ctx.fillStyle = 'rgba(78, 127, 255, 0.15)';
+      ctx.fillRect(x, hitZoneY - PERFECT_HALF, w, PERFECT_HALF * 2);
+
+      // Glow line at center
+      ctx.strokeStyle = 'rgba(78, 127, 255, 0.4)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x, hitZoneY);
+      ctx.lineTo(x + w, hitZoneY);
+      ctx.stroke();
+
+      // Zone labels
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('PERFECT', x + 6, hitZoneY + 4);
+    }
+
+    function drawNote() {
+      if (!note) return;
+      const x = laneX(note.lane);
+      const color = LANE_COLORS[note.lane];
+
+      // Glow
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 20;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, note.y, NOTE_RADIUS, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Inner highlight
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.beginPath();
+      ctx.arc(x, note.y, NOTE_RADIUS * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Lane number on the note
+      ctx.fillStyle = '#fff';
+      ctx.font = `bold ${NOTE_RADIUS}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(note.lane + 1, x, note.y);
+      ctx.textBaseline = 'alphabetic';
+    }
+
+    function drawHUD() {
+      // Score
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 22px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(`Score: ${score}`, 20, 40);
+
+      // Combo
+      if (combo > 1) {
+        ctx.fillStyle = '#4ade80';
+        ctx.font = 'bold 18px sans-serif';
+        ctx.fillText(`Combo x${combo}`, 20, 65);
+      }
+
+      // Misses as X marks
+      ctx.textAlign = 'right';
+      ctx.font = '20px sans-serif';
+      for (let i = 0; i < MAX_MISSES; i++) {
+        ctx.fillStyle = i < misses ? '#ef4444' : 'rgba(255, 255, 255, 0.15)';
+        ctx.fillText('✕', canvas.width - 20 - (MAX_MISSES - 1 - i) * 28, 40);
+      }
+
+      // Speed tier indicator
+      const tier = Math.floor(score / POINTS_PER_TIER);
+      if (tier > 0) {
+        ctx.fillStyle = '#f59e0b';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(`Speed ${tier + 1}`, canvas.width - 20, 65);
+      }
+    }
+
+    function drawFlash() {
+      if (flashAlpha > 0) {
+        ctx.fillStyle = flashColor;
+        ctx.globalAlpha = flashAlpha;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.globalAlpha = 1;
+        flashAlpha = Math.max(0, flashAlpha - 0.03);
+      }
+    }
+
+    // Floating text
+    let floatingTexts = [];
+
+    function addFloatingText(text, x, y, color) {
+      floatingTexts.push({ text, x, y, color, life: 1 });
+    }
+
+    function drawFloatingTexts() {
+      for (let i = floatingTexts.length - 1; i >= 0; i--) {
+        const t = floatingTexts[i];
+        ctx.globalAlpha = t.life;
+        ctx.fillStyle = t.color;
+        ctx.font = 'bold 24px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(t.text, t.x, t.y);
+        t.y -= 1.5;
+        t.life -= 0.02;
+        if (t.life <= 0) floatingTexts.splice(i, 1);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // --- Hit logic ---
+    function tryHit(lane) {
+      if (!gameRunning || gameOverFlag) return;
+      if (!note || note.lane !== lane) return;
+
+      laneFlash[lane] = 1;
+
+      const dist = Math.abs(note.y - hitZoneY);
+      const x = laneX(lane);
+      const color = LANE_COLORS[lane];
+
+      if (dist <= PERFECT_HALF) {
+        // Perfect
+        score += 2;
+        combo++;
+        if (combo > bestCombo) bestCombo = combo;
+        spawnHitParticles(x, hitZoneY, color, 20);
+        spawnHitParticles(x, hitZoneY, '#fff', 8);
+        addFloatingText('PERFECT +2', x, hitZoneY - 40, '#4ade80');
+        flashAlpha = 0.08;
+        flashColor = color;
+        note = null;
+        updateSpeed();
+        spawnNote();
+      } else if (dist <= GOOD_HALF) {
+        // Good
+        score += 1;
+        combo++;
+        if (combo > bestCombo) bestCombo = combo;
+        spawnHitParticles(x, hitZoneY, color, 10);
+        addFloatingText('GOOD +1', x, hitZoneY - 40, '#facc15');
+        note = null;
+        updateSpeed();
+        spawnNote();
+      }
+      // If outside both zones, nothing happens — the note keeps falling
+    }
+
+    function onMiss() {
+      misses++;
+      combo = 0;
+      flashAlpha = 0.15;
+      flashColor = '#ef4444';
+      if (note) {
+        addFloatingText('MISS', laneX(note.lane), hitZoneY - 40, '#ef4444');
+      }
+      if (misses >= MAX_MISSES) {
+        gameOver();
+      } else {
+        note = null;
+        spawnNote();
+      }
+    }
+
+    function updateSpeed() {
+      const tier = Math.floor(score / POINTS_PER_TIER);
+      speed = BASE_SPEED + tier * SPEED_STEP;
+    }
+
+    function gameOver() {
+      gameOverFlag = true;
+      gameRunning = false;
+      overlayTitle.textContent = 'Game Over';
+      overlaySub.textContent = `Best combo: x${bestCombo}`;
+      overlayScore.textContent = `Score: ${score}`;
+      overlayScore.classList.remove('hidden');
+      overlayBtn.classList.remove('hidden');
+      overlayBtn.textContent = 'Play Again';
+      overlay.classList.remove('hidden');
+    }
+
+    // --- Update ---
+    function update() {
+      if (!gameRunning || !note) return;
+
+      note.y += speed;
+
+      // Missed — fell past good zone
+      if (note.y > hitZoneY + GOOD_HALF + NOTE_RADIUS) {
+        onMiss();
+      }
+    }
+
+    // --- Game loop ---
+    function loop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      drawLanes();
+      drawHitZone();
+
+      if (gameRunning) update();
+
+      drawNote();
+      drawParticles();
+      updateParticles();
+      drawFloatingTexts();
+      drawFlash();
+      drawHUD();
+
+      requestAnimationFrame(loop);
+    }
+
+    // --- Input ---
+    window.addEventListener('keydown', e => {
+      const key = parseInt(e.key);
+      if (key >= 1 && key <= 9) {
+        if (!gameRunning && !gameOverFlag) {
+          // Start game
+          overlay.classList.add('hidden');
+          init();
+          return;
+        }
+        laneFlash[key - 1] = 1;
+        tryHit(key - 1);
+      }
+    });
+
+    overlayBtn.addEventListener('click', () => {
+      overlay.classList.add('hidden');
+      init();
+    });
+
+    // --- Start ---
+    loop();
+  </script>
+</body>
+</html>
