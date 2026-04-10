@@ -343,19 +343,26 @@
     }
 
     // --- Draw Spike ---
-    function drawSpikeShape(x, y, size, green) {
+    const SPIKE_STYLES = {
+      gray:  { fill: '#64748b', glow: '#94a3b8', stroke: '#94a3b8' },
+      green: { fill: '#16a34a', glow: '#4ade80', stroke: '#4ade80' },
+      red:   { fill: '#dc2626', glow: '#f87171', stroke: '#f87171' },
+    };
+
+    function drawSpikeShape(x, y, size, color) {
       const halfW = size * 0.4;
+      const st = SPIKE_STYLES[color] || SPIKE_STYLES.gray;
       ctx.save();
-      ctx.shadowColor = green ? '#4ade80' : '#94a3b8';
+      ctx.shadowColor = st.glow;
       ctx.shadowBlur = 8;
-      ctx.fillStyle = green ? '#16a34a' : '#64748b';
+      ctx.fillStyle = st.fill;
       ctx.beginPath();
       ctx.moveTo(x, y + size); // bottom point
       ctx.lineTo(x - halfW, y);
       ctx.lineTo(x + halfW, y);
       ctx.closePath();
       ctx.fill();
-      ctx.strokeStyle = green ? '#4ade80' : '#94a3b8';
+      ctx.strokeStyle = st.stroke;
       ctx.lineWidth = 1;
       ctx.stroke();
       ctx.shadowBlur = 0;
@@ -363,7 +370,7 @@
     }
 
     function drawSpike(spike) {
-      drawSpikeShape(spike.x, spike.y, spike.size, spike.green);
+      drawSpikeShape(spike.x, spike.y, spike.size, spike.color);
     }
 
     function drawLanded() {
@@ -467,13 +474,18 @@
       const diff = getDifficulty();
       if (now - startTime >= SPIKE_START_DELAY && now - lastSpike >= diff.spawnInterval) {
         const spikeX = 30 + Math.random() * (w - 60);
-        const green = Math.random() < 0.10;
+        const roll = Math.random();
+        let color = 'gray';
+        if (roll < 0.01) color = 'red';       // 1% (10% of the 10% green chance)
+        else if (roll < 0.10) color = 'green'; // 9% green
         spikes.push({
           x: spikeX,
           y: -diff.spikeSize,
           size: diff.spikeSize,
           speed: diff.fallSpeed,
-          green,
+          vx: 0,
+          color,
+          gen: 0, // for red splits: 0 = original, 1 = first split, 2 = second split
         });
         lastSpike = now;
       }
@@ -481,7 +493,12 @@
       // Update spikes
       for (let i = spikes.length - 1; i >= 0; i--) {
         const s = spikes[i];
+        s.x += (s.vx || 0);
         s.y += s.speed;
+        // Apply gravity to bouncing red spikes
+        if (s.color === 'red' && s.gen > 0) {
+          s.speed += GRAVITY * 0.5;
+        }
 
         // Check collision with landed green spikes (top hit or side shield)
         let hitLanded = false;
@@ -499,7 +516,7 @@
           const xOverlap = sRight > lLeft && sLeft < lRight;
           const yOverlap = sTipY >= L.topY && s.y < lBottom;
           if (xOverlap && yOverlap) {
-            if (s.green) {
+            if (s.color === 'green') {
               // Stack on top
               landed.push({ x: s.x, topY: L.topY - s.size * 0.5, size: s.size, stack: L.stack + 1 });
             } else {
@@ -517,10 +534,24 @@
 
         // Hit ground
         if (s.y >= groundY) {
-          if (s.green) {
+          if (s.color === 'green') {
             // Green spike lands half in ground
             landed.push({ x: s.x, topY: groundY - s.size * 0.5, size: s.size, stack: 1 });
+          } else if (s.color === 'red' && s.gen < 2) {
+            // Red spike splits into two smaller spikes that bounce sideways
+            const childSize = s.size * 0.7;
+            const bounceSpeed = 3 + s.gen * 1.5;
+            const upSpeed = -(4 + s.gen * 2);
+            spikes.push({
+              x: s.x, y: groundY - childSize, size: childSize,
+              speed: upSpeed, vx: -bounceSpeed, color: 'red', gen: s.gen + 1,
+            });
+            spikes.push({
+              x: s.x, y: groundY - childSize, size: childSize,
+              speed: upSpeed, vx: bounceSpeed, color: 'red', gen: s.gen + 1,
+            });
           } else {
+            // Regular spike or final red gen: shatter
             spawnShatter(s.x, groundY, s.size);
           }
           spikes.splice(i, 1);
