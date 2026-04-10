@@ -95,8 +95,9 @@
     ];
     const MAX_MISSES = 7;
     const NOTE_RADIUS = 18;
-    const PERFECT_HALF = 20;  // half-height of perfect zone
-    const GOOD_HALF = 50;     // half-height of good zone
+    const PERFECT_PLUS = 4;   // half-height of perfect+ zone (dead center)
+    const PERFECT_HALF = 22;  // half-height of perfect zone
+    const GOOD_HALF = 80;     // half-height of good zone
     const HIT_ZONE_Y_OFFSET = 100; // distance from bottom
 
     // --- Difficulty ---
@@ -231,19 +232,17 @@
       ctx.fillStyle = 'rgba(78, 127, 255, 0.15)';
       ctx.fillRect(x, hitZoneY - PERFECT_HALF, w, PERFECT_HALF * 2);
 
+      // Perfect+ zone (center)
+      ctx.fillStyle = 'rgba(34, 211, 238, 0.12)';
+      ctx.fillRect(x, hitZoneY - PERFECT_PLUS, w, PERFECT_PLUS * 2);
+
       // Glow line at center
-      ctx.strokeStyle = 'rgba(78, 127, 255, 0.4)';
+      ctx.strokeStyle = 'rgba(34, 211, 238, 0.6)';
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(x, hitZoneY);
       ctx.lineTo(x + w, hitZoneY);
       ctx.stroke();
-
-      // Zone labels
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
-      ctx.font = '11px sans-serif';
-      ctx.textAlign = 'left';
-      ctx.fillText('PERFECT', x + 6, hitZoneY + 4);
     }
 
     function drawNote() {
@@ -342,15 +341,35 @@
     // --- Hit logic ---
     function tryHit(lane) {
       if (!gameRunning || gameOverFlag) return;
-      if (!note || note.lane !== lane) return;
+      if (!note) return;
 
       laneFlash[lane] = 1;
 
+      // Wrong lane = miss
+      if (note.lane !== lane) {
+        onMiss();
+        return;
+      }
+
+      // Use the note's center Y as the "invisible line" for detection
       const dist = Math.abs(note.y - hitZoneY);
       const x = laneX(lane);
       const color = LANE_COLORS[lane];
 
-      if (dist <= PERFECT_HALF) {
+      if (dist <= PERFECT_PLUS) {
+        // Perfect+ (dead center)
+        score += 3;
+        combo++;
+        if (combo > bestCombo) bestCombo = combo;
+        spawnHitParticles(x, hitZoneY, color, 30);
+        spawnHitParticles(x, hitZoneY, '#fff', 15);
+        addFloatingText('PERFECT+ +3', x, hitZoneY - 40, '#22d3ee');
+        flashAlpha = 0.12;
+        flashColor = color;
+        note = null;
+        updateSpeed();
+        spawnNote();
+      } else if (dist <= PERFECT_HALF) {
         // Perfect
         score += 2;
         combo++;
@@ -373,8 +392,10 @@
         note = null;
         updateSpeed();
         spawnNote();
+      } else {
+        // Too early = miss
+        onMiss();
       }
-      // If outside both zones, nothing happens — the note keeps falling
     }
 
     function onMiss() {
