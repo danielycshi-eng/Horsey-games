@@ -445,8 +445,44 @@
 
     function drawLanded() {
       for (const L of landed) {
-        // Draw half-buried: top half visible above topY
         drawSpikeShape(L.x, L.topY, L.size, 'green');
+        // Draw cracks based on damage
+        if (L.hp < 3) {
+          const halfW = L.size * 0.4;
+          ctx.save();
+          ctx.strokeStyle = '#0a0e27';
+          ctx.lineCap = 'round';
+          if (L.hp <= 2) {
+            // Small crack
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(L.x - halfW * 0.2, L.topY + L.size * 0.3);
+            ctx.lineTo(L.x + halfW * 0.1, L.topY + L.size * 0.5);
+            ctx.lineTo(L.x - halfW * 0.1, L.topY + L.size * 0.65);
+            ctx.stroke();
+          }
+          if (L.hp <= 1) {
+            // Big crack + extra small cracks
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(L.x + halfW * 0.15, L.topY + L.size * 0.15);
+            ctx.lineTo(L.x - halfW * 0.05, L.topY + L.size * 0.4);
+            ctx.lineTo(L.x + halfW * 0.2, L.topY + L.size * 0.7);
+            ctx.lineTo(L.x, L.topY + L.size * 0.9);
+            ctx.stroke();
+            // Extra small cracks branching off
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(L.x - halfW * 0.05, L.topY + L.size * 0.4);
+            ctx.lineTo(L.x - halfW * 0.3, L.topY + L.size * 0.5);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(L.x + halfW * 0.2, L.topY + L.size * 0.7);
+            ctx.lineTo(L.x + halfW * 0.35, L.topY + L.size * 0.6);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
       }
     }
 
@@ -589,16 +625,19 @@
           if (xOverlap && yOverlap) {
             if (s.color === 'green') {
               // Stack on top
-              landed.push({ x: s.x, topY: L.topY - s.size * 0.5, size: s.size, stack: L.stack + 1 });
+              landed.push({ x: s.x, topY: L.topY - s.size * 0.5, size: s.size, stack: L.stack + 1, hp: 3 });
             } else if (s.color === 'yellow') {
               // Yellow explodes on contact with landed green
               spawnShatter(s.x, s.y + s.size * 0.5, s.size, 'yellow');
               spawnExplosion(s.x, s.y + s.size * 0.5, s.size);
             } else {
-              // Regular spike: both shatter
-              spawnShatter(L.x, L.topY, L.size, 'green');
+              // Damage the landed green spike
               spawnShatter(s.x, s.y + s.size * 0.5, s.size, s.color);
-              landed.splice(j, 1);
+              L.hp--;
+              if (L.hp <= 0) {
+                spawnShatter(L.x, L.topY, L.size, 'green');
+                landed.splice(j, 1);
+              }
             }
             spikes.splice(i, 1);
             hitLanded = true;
@@ -611,7 +650,7 @@
         if (s.y >= groundY) {
           if (s.color === 'green') {
             // Green spike lands half in ground
-            landed.push({ x: s.x, topY: groundY - s.size * 0.5, size: s.size, stack: 1 });
+            landed.push({ x: s.x, topY: groundY - s.size * 0.5, size: s.size, stack: 1, hp: 3 });
           } else if (s.color === 'yellow') {
             // Yellow spike explodes on ground
             spawnShatter(s.x, groundY, s.size, 'yellow');
