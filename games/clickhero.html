@@ -147,9 +147,21 @@
     const SPEED_STEP = 0.4;   // speed increase per tier
     const POINTS_PER_TIER = 10;
 
+    // --- Multi-note thresholds: [score, maxNotes, chance] ---
+    const NOTE_TIERS = [
+      [250, 9, 0.08],
+      [200, 8, 0.10],
+      [170, 7, 0.12],
+      [140, 6, 0.15],
+      [100, 5, 0.18],
+      [70,  4, 0.22],
+      [50,  3, 0.28],
+      [30,  2, 0.40],
+    ];
+
     // --- State ---
     let score, misses, combo, bestCombo;
-    let note; // { lane, y }
+    let notes; // array of { lane, y }
     let speed;
     let gameRunning, gameOverFlag;
     let hitZoneY;
@@ -176,19 +188,36 @@
       combo = 0;
       bestCombo = 0;
       speed = BASE_SPEED;
-      note = null;
+      notes = [];
       gameRunning = true;
       gameOverFlag = false;
       particles = [];
       flashAlpha = 0;
       flashColor = '';
       laneFlash = new Array(LANE_COUNT).fill(0);
-      spawnNote();
+      spawnNotes();
     }
 
-    function spawnNote() {
-      const lane = Math.floor(Math.random() * LANE_COUNT);
-      note = { lane, y: -NOTE_RADIUS };
+    function spawnNotes() {
+      // Determine how many notes to spawn
+      let count = 1;
+      for (const [threshold, maxN, chance] of NOTE_TIERS) {
+        if (score >= threshold && Math.random() < chance) {
+          count = Math.min(maxN, 1 + Math.floor(Math.random() * maxN));
+          break;
+        }
+      }
+      // Pick unique lanes
+      const available = [];
+      for (let i = 0; i < LANE_COUNT; i++) available.push(i);
+      for (let i = available.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [available[i], available[j]] = [available[j], available[i]];
+      }
+      notes = [];
+      for (let i = 0; i < count; i++) {
+        notes.push({ lane: available[i], y: -NOTE_RADIUS });
+      }
     }
 
     function laneX(lane) {
@@ -287,33 +316,34 @@
       ctx.stroke();
     }
 
-    function drawNote() {
-      if (!note) return;
-      const x = laneX(note.lane);
-      const color = LANE_COLORS[note.lane];
+    function drawNotes() {
+      for (const n of notes) {
+        const x = laneX(n.lane);
+        const color = LANE_COLORS[n.lane];
 
-      // Glow
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 20;
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(x, note.y, NOTE_RADIUS, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.shadowBlur = 0;
+        // Glow
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 20;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(x, n.y, NOTE_RADIUS, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
 
-      // Inner highlight
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-      ctx.beginPath();
-      ctx.arc(x, note.y, NOTE_RADIUS * 0.5, 0, Math.PI * 2);
-      ctx.fill();
+        // Inner highlight
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.beginPath();
+        ctx.arc(x, n.y, NOTE_RADIUS * 0.5, 0, Math.PI * 2);
+        ctx.fill();
 
-      // Lane number on the note
-      ctx.fillStyle = '#fff';
-      ctx.font = `bold ${NOTE_RADIUS}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(note.lane + 1, x, note.y);
-      ctx.textBaseline = 'alphabetic';
+        // Lane number on the note
+        ctx.fillStyle = '#fff';
+        ctx.font = `bold ${NOTE_RADIUS}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(n.lane + 1, x, n.y);
+        ctx.textBaseline = 'alphabetic';
+      }
     }
 
     function drawHUD() {
@@ -383,25 +413,26 @@
     // --- Hit logic ---
     function tryHit(lane) {
       if (!gameRunning || gameOverFlag) return;
-      if (!note) return;
+      if (notes.length === 0) return;
 
       laneFlash[lane] = 1;
 
-      // Wrong lane = miss
-      if (note.lane !== lane) {
+      // Find note in this lane
+      const idx = notes.findIndex(n => n.lane === lane);
+      if (idx === -1) {
+        // Wrong lane = miss
         addFloatingText('WRONG', laneX(lane), hitZoneY - 40, '#ef4444');
         soundMiss();
-        onMiss();
+        onMissNote(null);
         return;
       }
 
-      // Use the note's center Y as the "invisible line" for detection
-      const dist = Math.abs(note.y - hitZoneY);
+      const n = notes[idx];
+      const dist = Math.abs(n.y - hitZoneY);
       const x = laneX(lane);
       const color = LANE_COLORS[lane];
 
       if (dist <= PERFECT_PLUS) {
-        // Perfect+ (dead center)
         score += 3;
         combo++;
         if (combo > bestCombo) bestCombo = combo;
@@ -411,11 +442,10 @@
         flashAlpha = 0.12;
         flashColor = color;
         soundPerfectPlus();
-        note = null;
+        notes.splice(idx, 1);
         updateSpeed();
-        spawnNote();
+        if (notes.length === 0) spawnNotes();
       } else if (dist <= PERFECT_HALF) {
-        // Perfect
         score += 2;
         combo++;
         if (combo > bestCombo) bestCombo = combo;
@@ -425,41 +455,39 @@
         flashAlpha = 0.08;
         flashColor = color;
         soundPerfect();
-        note = null;
+        notes.splice(idx, 1);
         updateSpeed();
-        spawnNote();
+        if (notes.length === 0) spawnNotes();
       } else if (dist <= GOOD_HALF) {
-        // Good
         score += 1;
         combo++;
         if (combo > bestCombo) bestCombo = combo;
         spawnHitParticles(x, hitZoneY, color, 10);
         addFloatingText('GOOD +1', x, hitZoneY - 40, '#facc15');
         soundGood();
-        note = null;
+        notes.splice(idx, 1);
         updateSpeed();
-        spawnNote();
+        if (notes.length === 0) spawnNotes();
       } else {
-        // Too early = miss
-        addFloatingText('TOO EARLY', x, note.y, '#ef4444');
+        addFloatingText('TOO EARLY', x, n.y, '#ef4444');
         soundMiss();
-        onMiss();
+        onMissNote(idx);
       }
     }
 
-    function onMiss() {
+    function onMissNote(idx) {
       misses++;
       combo = 0;
       flashAlpha = 0.15;
       flashColor = '#ef4444';
-      if (note) {
-        addFloatingText('MISS', laneX(note.lane), hitZoneY - 40, '#ef4444');
+      if (idx !== null && notes[idx]) {
+        addFloatingText('MISS', laneX(notes[idx].lane), hitZoneY - 40, '#ef4444');
+        notes.splice(idx, 1);
       }
       if (misses >= MAX_MISSES) {
         gameOver();
-      } else {
-        note = null;
-        spawnNote();
+      } else if (notes.length === 0) {
+        spawnNotes();
       }
     }
 
@@ -482,15 +510,27 @@
 
     // --- Update ---
     function update() {
-      if (!gameRunning || !note) return;
+      if (!gameRunning || notes.length === 0) return;
 
-      note.y += speed;
-
-      // Missed — fell past good zone
-      if (note.y > hitZoneY + GOOD_HALF + NOTE_RADIUS) {
-        soundMiss();
-        onMiss();
+      for (const n of notes) {
+        n.y += speed;
       }
+
+      // Check for notes that fell past good zone
+      for (let i = notes.length - 1; i >= 0; i--) {
+        if (notes[i].y > hitZoneY + GOOD_HALF + NOTE_RADIUS) {
+          addFloatingText('MISS', laneX(notes[i].lane), hitZoneY - 40, '#ef4444');
+          soundMiss();
+          notes.splice(i, 1);
+          misses++;
+          combo = 0;
+          flashAlpha = 0.15;
+          flashColor = '#ef4444';
+          if (misses >= MAX_MISSES) { gameOver(); return; }
+        }
+      }
+
+      if (notes.length === 0) spawnNotes();
     }
 
     // --- Game loop ---
@@ -505,7 +545,7 @@
 
         if (gameRunning) update();
 
-        drawNote();
+        drawNotes();
         drawParticles();
         updateParticles();
         drawFloatingTexts();
