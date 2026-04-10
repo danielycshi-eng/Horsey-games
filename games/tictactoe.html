@@ -38,8 +38,8 @@
     .cell:hover:not(.taken) { background: #0f3460; transform: scale(1.05); }
     .cell.taken { cursor: default; }
 
-    .cell.x { color: #e94560; }
-    .cell.o { color: #a0c4ff; }
+    .cell.x { color: #e94560; background: rgba(233, 69, 96, 0.08); }
+    .cell.o { color: #a0c4ff; background: rgba(160, 196, 255, 0.08); }
     .cell.win { background: #0f3460; outline: 3px solid #f5a623; }
 
     #restart {
@@ -56,13 +56,27 @@
 
     #restart:hover { background: #c73652; }
 
-    #difficulty {
+    #mode-toggle {
       margin-top: 1rem;
       display: flex;
       gap: 1.2rem;
       font-size: 0.95rem;
       color: #aaa;
     }
+
+    #mode-toggle label { cursor: pointer; display: flex; align-items: center; gap: 4px; }
+    #mode-toggle label:has(input:checked) { color: #e94560; }
+
+    #difficulty {
+      margin-top: 0.6rem;
+      display: flex;
+      gap: 1.2rem;
+      font-size: 0.95rem;
+      color: #aaa;
+      transition: opacity 0.3s;
+    }
+
+    #difficulty.hidden { opacity: 0.3; pointer-events: none; }
 
     #difficulty label { cursor: pointer; display: flex; align-items: center; gap: 4px; }
     #difficulty label:has(input:checked) { color: #e94560; }
@@ -76,48 +90,93 @@
     }
 
     #score span { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-    #score b { font-size: 1.5rem; color: #eee; }
+    #score b { font-size: 1.5rem; }
+    #xWins { color: #e94560; }
+    #oWins { color: #a0c4ff; }
+    #draws { color: #eee; }
+
+    /* Edge flash overlay */
+    #flash {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 50;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    #flash.active { opacity: 1; animation: flashPulse 0.6s ease-out forwards; }
+    @keyframes flashPulse {
+      0% { opacity: 0.8; }
+      100% { opacity: 0; }
+    }
   </style>
 </head>
 <body>
   <a href="../games.html" class="back-link">&larr; All Games</a>
   <h1>Tic Tac Toe</h1>
-  <div id="status">Your turn</div>
+  <div id="status">X's turn</div>
   <div id="board"></div>
   <button id="restart">Restart</button>
+  <div id="mode-toggle">
+    <label><input type="radio" name="mode" value="bot" checked> vs Bot</label>
+    <label><input type="radio" name="mode" value="2p"> 2 Player</label>
+  </div>
   <div id="difficulty">
     <label><input type="radio" name="diff" value="easy"> Easy</label>
     <label><input type="radio" name="diff" value="medium" checked> Medium</label>
     <label><input type="radio" name="diff" value="hard"> Hard</label>
   </div>
   <div id="score">
-    <span>You (X)<b id="xWins">0</b></span>
+    <span id="xLabel">X<b id="xWins">0</b></span>
     <span>Draws<b id="draws">0</b></span>
-    <span>Bot (O)<b id="oWins">0</b></span>
+    <span id="oLabel">O<b id="oWins">0</b></span>
   </div>
+  <div id="flash"></div>
 
   <script>
     const WINS = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
-    let board, gameOver, thinking;
+    let board, gameOver, thinking, turn;
     let score = { X: 0, O: 0, D: 0 };
 
     const boardEl = document.getElementById('board');
     const statusEl = document.getElementById('status');
+    const diffDiv = document.getElementById('difficulty');
+    const flashEl = document.getElementById('flash');
+    const xLabel = document.getElementById('xLabel');
+    const oLabel = document.getElementById('oLabel');
+
+    function getMode() {
+      return document.querySelector('input[name="mode"]:checked').value;
+    }
 
     function getDifficulty() {
       return document.querySelector('input[name="diff"]:checked').value;
     }
 
+    // Update labels based on mode
+    function updateLabels() {
+      const bot = getMode() === 'bot';
+      diffDiv.classList.toggle('hidden', !bot);
+      xLabel.childNodes[0].textContent = bot ? 'You (X)' : 'X ';
+      oLabel.childNodes[0].textContent = bot ? 'Bot (O)' : 'O ';
+    }
+
+    document.querySelectorAll('input[name="mode"]').forEach(r => {
+      r.addEventListener('change', () => { updateLabels(); init(); });
+    });
+
     function init() {
       board = Array(9).fill('');
       gameOver = false;
       thinking = false;
-      statusEl.textContent = 'Your turn';
+      turn = 'X';
+      const bot = getMode() === 'bot';
+      statusEl.textContent = bot ? 'Your turn' : "X's turn";
       boardEl.innerHTML = '';
       for (let i = 0; i < 9; i++) {
         const cell = document.createElement('div');
         cell.className = 'cell';
-        cell.addEventListener('click', () => playerMove(i));
+        cell.addEventListener('click', () => handleClick(i));
         boardEl.appendChild(cell);
       }
     }
@@ -129,14 +188,29 @@
       cell.classList.add('taken', mark.toLowerCase());
     }
 
+    // Flash screen edges
+    function flashEdge(color) {
+      flashEl.style.boxShadow = `inset 0 0 80px 30px ${color}`;
+      flashEl.classList.remove('active');
+      void flashEl.offsetWidth; // reflow
+      flashEl.classList.add('active');
+    }
+
     function checkEnd(mark) {
       const win = WINS.find(([a,b,c]) => board[a] && board[a] === board[b] && board[b] === board[c]);
       if (win) {
         win.forEach(idx => boardEl.children[idx].classList.add('win'));
-        statusEl.textContent = mark === 'X' ? 'You win!' : 'Bot wins!';
+        const bot = getMode() === 'bot';
+        if (bot) {
+          statusEl.textContent = mark === 'X' ? 'You win!' : 'Bot wins!';
+        } else {
+          statusEl.textContent = mark + ' wins!';
+        }
         score[mark]++;
         updateScore();
         gameOver = true;
+        // Flash player color
+        flashEdge(mark === 'X' ? 'rgba(233, 69, 96, 0.7)' : 'rgba(160, 196, 255, 0.7)');
         return true;
       }
       if (board.every(Boolean)) {
@@ -144,23 +218,34 @@
         score.D++;
         updateScore();
         gameOver = true;
+        flashEdge('rgba(255, 255, 255, 0.5)');
         return true;
       }
       return false;
     }
 
-    function playerMove(i) {
+    function handleClick(i) {
       if (gameOver || thinking || board[i]) return;
-      place(i, 'X');
-      if (checkEnd('X')) return;
-      statusEl.textContent = 'Bot is thinking...';
-      thinking = true;
-      setTimeout(() => {
-        const botIdx = botMove();
-        place(botIdx, 'O');
-        if (!checkEnd('O')) statusEl.textContent = 'Your turn';
-        thinking = false;
-      }, 300);
+
+      if (getMode() === 'bot') {
+        // vs Bot: player is always X
+        place(i, 'X');
+        if (checkEnd('X')) return;
+        statusEl.textContent = 'Bot is thinking...';
+        thinking = true;
+        setTimeout(() => {
+          const botIdx = botMove();
+          place(botIdx, 'O');
+          if (!checkEnd('O')) statusEl.textContent = 'Your turn';
+          thinking = false;
+        }, 300);
+      } else {
+        // 2 Player
+        place(i, turn);
+        if (checkEnd(turn)) return;
+        turn = turn === 'X' ? 'O' : 'X';
+        statusEl.textContent = turn + "'s turn";
+      }
     }
 
     function minimax(bd, isMax, depth) {
@@ -209,6 +294,7 @@
     }
 
     document.getElementById('restart').addEventListener('click', init);
+    updateLabels();
     init();
   </script>
 </body>
