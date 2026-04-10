@@ -347,6 +347,7 @@
 
       // Wrong lane = miss
       if (note.lane !== lane) {
+        addFloatingText('WRONG', laneX(lane), hitZoneY - 40, '#ef4444');
         onMiss();
         return;
       }
@@ -394,6 +395,7 @@
         spawnNote();
       } else {
         // Too early = miss
+        addFloatingText('TOO EARLY', x, note.y, '#ef4444');
         onMiss();
       }
     }
