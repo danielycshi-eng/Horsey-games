@@ -39,7 +39,7 @@
     .cell.taken { cursor: default; }
 
     .cell.x { color: #e94560; background: rgba(233, 69, 96, 0.08); }
-    .cell.o { color: #a0c4ff; background: rgba(160, 196, 255, 0.08); }
+    .cell.o { color: #a0c4ff; background: rgba(160, 196, 255, 0.18); }
     .cell.win { background: #0f3460; outline: 3px solid #f5a623; }
 
     #restart {
@@ -68,7 +68,7 @@
     #mode-toggle label:has(input:checked) { color: #e94560; }
 
     #difficulty {
-      margin-top: 0.6rem;
+      margin-top: 1.2rem;
       display: flex;
       gap: 1.2rem;
       font-size: 0.95rem;
@@ -104,9 +104,9 @@
       opacity: 0;
       transition: opacity 0.15s;
     }
-    #flash.active { opacity: 1; animation: flashPulse 0.6s ease-out forwards; }
+    #flash.active { opacity: 1; animation: flashPulse 1s ease-out forwards; }
     @keyframes flashPulse {
-      0% { opacity: 0.8; }
+      0% { opacity: 0.9; }
       100% { opacity: 0; }
     }
   </style>
