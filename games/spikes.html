@@ -448,38 +448,60 @@
         drawSpikeShape(L.x, L.topY, L.size, 'green');
         // Draw cracks based on damage
         if (L.hp < 3) {
-          const halfW = L.size * 0.4;
+          const hw = L.size * 0.4;
+          const sz = L.size;
           ctx.save();
-          ctx.strokeStyle = '#0a0e27';
           ctx.lineCap = 'round';
-          if (L.hp <= 2) {
-            // Small crack
-            ctx.lineWidth = 1.5;
+          ctx.lineJoin = 'round';
+
+          // Draw each crack line twice: wide white glow underneath, then dark line on top
+          function crack(pts, width) {
+            // Glow/highlight layer
+            ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+            ctx.lineWidth = width + 2;
             ctx.beginPath();
-            ctx.moveTo(L.x - halfW * 0.2, L.topY + L.size * 0.3);
-            ctx.lineTo(L.x + halfW * 0.1, L.topY + L.size * 0.5);
-            ctx.lineTo(L.x - halfW * 0.1, L.topY + L.size * 0.65);
+            ctx.moveTo(pts[0][0], pts[0][1]);
+            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+            ctx.stroke();
+            // Dark crack layer
+            ctx.strokeStyle = '#052e16';
+            ctx.lineWidth = width;
+            ctx.beginPath();
+            ctx.moveTo(pts[0][0], pts[0][1]);
+            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
             ctx.stroke();
           }
+
+          if (L.hp <= 2) {
+            // Single visible crack
+            crack([
+              [L.x - hw * 0.15, L.topY + sz * 0.25],
+              [L.x + hw * 0.1,  L.topY + sz * 0.45],
+              [L.x - hw * 0.12, L.topY + sz * 0.65],
+            ], 2.5);
+          }
           if (L.hp <= 1) {
-            // Big crack + extra small cracks
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(L.x + halfW * 0.15, L.topY + L.size * 0.15);
-            ctx.lineTo(L.x - halfW * 0.05, L.topY + L.size * 0.4);
-            ctx.lineTo(L.x + halfW * 0.2, L.topY + L.size * 0.7);
-            ctx.lineTo(L.x, L.topY + L.size * 0.9);
-            ctx.stroke();
-            // Extra small cracks branching off
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(L.x - halfW * 0.05, L.topY + L.size * 0.4);
-            ctx.lineTo(L.x - halfW * 0.3, L.topY + L.size * 0.5);
-            ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(L.x + halfW * 0.2, L.topY + L.size * 0.7);
-            ctx.lineTo(L.x + halfW * 0.35, L.topY + L.size * 0.6);
-            ctx.stroke();
+            // Big main crack running full length
+            crack([
+              [L.x + hw * 0.1,  L.topY + sz * 0.1],
+              [L.x - hw * 0.15, L.topY + sz * 0.3],
+              [L.x + hw * 0.2,  L.topY + sz * 0.55],
+              [L.x - hw * 0.05, L.topY + sz * 0.75],
+              [L.x + hw * 0.05, L.topY + sz * 0.92],
+            ], 3);
+            // Branch cracks
+            crack([
+              [L.x - hw * 0.15, L.topY + sz * 0.3],
+              [L.x - hw * 0.45, L.topY + sz * 0.4],
+            ], 2);
+            crack([
+              [L.x + hw * 0.2,  L.topY + sz * 0.55],
+              [L.x + hw * 0.5,  L.topY + sz * 0.48],
+            ], 2);
+            crack([
+              [L.x - hw * 0.05, L.topY + sz * 0.75],
+              [L.x - hw * 0.35, L.topY + sz * 0.82],
+            ], 1.5);
           }
           ctx.restore();
         }
