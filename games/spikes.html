@@ -217,111 +217,124 @@
       ctx.save();
       ctx.translate(x, y);
 
-      // Death animation
+      const moving = !dead && (bob.vx !== 0);
+      const inAir = !dead && !bob.onGround;
+
+      // Death topple
       if (dead && !bob.falling) {
         const elapsed = (now - deathTime) / 1000;
-        deathAngle = Math.min(Math.PI / 2, elapsed * 4);
+        deathAngle = Math.min(Math.PI / 2, elapsed * 3);
         ctx.rotate(deathAngle * bob.facing);
-        ctx.translate(0, Math.min(20, elapsed * 30));
       }
 
       ctx.strokeStyle = '#e2e8f0';
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 2.5;
       ctx.lineCap = 'round';
 
-      // Animation phase
-      const moving = !dead && (bob.vx !== 0);
-      const inAir = !dead && !bob.onGround;
-      const walkCycle = moving ? Math.sin(now / 100 * (Math.abs(bob.vx) / MOVE_SPEED)) : 0;
-      const armSwing = moving ? Math.sin(now / 100 * (Math.abs(bob.vx) / MOVE_SPEED)) * 0.4 : 0;
-      const deadWave = dead && !bob.falling ? Math.sin(now / 80) * 0.3 : 0;
+      // Walk timer (smooth sine based on time, only when moving)
+      const t = moving ? Math.sin(now * 0.008) : 0;
+
+      // --- Proportions ---
+      const headY = -BOB_H + BOB_HEAD_R;
+      const neckY = -BOB_H + BOB_HEAD_R * 2;
+      const hipY = -BOB_H * 0.35;
+      const shoulderY = neckY + 4;
 
       // Head
       ctx.beginPath();
-      ctx.arc(0, -BOB_H + BOB_HEAD_R, BOB_HEAD_R, 0, Math.PI * 2);
+      ctx.arc(0, headY, BOB_HEAD_R, 0, Math.PI * 2);
       ctx.stroke();
 
       // Body
-      const bodyBottom = -BOB_H * 0.35;
       ctx.beginPath();
-      ctx.moveTo(0, -BOB_H + BOB_HEAD_R * 2);
-      ctx.lineTo(0, bodyBottom);
+      ctx.moveTo(0, neckY);
+      ctx.lineTo(0, hipY);
       ctx.stroke();
 
-      // Arms
-      const shoulderY = -BOB_H * 0.65;
-      if (inAir) {
-        // Arms up when jumping
-        ctx.beginPath();
-        ctx.moveTo(-12, shoulderY - 12);
-        ctx.lineTo(0, shoulderY);
-        ctx.lineTo(12, shoulderY - 12);
-        ctx.stroke();
-      } else if (dead && !bob.falling) {
-        // Flailing arms when dead
-        ctx.beginPath();
-        ctx.moveTo(-14, shoulderY + 5 + deadWave * 10);
-        ctx.lineTo(0, shoulderY);
-        ctx.lineTo(14, shoulderY + 5 - deadWave * 10);
-        ctx.stroke();
-      } else {
-        // Walking arm swing or idle
-        ctx.beginPath();
-        ctx.moveTo(-14 + armSwing * 8, shoulderY + 8 - Math.abs(armSwing) * 4);
-        ctx.lineTo(0, shoulderY);
-        ctx.lineTo(14 - armSwing * 8, shoulderY + 8 - Math.abs(armSwing) * 4);
-        ctx.stroke();
-      }
-
-      // Legs
-      const hipY = bodyBottom;
-      if (inAir) {
-        // Tucked legs when jumping
-        ctx.beginPath();
-        ctx.moveTo(-8, -4);
-        ctx.lineTo(0, hipY);
-        ctx.lineTo(8, -4);
-        ctx.stroke();
-      } else if (dead && !bob.falling) {
-        // Spread legs when dead
-        ctx.beginPath();
-        ctx.moveTo(-8, 0);
-        ctx.lineTo(0, hipY);
-        ctx.lineTo(8, 0);
-        ctx.stroke();
-      } else {
-        // Walking cycle or idle
-        const legFront = walkCycle * 10;
-        const legBack = -walkCycle * 10;
-        ctx.beginPath();
-        ctx.moveTo(legFront * bob.facing, 0);
-        ctx.lineTo(0, hipY);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(legBack * bob.facing, 0);
-        ctx.lineTo(0, hipY);
-        ctx.stroke();
-      }
-
-      // Eyes
-      ctx.fillStyle = '#e2e8f0';
-      ctx.beginPath();
+      // --- Arms ---
       if (dead && !bob.falling) {
-        // X eyes when dead
-        ctx.lineWidth = 2;
+        // Limp arms hanging
         ctx.beginPath();
-        ctx.moveTo(-5, -BOB_H + BOB_HEAD_R - 4);
-        ctx.lineTo(-1, -BOB_H + BOB_HEAD_R);
-        ctx.moveTo(-1, -BOB_H + BOB_HEAD_R - 4);
-        ctx.lineTo(-5, -BOB_H + BOB_HEAD_R);
-        ctx.moveTo(1, -BOB_H + BOB_HEAD_R - 4);
-        ctx.lineTo(5, -BOB_H + BOB_HEAD_R);
-        ctx.moveTo(5, -BOB_H + BOB_HEAD_R - 4);
-        ctx.lineTo(1, -BOB_H + BOB_HEAD_R);
+        ctx.moveTo(0, shoulderY);
+        ctx.lineTo(-10, shoulderY + 16);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, shoulderY);
+        ctx.lineTo(10, shoulderY + 16);
+        ctx.stroke();
+      } else if (inAir) {
+        // Slight raise
+        ctx.beginPath();
+        ctx.moveTo(0, shoulderY);
+        ctx.lineTo(-12, shoulderY - 6);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, shoulderY);
+        ctx.lineTo(12, shoulderY - 6);
         ctx.stroke();
       } else {
-        ctx.arc(-3, -BOB_H + BOB_HEAD_R - 2, 1.5, 0, Math.PI * 2);
-        ctx.arc(3, -BOB_H + BOB_HEAD_R - 2, 1.5, 0, Math.PI * 2);
+        // Natural swing (opposite to legs)
+        const aSwing = t * 6;
+        ctx.beginPath();
+        ctx.moveTo(0, shoulderY);
+        ctx.lineTo(-10 + aSwing, shoulderY + 14);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, shoulderY);
+        ctx.lineTo(10 - aSwing, shoulderY + 14);
+        ctx.stroke();
+      }
+
+      // --- Legs ---
+      if (dead && !bob.falling) {
+        // Legs together, limp
+        ctx.beginPath();
+        ctx.moveTo(0, hipY);
+        ctx.lineTo(-6, 0);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, hipY);
+        ctx.lineTo(6, 0);
+        ctx.stroke();
+      } else if (inAir) {
+        // Legs slightly bent down
+        ctx.beginPath();
+        ctx.moveTo(0, hipY);
+        ctx.lineTo(-7, 0);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, hipY);
+        ctx.lineTo(7, 0);
+        ctx.stroke();
+      } else {
+        // Walking stride
+        const lSwing = t * 7;
+        ctx.beginPath();
+        ctx.moveTo(0, hipY);
+        ctx.lineTo(lSwing, 0);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, hipY);
+        ctx.lineTo(-lSwing, 0);
+        ctx.stroke();
+      }
+
+      // --- Eyes ---
+      if (dead && !bob.falling) {
+        // X eyes
+        ctx.lineWidth = 1.5;
+        const ey = headY - 1;
+        ctx.beginPath();
+        ctx.moveTo(-5, ey - 2); ctx.lineTo(-2, ey + 2);
+        ctx.moveTo(-2, ey - 2); ctx.lineTo(-5, ey + 2);
+        ctx.moveTo(2, ey - 2); ctx.lineTo(5, ey + 2);
+        ctx.moveTo(5, ey - 2); ctx.lineTo(2, ey + 2);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = '#e2e8f0';
+        ctx.beginPath();
+        ctx.arc(-3, headY - 1, 1.5, 0, Math.PI * 2);
+        ctx.arc(3, headY - 1, 1.5, 0, Math.PI * 2);
         ctx.fill();
       }
 
@@ -426,8 +439,8 @@
         const s = spikes[i];
         s.y += s.speed;
 
-        // Hit ground
-        if (s.y + s.size >= groundY) {
+        // Hit ground — only shatter when the whole spike is past ground
+        if (s.y >= groundY) {
           spawnShatter(s.x, groundY, s.size);
           spikes.splice(i, 1);
           continue;
