@@ -147,12 +147,12 @@
       osc.frequency.setValueAtTime(120, t);
       osc.frequency.exponentialRampToValueAtTime(35, t + 0.2);
       const gain = audioCtx.createGain();
-      gain.gain.setValueAtTime(0.35, t);
+      gain.gain.setValueAtTime(0.7, t);
       gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
       osc.connect(gain); gain.connect(audioCtx.destination);
       osc.start(); osc.stop(t + 0.25);
       // Short filtered noise for the debris/dust
-      playNoise(0.1, 0.12, 800, 1);
+      playNoise(0.1, 0.25, 800, 1);
     }
 
     // Tink — green spike takes damage (short, sharp, stone-on-stone)
@@ -170,8 +170,8 @@
       filt.frequency.value = 4000;
       filt.Q.value = 5;
       const gain = audioCtx.createGain();
-      gain.gain.setValueAtTime(0.3, t);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+      gain.gain.setValueAtTime(0.6, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
       src.connect(filt); filt.connect(gain); gain.connect(audioCtx.destination);
       src.start(); src.stop(t + 0.05);
     }
@@ -179,7 +179,7 @@
     // Green spike breaks — phoom + extra crumble
     function sndCrashBig() {
       sndPhoom();
-      playNoise(0.2, 0.2, 1200, 2);
+      playNoise(0.2, 0.4, 1200, 2);
     }
 
     // Bling — red spike splits
