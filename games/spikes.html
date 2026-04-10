@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spikes - Horsey Games</title>
+  <link rel="stylesheet" href="../style.css">
+  <style>
+    body { overflow: hidden; margin: 0; background: #0a0e27; display: block; }
+    canvas { display: block; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+    .back-link { z-index: 30; }
+
+    #dialogue {
+      position: fixed;
+      top: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      color: #a0c4ff;
+      font-size: 1.2rem;
+      text-align: center;
+      pointer-events: none;
+      transition: opacity 0.5s;
+      max-width: 90%;
+    }
+
+    #dialogue.hidden { opacity: 0; }
+
+    #timer {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 10;
+      color: #fff;
+      font-size: 1.1rem;
+      font-weight: bold;
+      pointer-events: none;
+    }
+
+    #overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+    }
+
+    #overlay.hidden { display: none; }
+    .hidden { display: none !important; }
+
+    #overlay h1 {
+      font-size: 2.5rem;
+      color: #e94560;
+      margin-bottom: 0.5rem;
+    }
+
+    #overlay .sub { color: #a0c4ff; font-size: 1.2rem; margin-bottom: 0.3rem; }
+    #overlay .time { color: #4ade80; font-size: 1.8rem; font-weight: bold; margin-bottom: 1.5rem; }
+
+    #overlay button {
+      font-size: 1.2rem;
+      padding: 0.8rem 2.5rem;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-family: inherit;
+      color: #fff;
+      background: linear-gradient(135deg, #e94560, #c73652);
+      box-shadow: 0 0 20px rgba(233, 69, 96, 0.3);
+      transition: box-shadow 0.3s, transform 0.15s;
+    }
+
+    #overlay button:hover {
+      box-shadow: 0 0 35px rgba(233, 69, 96, 0.5);
+      transform: scale(1.05);
+    }
+  </style>
+</head>
+<body>
+  <a href="../games.html" class="back-link">&larr; All Games</a>
+  <canvas id="game"></canvas>
+  <div id="dialogue">Welcome to Spikes! You are controlling Bob! Don't let him die!</div>
+  <div id="timer">0.0s</div>
+  <div id="overlay" class="hidden">
+    <h1 id="ov-title">Game Over</h1>
+    <p class="sub" id="ov-sub">Well, better luck next time!</p>
+    <div class="time" id="ov-time"></div>
+    <button id="ov-btn">Play Again</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const dialogueEl = document.getElementById('dialogue');
+    const timerEl = document.getElementById('timer');
+    const overlay = document.getElementById('overlay');
+    const ovTime = document.getElementById('ov-time');
+    const ovBtn = document.getElementById('ov-btn');
+
+    // --- Constants ---
+    const GROUND_H = 40;
+    const GRAVITY = 0.6;
+    const JUMP_FORCE = -13;
+    const MOVE_SPEED = 5;
+    const BOB_H = 60; // total stickman height
+    const BOB_HEAD_R = 10;
+    const SPIKE_START_DELAY = 3000; // ms before spikes start
+
+    // --- State ---
+    let bob, spikes, particles, keys;
+    let gameRunning, dead, startTime, survivalTime;
+    let spikeTimer, lastSpike;
+    let deathTime, deathAngle;
+    let w, h, groundY;
+
+    function resize() {
+      w = canvas.width = window.innerWidth;
+      h = canvas.height = window.innerHeight;
+      groundY = h - GROUND_H;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function init() {
+      bob = {
+        x: w / 2,
+        y: groundY,
+        vx: 0,
+        vy: 0,
+        onGround: true,
+        facing: 1, // 1 = right, -1 = left
+      };
+      spikes = [];
+      particles = [];
+      keys = {};
+      gameRunning = true;
+      dead = false;
+      startTime = performance.now();
+      survivalTime = 0;
+      lastSpike = startTime + SPIKE_START_DELAY;
+      deathTime = 0;
+      deathAngle = 0;
+      dialogueEl.textContent = "Welcome to Spikes! You are controlling Bob! Don't let him die!";
+      dialogueEl.classList.remove('hidden');
+      overlay.classList.add('hidden');
+      timerEl.style.display = '';
+    }
+
+    // --- Difficulty ---
+    function getDifficulty() {
+      const t = survivalTime; // seconds survived
+      const spikeSize = 20 + t * 1.5; // grows over time
+      const fallSpeed = 2 + t * 0.15; // gets faster
+      const spawnInterval = Math.max(300, 2000 - t * 40); // gets more frequent, min 300ms
+      return { spikeSize, fallSpeed, spawnInterval };
+    }
+
+    // --- Particles ---
+    function spawnShatter(x, y, size) {
+      const count = 6 + Math.floor(size / 5);
+      for (let i = 0; i < count; i++) {
+        const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI;
+        const spd = 2 + Math.random() * 4;
+        particles.push({
+          x: x + (Math.random() - 0.5) * size * 0.5,
+          y,
+          vx: Math.cos(angle) * spd,
+          vy: Math.sin(angle) * spd - 2,
+          life: 1,
+          decay: 0.02 + Math.random() * 0.02,
+          radius: 2 + Math.random() * 3,
+          color: Math.random() < 0.5 ? '#9ca3af' : '#d1d5db',
+        });
+      }
+    }
+
+    function updateParticles() {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.15;
+        p.life -= p.decay;
+        if (p.life <= 0) particles.splice(i, 1);
+      }
+    }
+
+    function drawParticles() {
+      for (const p of particles) {
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // --- Draw Bob ---
+    function drawBob() {
+      const { x, y } = bob;
+      ctx.save();
+      ctx.translate(x, y);
+
+      if (dead) {
+        // Knock-over animation: rotate and fall
+        const elapsed = (performance.now() - deathTime) / 1000;
+        deathAngle = Math.min(Math.PI / 2, elapsed * 4);
+        ctx.rotate(deathAngle * bob.facing);
+        // Slide down slightly
+        ctx.translate(0, Math.min(20, elapsed * 30));
+      }
+
+      ctx.strokeStyle = '#e2e8f0';
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+
+      // Head
+      ctx.beginPath();
+      ctx.arc(0, -BOB_H + BOB_HEAD_R, BOB_HEAD_R, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Body
+      ctx.beginPath();
+      ctx.moveTo(0, -BOB_H + BOB_HEAD_R * 2);
+      ctx.lineTo(0, -BOB_H * 0.35);
+      ctx.stroke();
+
+      // Arms
+      const armWave = dead ? Math.sin(performance.now() / 80) * 0.3 : 0;
+      ctx.beginPath();
+      ctx.moveTo(-14, -BOB_H * 0.55 + armWave * 10);
+      ctx.lineTo(0, -BOB_H * 0.65);
+      ctx.lineTo(14, -BOB_H * 0.55 - armWave * 10);
+      ctx.stroke();
+
+      // Legs
+      const legSpread = dead ? 8 : 10;
+      ctx.beginPath();
+      ctx.moveTo(-legSpread, 0);
+      ctx.lineTo(0, -BOB_H * 0.35);
+      ctx.lineTo(legSpread, 0);
+      ctx.stroke();
+
+      // Eyes (small dots)
+      ctx.fillStyle = '#e2e8f0';
+      ctx.beginPath();
+      ctx.arc(-3, -BOB_H + BOB_HEAD_R - 2, 1.5, 0, Math.PI * 2);
+      ctx.arc(3, -BOB_H + BOB_HEAD_R - 2, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    // --- Draw Spike ---
+    function drawSpike(spike) {
+      const { x, y, size } = spike;
+      const halfW = size * 0.4;
+
+      ctx.save();
+      ctx.shadowColor = '#94a3b8';
+      ctx.shadowBlur = 8;
+
+      // Triangle pointing down
+      ctx.fillStyle = '#64748b';
+      ctx.beginPath();
+      ctx.moveTo(x, y + size); // bottom point
+      ctx.lineTo(x - halfW, y);
+      ctx.lineTo(x + halfW, y);
+      ctx.closePath();
+      ctx.fill();
+
+      // Highlight edge
+      ctx.strokeStyle = '#94a3b8';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
+    // --- Draw Ground ---
+    function drawGround() {
+      ctx.fillStyle = '#1e293b';
+      ctx.fillRect(0, groundY, w, GROUND_H);
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, groundY);
+      ctx.lineTo(w, groundY);
+      ctx.stroke();
+    }
+
+    // --- Update ---
+    function update(now) {
+      if (!gameRunning) return;
+
+      survivalTime = (now - startTime - SPIKE_START_DELAY) / 1000;
+      if (survivalTime < 0) survivalTime = 0;
+      timerEl.textContent = survivalTime.toFixed(1) + 's';
+
+      // Bob movement
+      if (keys['ArrowLeft'] || keys['KeyA']) {
+        bob.vx = -MOVE_SPEED;
+        bob.facing = -1;
+      } else if (keys['ArrowRight'] || keys['KeyD']) {
+        bob.vx = MOVE_SPEED;
+        bob.facing = 1;
+      } else {
+        bob.vx = 0;
+      }
+
+      // Jump
+      if ((keys['Space'] || keys['KeyW'] || keys['ArrowUp']) && bob.onGround) {
+        bob.vy = JUMP_FORCE;
+        bob.onGround = false;
+      }
+
+      // Physics
+      bob.x += bob.vx;
+      bob.y += bob.vy;
+      bob.vy += GRAVITY;
+
+      // Ground collision
+      if (bob.y >= groundY) {
+        bob.y = groundY;
+        bob.vy = 0;
+        bob.onGround = true;
+      }
+
+      // Walls
+      if (bob.x < 20) bob.x = 20;
+      if (bob.x > w - 20) bob.x = w - 20;
+
+      // Spawn spikes
+      const diff = getDifficulty();
+      if (now - startTime >= SPIKE_START_DELAY && now - lastSpike >= diff.spawnInterval) {
+        const spikeX = 30 + Math.random() * (w - 60);
+        spikes.push({
+          x: spikeX,
+          y: -diff.spikeSize,
+          size: diff.spikeSize,
+          speed: diff.fallSpeed,
+        });
+        lastSpike = now;
+      }
+
+      // Update spikes
+      for (let i = spikes.length - 1; i >= 0; i--) {
+        const s = spikes[i];
+        s.y += s.speed;
+
+        // Hit ground
+        if (s.y + s.size >= groundY) {
+          spawnShatter(s.x, groundY, s.size);
+          spikes.splice(i, 1);
+          continue;
+        }
+
+        // Hit Bob — check spike tip (bottom point) vs Bob's bounding box
+        const tipX = s.x;
+        const tipY = s.y + s.size;
+        const bobLeft = bob.x - 12;
+        const bobRight = bob.x + 12;
+        const bobTop = bob.y - BOB_H;
+        const bobBottom = bob.y;
+
+        if (tipX >= bobLeft && tipX <= bobRight && tipY >= bobTop && tipY <= bobBottom) {
+          triggerDeath(now);
+          return;
+        }
+
+        // Also check spike body overlap with Bob head
+        const spikeLeft = s.x - s.size * 0.4;
+        const spikeRight = s.x + s.size * 0.4;
+        const spikeBottom = s.y + s.size;
+        const headY = bob.y - BOB_H + BOB_HEAD_R;
+
+        if (spikeRight >= bobLeft && spikeLeft <= bobRight &&
+            spikeBottom >= bobTop && s.y <= bobBottom) {
+          triggerDeath(now);
+          return;
+        }
+      }
+
+      // Fade dialogue after spikes start
+      if (now - startTime > SPIKE_START_DELAY + 2000) {
+        dialogueEl.classList.add('hidden');
+      }
+    }
+
+    function triggerDeath(now) {
+      dead = true;
+      gameRunning = false;
+      deathTime = now;
+      dialogueEl.textContent = "Well, better luck next time!";
+      dialogueEl.classList.remove('hidden');
+
+      // Show overlay after death animation
+      setTimeout(() => {
+        ovTime.textContent = `Survived: ${survivalTime.toFixed(1)}s`;
+        overlay.classList.remove('hidden');
+      }, 1500);
+    }
+
+    // --- Game Loop ---
+    function loop() {
+      ctx.clearRect(0, 0, w, h);
+
+      drawGround();
+
+      const now = performance.now();
+      if (gameRunning) update(now);
+
+      // Draw spikes
+      for (const s of spikes) drawSpike(s);
+
+      // Draw Bob
+      drawBob();
+
+      // Particles
+      updateParticles();
+      drawParticles();
+
+      requestAnimationFrame(loop);
+    }
+
+    // --- Input ---
+    window.addEventListener('keydown', e => {
+      keys[e.code] = true;
+      if (e.code === 'Space' || e.code === 'ArrowUp') e.preventDefault();
+    });
+    window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+    ovBtn.addEventListener('click', () => {
+      init();
+    });
+
+    // --- Start ---
+    init();
+    loop();
+  </script>
+</body>
+</html>
