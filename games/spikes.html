@@ -307,15 +307,15 @@
         ctx.lineTo(7, 0);
         ctx.stroke();
       } else {
-        // Walking stride
-        const lSwing = t * 7;
+        // Walking stride / idle stance
+        const lSwing = moving ? t * 7 : 0;
         ctx.beginPath();
         ctx.moveTo(0, hipY);
-        ctx.lineTo(lSwing, 0);
+        ctx.lineTo(-7 + lSwing, 0);
         ctx.stroke();
         ctx.beginPath();
         ctx.moveTo(0, hipY);
-        ctx.lineTo(-lSwing, 0);
+        ctx.lineTo(7 - lSwing, 0);
         ctx.stroke();
       }
 
@@ -513,8 +513,6 @@
     function loop() {
       ctx.clearRect(0, 0, w, h);
 
-      drawGround();
-
       const now = performance.now();
       if (gameRunning) update(now);
 
@@ -532,10 +530,13 @@
         }
       }
 
-      // Draw spikes
+      // Draw spikes behind ground
       for (const s of spikes) drawSpike(s);
 
-      // Draw Bob
+      // Draw ground on top of spikes
+      drawGround();
+
+      // Draw Bob on top
       drawBob();
 
       // Particles
