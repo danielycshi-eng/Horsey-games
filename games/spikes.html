@@ -163,15 +163,12 @@
     <div class="modifier-grid">
       <button class="mod-btn" data-mod="tooMuch">
         <div class="mod-label">Bob ate too much</div>
-        <div class="mod-desc">1.3&times; slower, thicker body</div>
       </button>
       <button class="mod-btn" data-mod="energyDrink">
         <div class="mod-label">Bob brought an energy drink</div>
-        <div class="mod-desc">Sips at the start &mdash; then 1.5&times; faster, jumps 1.25&times; higher</div>
       </button>
       <button class="mod-btn" data-mod="ragingSpikes">
         <div class="mod-label">The spikes are raging</div>
-        <div class="mod-desc">Harder start; difficulty ramps 1.3&times; faster</div>
       </button>
     </div>
     <button id="start-btn">Start Game</button>
@@ -541,9 +538,8 @@
         ctx.rotate(deathAngle * bob.facing);
       }
 
-      const lw = modifiers.tooMuch ? 5 : 2.5;
       ctx.strokeStyle = '#e2e8f0';
-      ctx.lineWidth = lw;
+      ctx.lineWidth = 2.5;
       ctx.lineCap = 'round';
 
       // Walk timer (smooth sine based on time, only when moving)
@@ -560,11 +556,13 @@
       ctx.arc(0, headY, BOB_HEAD_R, 0, Math.PI * 2);
       ctx.stroke();
 
-      // Body
+      // Body (only this segment thickens with "ate too much")
+      ctx.lineWidth = modifiers.tooMuch ? 11 : 2.5;
       ctx.beginPath();
       ctx.moveTo(0, neckY);
       ctx.lineTo(0, hipY);
       ctx.stroke();
+      ctx.lineWidth = 2.5;
 
       // --- Arms ---
       if (dead && !bob.falling) {
@@ -1143,8 +1141,18 @@
     // --- Menu ---
     const menuEl = document.getElementById('menu');
     const startBtn = document.getElementById('start-btn');
+    const EXCLUSIVE_MODS = ['tooMuch', 'energyDrink'];
     document.querySelectorAll('.mod-btn').forEach(btn => {
       btn.addEventListener('click', () => {
+        const mod = btn.dataset.mod;
+        const wasSelected = btn.classList.contains('selected');
+        if (EXCLUSIVE_MODS.includes(mod) && !wasSelected) {
+          document.querySelectorAll('.mod-btn').forEach(other => {
+            if (other !== btn && EXCLUSIVE_MODS.includes(other.dataset.mod)) {
+              other.classList.remove('selected');
+            }
+          });
+        }
         btn.classList.toggle('selected');
       });
     });
