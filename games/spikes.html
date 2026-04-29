@@ -556,13 +556,26 @@
       ctx.arc(0, headY, BOB_HEAD_R, 0, Math.PI * 2);
       ctx.stroke();
 
-      // Body (only this segment thickens with "ate too much")
-      ctx.lineWidth = modifiers.tooMuch ? 11 : 2.5;
-      ctx.beginPath();
-      ctx.moveTo(0, neckY);
-      ctx.lineTo(0, hipY);
-      ctx.stroke();
-      ctx.lineWidth = 2.5;
+      // Body — "ate too much" thickens just the torso, leaving a normal neck above
+      if (modifiers.tooMuch) {
+        // Thin neck stub
+        ctx.beginPath();
+        ctx.moveTo(0, neckY);
+        ctx.lineTo(0, neckY + 5);
+        ctx.stroke();
+        // Thick torso starting below the neck, stopping above the hip
+        ctx.lineWidth = 7;
+        ctx.beginPath();
+        ctx.moveTo(0, neckY + 7);
+        ctx.lineTo(0, hipY - 1);
+        ctx.stroke();
+        ctx.lineWidth = 2.5;
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(0, neckY);
+        ctx.lineTo(0, hipY);
+        ctx.stroke();
+      }
 
       // --- Arms ---
       if (dead && !bob.falling) {
