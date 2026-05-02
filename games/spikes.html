@@ -120,7 +120,7 @@
       display: flex;
       align-items: center;
     }
-    .demon-toggle { color: #f87171; font-weight: 600; }
+    .demon-toggle { color: #ef4444; font-weight: 700; text-shadow: 0 0 8px rgba(239, 68, 68, 0.4); }
     .demon-toggle input:checked + .toggle-switch {
       background: #3a0e0e;
       border-color: #ef4444;
@@ -1110,9 +1110,15 @@
           } else if (s.color === 'red' && s.gen < (s.kingDesc ? 4 : 2)) {
             // Red spike splits into two smaller spikes that bounce sideways
             const childSize = s.size * (s.kingDesc ? 0.85 : 0.7);
-            const speedGen = Math.min(s.gen, 2); // cap so deeper gens don't fling absurdly fast
-            const bounceSpeed = 3 + speedGen * 1.5;
-            const upSpeed = -(4 + speedGen * 2);
+            let bounceSpeed, upSpeed;
+            if (s.kingDesc && s.gen >= 2) {
+              // Deep king descendants: low sideways spread, slightly higher arc
+              bounceSpeed = 2;
+              upSpeed = -10;
+            } else {
+              bounceSpeed = 3 + s.gen * 1.5;
+              upSpeed = -(4 + s.gen * 2);
+            }
             spikes.push({
               x: s.x, y: groundY - childSize, size: childSize,
               speed: upSpeed, vx: -bounceSpeed, color: 'red', gen: s.gen + 1, kingDesc: s.kingDesc,
