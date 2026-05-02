@@ -990,11 +990,8 @@
       const diff = getDifficulty();
       if (now - startTime >= spikeStartDelay && now - lastSpike >= diff.spawnInterval) {
         const spikeX = 30 + Math.random() * (w - 60);
-        const roll = Math.random();
-        let color = 'gray';
-        if (roll < 0.01) color = Math.random() < 0.25 ? 'redking' : 'red'; // 1% red, 25% of those become red king
-        else if (roll < 0.02) color = 'yellow'; // 1% (10% of green)
-        else if (roll < 0.10) color = 'green';  // 8% green
+        // TEST: all spikes are red (with 25% chance of red king)
+        let color = Math.random() < 0.25 ? 'redking' : 'red';
         spikes.push({
           x: spikeX,
           y: -diff.spikeSize,
