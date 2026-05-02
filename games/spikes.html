@@ -101,12 +101,32 @@
       font-size: 1rem;
       margin-bottom: 1.6rem;
     }
+    .modifier-area {
+      display: flex;
+      align-items: center;
+      gap: 2.5rem;
+      margin-bottom: 1.8rem;
+    }
     .modifier-grid {
       display: flex;
       flex-direction: column;
       gap: 0.9rem;
-      margin-bottom: 1.8rem;
       align-items: flex-start;
+    }
+    .demon-side {
+      border-left: 1px solid #2a2a4a;
+      padding-left: 2rem;
+      align-self: stretch;
+      display: flex;
+      align-items: center;
+    }
+    .demon-toggle { color: #f87171; font-weight: 600; }
+    .demon-toggle input:checked + .toggle-switch {
+      background: #3a0e0e;
+      border-color: #ef4444;
+    }
+    .demon-toggle input:checked + .toggle-switch::after {
+      background: #ef4444;
     }
     .toggle-label {
       display: flex;
@@ -177,27 +197,31 @@
     <a href="../games.html" class="back-link-menu">&larr; All Games</a>
     <h1>Spikes</h1>
     <p class="subtitle">Pick any modifiers (or none) and start</p>
-    <div class="modifier-grid">
-      <label class="toggle-label">
-        <input type="checkbox" data-mod="tooMuch">
-        <span class="toggle-switch"></span>
-        Bob ate too much
-      </label>
-      <label class="toggle-label">
-        <input type="checkbox" data-mod="energyDrink">
-        <span class="toggle-switch"></span>
-        Bob brought an energy drink
-      </label>
-      <label class="toggle-label">
-        <input type="checkbox" data-mod="ragingSpikes">
-        <span class="toggle-switch"></span>
-        The spikes are raging
-      </label>
-      <label class="toggle-label">
-        <input type="checkbox" data-mod="demonMode">
-        <span class="toggle-switch"></span>
-        Demon mode
-      </label>
+    <div class="modifier-area">
+      <div class="modifier-grid">
+        <label class="toggle-label">
+          <input type="checkbox" data-mod="tooMuch">
+          <span class="toggle-switch"></span>
+          Bob ate too much
+        </label>
+        <label class="toggle-label">
+          <input type="checkbox" data-mod="energyDrink">
+          <span class="toggle-switch"></span>
+          Bob brought an energy drink
+        </label>
+        <label class="toggle-label">
+          <input type="checkbox" data-mod="ragingSpikes">
+          <span class="toggle-switch"></span>
+          The spikes are raging
+        </label>
+      </div>
+      <div class="demon-side">
+        <label class="toggle-label demon-toggle">
+          <input type="checkbox" data-mod="demonMode">
+          <span class="toggle-switch"></span>
+          Demon mode
+        </label>
+      </div>
     </div>
     <button id="start-btn">Start Game</button>
   </div>
@@ -1083,18 +1107,19 @@
             spawnShatter(s.x, groundY, s.size, 'yellow');
             spawnExplosion(s.x, groundY, s.size);
             sndBoom();
-          } else if (s.color === 'red' && s.gen < 2) {
+          } else if (s.color === 'red' && s.gen < (s.kingDesc ? 4 : 2)) {
             // Red spike splits into two smaller spikes that bounce sideways
-            const childSize = s.size * 0.7;
-            const bounceSpeed = 3 + s.gen * 1.5;
-            const upSpeed = -(4 + s.gen * 2);
+            const childSize = s.size * (s.kingDesc ? 0.85 : 0.7);
+            const speedGen = Math.min(s.gen, 2); // cap so deeper gens don't fling absurdly fast
+            const bounceSpeed = 3 + speedGen * 1.5;
+            const upSpeed = -(4 + speedGen * 2);
             spikes.push({
               x: s.x, y: groundY - childSize, size: childSize,
-              speed: upSpeed, vx: -bounceSpeed, color: 'red', gen: s.gen + 1,
+              speed: upSpeed, vx: -bounceSpeed, color: 'red', gen: s.gen + 1, kingDesc: s.kingDesc,
             });
             spikes.push({
               x: s.x, y: groundY - childSize, size: childSize,
-              speed: upSpeed, vx: bounceSpeed, color: 'red', gen: s.gen + 1,
+              speed: upSpeed, vx: bounceSpeed, color: 'red', gen: s.gen + 1, kingDesc: s.kingDesc,
             });
             sndBling();
           } else if (s.color === 'redking') {
@@ -1108,7 +1133,7 @@
               const upSpeed = -(5 + Math.random() * 2.5);
               spikes.push({
                 x: s.x, y: groundY - childSize, size: childSize,
-                speed: upSpeed, vx, color: 'red', gen: 1, // gen 1 = each duplicate splits once more like a normal red
+                speed: upSpeed, vx, color: 'red', gen: 1, kingDesc: true, // tagged so they keep splitting up to gen 4
               });
             }
             sndPhoom();
