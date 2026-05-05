@@ -234,6 +234,7 @@
   </div>
 
   <a href="../games.html" class="back-link">&larr; All Games</a>
+  <a href="#" id="back-to-menu" class="back-link" style="top: 2.7rem">&larr; Gamemode Selections</a>
   <canvas id="game"></canvas>
   <div id="dialogue">Welcome to Spikes! You are controlling Bob! Don't let him die!</div>
   <div id="timer">0.0s</div>
@@ -1308,6 +1309,7 @@
         }
       });
     });
+    let loopStarted = false;
     startBtn.addEventListener('click', () => {
       ensureAudio();
       modifiers.tooMuch = document.querySelector('input[data-mod="tooMuch"]').checked;
@@ -1317,7 +1319,15 @@
       modifiers.trackerMode = document.querySelector('input[data-mod="trackerMode"]').checked;
       menuEl.classList.add('hidden');
       init();
-      loop();
+      if (!loopStarted) { loopStarted = true; loop(); }
+    });
+
+    document.getElementById('back-to-menu').addEventListener('click', e => {
+      e.preventDefault();
+      gameRunning = false;
+      dead = false;
+      overlay.classList.add('hidden');
+      menuEl.classList.remove('hidden');
     });
   </script>
 </body>

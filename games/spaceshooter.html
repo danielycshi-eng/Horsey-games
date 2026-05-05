@@ -430,6 +430,7 @@
       <div id="hp-text">HP: 100</div>
       <div class="hp-bar-outer"><div class="hp-bar-inner" id="hp-bar" style="width:100%"></div></div>
       <a href="../games.html" id="back-link-game" class="back-link" style="position:static; font-size:0.8rem; margin-top:4px; display:inline-block;">&larr; All Games</a>
+      <a href="#" id="back-to-menu" class="back-link" style="position:static; font-size:0.8rem; margin-top:2px; display:inline-block;">&larr; Gamemode Selections</a>
     </div>
     <div style="text-align:right">
       <div id="xp-text">XP: 0</div>
@@ -1966,15 +1967,25 @@
       if (overlayMode === 'wave') {
         nextWave();
       } else {
-        hideOverlay();
-        const hh = document.getElementById('hardcore-heart');
-        hh.classList.remove('show', 'center');
-        hh.style.display = '';
-        document.getElementById('god-heart').classList.remove('show');
-        document.getElementById('shatter-canvas').style.display = 'none';
-        stopFire();
-        menuEl.classList.remove('hidden');
+        backToMenu();
       }
+    });
+
+    function backToMenu() {
+      gameOver = true;
+      hideOverlay();
+      const hh = document.getElementById('hardcore-heart');
+      hh.classList.remove('show', 'center');
+      hh.style.display = '';
+      document.getElementById('god-heart').classList.remove('show');
+      document.getElementById('shatter-canvas').style.display = 'none';
+      stopFire();
+      menuEl.classList.remove('hidden');
+    }
+
+    document.getElementById('back-to-menu').addEventListener('click', e => {
+      e.preventDefault();
+      backToMenu();
     });
   </script>
 </body>
