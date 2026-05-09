@@ -276,6 +276,7 @@
     const PERFECT_HALF = 22;  // half-height of perfect zone
     const GOOD_HALF = 80;     // half-height of good zone
     const HIT_ZONE_Y_OFFSET = 200; // distance from bottom
+    const HOLD_TAIL_LENGTH = 240; // tail length in pixels for hold notes
 
     // --- Difficulty ---
     const BASE_SPEED = 6;     // pixels per frame
@@ -367,6 +368,19 @@
         const drumIdx = newStart + Math.floor(Math.random() * count);
         notes[drumIdx].type = 'drum';
         notes[drumIdx].comboGiven = false;
+      }
+      // 8% chance to convert a non-drum new note into a hold note (score >= 30)
+      if (score >= 30 && count > 0 && Math.random() < 0.08) {
+        const candidates = [];
+        for (let i = newStart; i < notes.length; i++) {
+          if (notes[i].type === 'note') candidates.push(i);
+        }
+        if (candidates.length > 0) {
+          const holdIdx = candidates[Math.floor(Math.random() * candidates.length)];
+          notes[holdIdx].type = 'hold';
+          notes[holdIdx].tailLength = HOLD_TAIL_LENGTH;
+          notes[holdIdx].holding = false;
+        }
       }
     }
 
@@ -474,6 +488,51 @@
     function drawNotes() {
       for (const n of notes) {
         const x = laneX(n.lane);
+
+        if (n.type === 'hold') {
+          const color = LANE_COLORS[n.lane];
+          const tailTop = n.y - n.tailLength;
+          const tailW = NOTE_RADIUS * 1.2;
+
+          // Tail body
+          ctx.globalAlpha = n.holding ? 0.85 : 0.45;
+          ctx.fillStyle = color;
+          ctx.fillRect(x - tailW / 2, tailTop, tailW, n.tailLength);
+          // Rounded tail end cap
+          ctx.beginPath();
+          ctx.arc(x, tailTop, tailW / 2, Math.PI, 0);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+
+          // Head (with extra glow when holding)
+          ctx.shadowColor = color;
+          ctx.shadowBlur = n.holding ? 30 : 20;
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.arc(x, n.y, NOTE_RADIUS, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+
+          // White outer ring to mark it as a hold note
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(x, n.y, NOTE_RADIUS + 2, 0, Math.PI * 2);
+          ctx.stroke();
+
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+          ctx.beginPath();
+          ctx.arc(x, n.y, NOTE_RADIUS * 0.5, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = '#fff';
+          ctx.font = `bold ${NOTE_RADIUS}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(n.lane + 1, x, n.y);
+          ctx.textBaseline = 'alphabetic';
+          continue;
+        }
 
         if (n.type === 'drum') {
           ctx.shadowColor = '#ffffff';
@@ -631,6 +690,7 @@
       const dist = Math.abs(n.y - hitZoneY);
       const x = laneX(lane);
       const color = LANE_COLORS[lane];
+      const isHold = n.type === 'hold';
 
       if (dist <= PERFECT_PLUS) {
         score += 3;
@@ -642,7 +702,8 @@
         flashAlpha = 0.12;
         flashColor = color;
         soundPerfectPlus();
-        notes.splice(idx, 1);
+        if (isHold) n.holding = true;
+        else notes.splice(idx, 1);
         updateSpeed();
         if (noRegularNotes()) spawnNotes();
       } else if (dist <= PERFECT_HALF) {
@@ -655,7 +716,8 @@
         flashAlpha = 0.08;
         flashColor = color;
         soundPerfect();
-        notes.splice(idx, 1);
+        if (isHold) n.holding = true;
+        else notes.splice(idx, 1);
         updateSpeed();
         if (noRegularNotes()) spawnNotes();
       } else if (dist <= GOOD_HALF) {
@@ -665,7 +727,8 @@
         spawnHitParticles(x, hitZoneY, color, 10);
         addFloatingText('GOOD +1', x, hitZoneY - 40, '#facc15');
         soundGood();
-        notes.splice(idx, 1);
+        if (isHold) n.holding = true;
+        else notes.splice(idx, 1);
         updateSpeed();
         if (noRegularNotes()) spawnNotes();
       } else {
@@ -740,8 +803,26 @@
 
       // Check for notes that fell past good zone
       for (let i = notes.length - 1; i >= 0; i--) {
-        if (notes[i].y > hitZoneY + GOOD_HALF + NOTE_RADIUS) {
-          if (notes[i].type === 'drum') {
+        const n = notes[i];
+
+        // Held-too-long detection: still holding when the tail end has passed the hit zone
+        if (n.type === 'hold' && n.holding) {
+          if (n.y > hitZoneY + n.tailLength + GOOD_HALF) {
+            notes.splice(i, 1);
+            if (invincible) continue;
+            addFloatingText('held too long', laneX(n.lane), hitZoneY - 40, '#ef4444');
+            soundMiss();
+            misses++;
+            combo = 0;
+            flashAlpha = 0.15;
+            flashColor = '#ef4444';
+            if (misses >= MAX_MISSES) { gameOver(); return; }
+          }
+          continue;
+        }
+
+        if (n.y > hitZoneY + GOOD_HALF + NOTE_RADIUS) {
+          if (n.type === 'drum') {
             // Drums silently disappear off-screen — no miss penalty
             notes.splice(i, 1);
             continue;
@@ -751,7 +832,7 @@
             notes.splice(i, 1);
             continue;
           }
-          addFloatingText('MISS', laneX(notes[i].lane), hitZoneY - 40, '#ef4444');
+          addFloatingText('MISS', laneX(n.lane), hitZoneY - 40, '#ef4444');
           soundMiss();
           notes.splice(i, 1);
           misses++;
@@ -810,6 +891,51 @@
         }
         laneFlash[key - 1] = 1;
         tryHit(key - 1);
+      }
+    });
+
+    window.addEventListener('keyup', e => {
+      const key = getKeyLane(e);
+      if (key < 1 || key > 9) return;
+      if (!gameRunning || gameOverFlag) return;
+      const lane = key - 1;
+      const idx = notes.findIndex(n => n.lane === lane && n.type === 'hold' && n.holding);
+      if (idx === -1) return;
+
+      const n = notes[idx];
+      // Tail end is at hit zone when n.y == hitZoneY + tailLength
+      const diff = n.y - (hitZoneY + n.tailLength);
+      const x = laneX(lane);
+
+      if (Math.abs(diff) <= GOOD_HALF) {
+        // Successful hold completion
+        score += 2;
+        combo++;
+        if (combo > bestCombo) bestCombo = combo;
+        spawnHitParticles(x, hitZoneY, LANE_COLORS[lane], 18);
+        spawnHitParticles(x, hitZoneY, '#fff', 6);
+        addFloatingText('HOLD +2', x, hitZoneY - 40, '#a0c4ff');
+        flashAlpha = 0.08;
+        flashColor = LANE_COLORS[lane];
+        soundPerfect();
+        notes.splice(idx, 1);
+        updateSpeed();
+        if (noRegularNotes()) spawnNotes();
+      } else {
+        // Released too early — diff < -GOOD_HALF
+        notes.splice(idx, 1);
+        if (invincible) {
+          if (noRegularNotes()) spawnNotes();
+          return;
+        }
+        addFloatingText('didnt hold long enough', x, hitZoneY - 40, '#ef4444');
+        soundMiss();
+        misses++;
+        combo = 0;
+        flashAlpha = 0.15;
+        flashColor = '#ef4444';
+        if (misses >= MAX_MISSES) gameOver();
+        else if (noRegularNotes()) spawnNotes();
       }
     });
 
