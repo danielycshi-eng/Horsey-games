@@ -132,17 +132,14 @@
       background: transparent;
       padding: 0.5rem 0.9rem;
       border-radius: 20px;
-      border: none;
+      border: 1px solid transparent;
       color: rgba(255, 255, 255, 0.08);
       font-size: 0.9rem;
       font-weight: bold;
       letter-spacing: 0.5px;
       cursor: pointer;
       user-select: none;
-      transition: color 0.3s;
-    }
-    #invincible-toggle:hover {
-      color: rgba(255, 215, 0, 0.5);
+      transition: background 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s;
     }
     #invincible-toggle .dot {
       width: 10px;
@@ -152,10 +149,14 @@
       transition: all 0.2s;
     }
     #invincible-toggle.active {
-      color: rgba(255, 215, 0, 0.35);
+      background: rgba(255, 215, 0, 0.15);
+      border-color: rgba(255, 215, 0, 0.6);
+      color: #ffd700;
+      box-shadow: 0 0 12px rgba(255, 215, 0, 0.3);
     }
     #invincible-toggle.active .dot {
-      background: rgba(255, 215, 0, 0.5);
+      background: #ffd700;
+      box-shadow: 0 0 8px #ffd700;
     }
 
     #overlay button {
