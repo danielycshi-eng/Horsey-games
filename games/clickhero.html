@@ -121,6 +121,48 @@
       50% { opacity: 1; }
     }
 
+    #invincible-toggle {
+      position: fixed;
+      bottom: 1rem;
+      right: 1.5rem;
+      z-index: 25;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(0, 0, 0, 0.5);
+      padding: 0.5rem 0.9rem;
+      border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: rgba(255, 255, 255, 0.55);
+      font-size: 0.9rem;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.2s;
+    }
+    #invincible-toggle:hover {
+      border-color: rgba(255, 215, 0, 0.5);
+      color: rgba(255, 215, 0, 0.85);
+    }
+    #invincible-toggle .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.2);
+      transition: all 0.2s;
+    }
+    #invincible-toggle.active {
+      background: rgba(255, 215, 0, 0.15);
+      border-color: rgba(255, 215, 0, 0.6);
+      color: #ffd700;
+      box-shadow: 0 0 12px rgba(255, 215, 0, 0.3);
+    }
+    #invincible-toggle.active .dot {
+      background: #ffd700;
+      box-shadow: 0 0 8px #ffd700;
+    }
+
     #overlay button {
       font-size: 1.2rem;
       padding: 0.8rem 2.5rem;
@@ -142,6 +184,10 @@
 </head>
 <body>
   <a href="../games.html" class="back-link">&larr; All Games</a>
+  <div id="invincible-toggle" title="Misses don't count">
+    <span class="dot"></span>
+    <span>Invincible</span>
+  </div>
   <canvas id="game"></canvas>
   <div id="overlay">
     <h1 id="overlay-title">Click Hero</h1>
@@ -261,6 +307,7 @@
     let particles;
     let flashAlpha, flashColor;
     let laneFlash; // per-lane flash for key press feedback
+    let invincible = false; // toggled via the corner button
 
     // --- Resize ---
     function resize() {
@@ -504,9 +551,16 @@
       ctx.textAlign = 'right';
       ctx.font = '20px sans-serif';
       for (let i = 0; i < MAX_MISSES; i++) {
-        ctx.fillStyle = i < misses ? '#ef4444' : 'rgba(255, 255, 255, 0.15)';
+        if (invincible) {
+          ctx.fillStyle = '#ffd700';
+          ctx.shadowColor = '#ffd700';
+          ctx.shadowBlur = 8;
+        } else {
+          ctx.fillStyle = i < misses ? '#ef4444' : 'rgba(255, 255, 255, 0.15)';
+        }
         ctx.fillText('✕', canvas.width - 20 - (MAX_MISSES - 1 - i) * 28, 40);
       }
+      ctx.shadowBlur = 0;
 
       // Speed tier indicator
       const tier = Math.floor(score / POINTS_PER_TIER);
@@ -619,6 +673,7 @@
         updateSpeed();
         if (noRegularNotes()) spawnNotes();
       } else {
+        if (invincible) return;
         addFloatingText('TOO EARLY', x, n.y, '#ef4444');
         soundMiss();
         onMissNote(idx);
@@ -660,6 +715,13 @@
       overlay.classList.remove('hidden');
     }
 
+    // Invincible toggle
+    const invincibleToggle = document.getElementById('invincible-toggle');
+    invincibleToggle.addEventListener('click', () => {
+      invincible = !invincible;
+      invincibleToggle.classList.toggle('active', invincible);
+    });
+
     // Populate the lane-key preview boxes with their lane colors
     (function buildLaneKeys() {
       const container = document.getElementById('lane-keys');
@@ -685,6 +747,11 @@
         if (notes[i].y > hitZoneY + GOOD_HALF + NOTE_RADIUS) {
           if (notes[i].type === 'drum') {
             // Drums silently disappear off-screen — no miss penalty
+            notes.splice(i, 1);
+            continue;
+          }
+          if (invincible) {
+            // Invincible mode: silently remove, no penalty, no sound
             notes.splice(i, 1);
             continue;
           }
