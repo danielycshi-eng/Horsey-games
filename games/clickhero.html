@@ -25,14 +25,15 @@
     .hidden { display: none !important; }
 
     #overlay h1 {
-      font-size: 3rem;
-      margin-bottom: 0.5rem;
-      background: linear-gradient(135deg, #a0c4ff, #4e7fff, #a0c4ff);
-      background-size: 200% 200%;
+      font-size: 3.4rem;
+      margin-bottom: 0.4rem;
+      background: linear-gradient(135deg, #a0c4ff, #4e7fff, #22d3ee, #a0c4ff);
+      background-size: 300% 300%;
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
-      animation: shimmer 3s ease-in-out infinite;
+      animation: shimmer 4s ease-in-out infinite;
+      letter-spacing: 2px;
     }
 
     @keyframes shimmer {
@@ -42,6 +43,83 @@
 
     #overlay .sub { color: #6b8ecf; font-size: 1.1rem; margin-bottom: 0.5rem; }
     #overlay .score-display { color: #4ade80; font-size: 1.8rem; font-weight: bold; margin-bottom: 1.5rem; }
+
+    #start-info {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.4rem;
+      margin: 0.4rem 0 1.6rem;
+    }
+    #start-info.hidden { display: none; }
+    .tagline {
+      color: #8aa1d3;
+      font-size: 1.05rem;
+      letter-spacing: 0.5px;
+    }
+    .lane-keys { display: flex; gap: 8px; }
+    .lane-key {
+      width: 40px;
+      height: 48px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 1.15rem;
+      color: #fff;
+      border: 2px solid currentColor;
+      background: rgba(255, 255, 255, 0.05);
+      text-shadow: 0 0 10px currentColor;
+      box-shadow: 0 0 12px rgba(0, 0, 0, 0.4), inset 0 0 8px rgba(255, 255, 255, 0.05);
+      animation: laneBob 1.8s ease-in-out infinite;
+    }
+    @keyframes laneBob {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-6px); }
+    }
+    .lane-key:nth-child(1) { animation-delay: 0s; }
+    .lane-key:nth-child(2) { animation-delay: 0.08s; }
+    .lane-key:nth-child(3) { animation-delay: 0.16s; }
+    .lane-key:nth-child(4) { animation-delay: 0.24s; }
+    .lane-key:nth-child(5) { animation-delay: 0.32s; }
+    .lane-key:nth-child(6) { animation-delay: 0.40s; }
+    .lane-key:nth-child(7) { animation-delay: 0.48s; }
+    .lane-key:nth-child(8) { animation-delay: 0.56s; }
+    .lane-key:nth-child(9) { animation-delay: 0.64s; }
+
+    .scoring {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 0.95rem;
+      color: #bbb;
+    }
+    .zone-row { display: flex; align-items: center; gap: 10px; }
+    .zone-pill {
+      display: inline-block;
+      min-width: 92px;
+      text-align: center;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 0.78rem;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+    }
+    .zone-pill.pp { background: rgba(34, 211, 238, 0.18); color: #22d3ee; border: 1px solid rgba(34, 211, 238, 0.5); }
+    .zone-pill.p  { background: rgba(74, 222, 128, 0.15); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.5); }
+    .zone-pill.g  { background: rgba(250, 204, 21, 0.15); color: #facc15; border: 1px solid rgba(250, 204, 21, 0.5); }
+
+    .prompt-pulse {
+      color: #a0c4ff;
+      font-size: 1.1rem;
+      letter-spacing: 1px;
+      animation: pulse 1.6s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.55; }
+      50% { opacity: 1; }
+    }
 
     #overlay button {
       font-size: 1.2rem;
@@ -67,8 +145,18 @@
   <canvas id="game"></canvas>
   <div id="overlay">
     <h1 id="overlay-title">Click Hero</h1>
-    <p class="sub" id="overlay-sub">Press any number key (1-9) to start</p>
+    <p class="sub hidden" id="overlay-sub"></p>
     <div class="score-display hidden" id="overlay-score"></div>
+    <div id="start-info">
+      <p class="tagline">Hit the falling notes when they reach the line</p>
+      <div class="lane-keys" id="lane-keys"></div>
+      <div class="scoring">
+        <div class="zone-row"><span class="zone-pill pp">PERFECT+</span><span>+3 — dead center</span></div>
+        <div class="zone-row"><span class="zone-pill p">PERFECT</span><span>+2 — close</span></div>
+        <div class="zone-row"><span class="zone-pill g">GOOD</span><span>+1 — anywhere in zone</span></div>
+      </div>
+      <p class="prompt-pulse">Press 1-9 to start</p>
+    </div>
     <button class="hidden" id="overlay-btn">Play Again</button>
   </div>
 
@@ -563,12 +651,26 @@
       gameRunning = false;
       overlayTitle.textContent = 'Game Over';
       overlaySub.textContent = `Best combo: x${bestCombo}`;
+      overlaySub.classList.remove('hidden');
       overlayScore.textContent = `Score: ${score}`;
       overlayScore.classList.remove('hidden');
       overlayBtn.classList.remove('hidden');
       overlayBtn.textContent = 'Play Again';
+      document.getElementById('start-info').classList.add('hidden');
       overlay.classList.remove('hidden');
     }
+
+    // Populate the lane-key preview boxes with their lane colors
+    (function buildLaneKeys() {
+      const container = document.getElementById('lane-keys');
+      for (let i = 0; i < LANE_COUNT; i++) {
+        const el = document.createElement('div');
+        el.className = 'lane-key';
+        el.style.color = LANE_COLORS[i];
+        el.textContent = i + 1;
+        container.appendChild(el);
+      }
+    })();
 
     // --- Update ---
     function update() {
