@@ -122,6 +122,11 @@
       setTimeout(() => playTone(150, 0.3, 'square', 0.12), 100);
     }
 
+    function soundDrum() {
+      playTone(160, 0.10, 'sine', 0.35);
+      playTone(80, 0.18, 'sine', 0.25);
+    }
+
     // --- Constants ---
     const LANE_COUNT = 9;
     const LANE_COLORS = [
@@ -206,20 +211,37 @@
           break;
         }
       }
-      // Pick unique lanes
+      // Keep any drums that are still on screen, and avoid spawning into their lanes
+      const existingDrums = notes.filter(n => n.type === 'drum');
+      const occupied = new Set(existingDrums.map(n => n.lane));
       const available = [];
-      for (let i = 0; i < LANE_COUNT; i++) available.push(i);
+      for (let i = 0; i < LANE_COUNT; i++) {
+        if (!occupied.has(i)) available.push(i);
+      }
       for (let i = available.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [available[i], available[j]] = [available[j], available[i]];
       }
+      count = Math.min(count, available.length);
       // 20% simultaneous, 80% staggered (spread out vertically)
-      const simultaneous = count === 1 || Math.random() < SIMULTANEOUS_CHANCE;
-      notes = [];
+      const simultaneous = count <= 1 || Math.random() < SIMULTANEOUS_CHANCE;
+      notes = [...existingDrums];
+      const newStart = notes.length;
       for (let i = 0; i < count; i++) {
         const staggerY = simultaneous ? 0 : i * (NOTE_RADIUS * 4 + 20);
-        notes.push({ lane: available[i], y: -NOTE_RADIUS - staggerY });
+        notes.push({ lane: available[i], y: -NOTE_RADIUS - staggerY, type: 'note' });
       }
+      // 5% chance to convert one of the new notes into a white drum (score >= 35)
+      if (score >= 35 && count > 0 && Math.random() < 0.05) {
+        const drumIdx = newStart + Math.floor(Math.random() * count);
+        notes[drumIdx].type = 'drum';
+        notes[drumIdx].comboGiven = false;
+      }
+    }
+
+    function noRegularNotes() {
+      for (const n of notes) if (n.type !== 'drum') return false;
+      return true;
     }
 
     function laneX(lane) {
@@ -321,6 +343,34 @@
     function drawNotes() {
       for (const n of notes) {
         const x = laneX(n.lane);
+
+        if (n.type === 'drum') {
+          ctx.shadowColor = '#ffffff';
+          ctx.shadowBlur = 22;
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(x, n.y, NOTE_RADIUS, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+
+          ctx.strokeStyle = 'rgba(120, 120, 120, 0.7)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(x, n.y, NOTE_RADIUS * 0.7, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(x, n.y, NOTE_RADIUS * 0.4, 0, Math.PI * 2);
+          ctx.stroke();
+
+          ctx.fillStyle = '#222';
+          ctx.font = `bold ${NOTE_RADIUS}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(n.lane + 1, x, n.y);
+          ctx.textBaseline = 'alphabetic';
+          continue;
+        }
+
         const color = LANE_COLORS[n.lane];
 
         // Glow
@@ -415,14 +465,27 @@
     // --- Hit logic ---
     function tryHit(lane) {
       if (!gameRunning || gameOverFlag) return;
-      if (notes.length === 0) return;
 
       laneFlash[lane] = 1;
 
-      // Find note in this lane
-      const idx = notes.findIndex(n => n.lane === lane);
+      // Prefer a regular note over a drum if both are in this lane
+      let idx = notes.findIndex(n => n.lane === lane && n.type !== 'drum');
       if (idx === -1) {
-        // No note in this lane — just ignore
+        // Fall back to a drum in this lane
+        const drumIdx = notes.findIndex(n => n.lane === lane && n.type === 'drum');
+        if (drumIdx !== -1) {
+          const d = notes[drumIdx];
+          score += 1;
+          if (!d.comboGiven) {
+            combo++;
+            if (combo > bestCombo) bestCombo = combo;
+            d.comboGiven = true;
+          }
+          const x = laneX(lane);
+          spawnHitParticles(x, d.y, '#ffffff', 8);
+          soundDrum();
+          updateSpeed();
+        }
         return;
       }
 
@@ -443,7 +506,7 @@
         soundPerfectPlus();
         notes.splice(idx, 1);
         updateSpeed();
-        if (notes.length === 0) spawnNotes();
+        if (noRegularNotes()) spawnNotes();
       } else if (dist <= PERFECT_HALF) {
         score += 2;
         combo++;
@@ -456,7 +519,7 @@
         soundPerfect();
         notes.splice(idx, 1);
         updateSpeed();
-        if (notes.length === 0) spawnNotes();
+        if (noRegularNotes()) spawnNotes();
       } else if (dist <= GOOD_HALF) {
         score += 1;
         combo++;
@@ -466,7 +529,7 @@
         soundGood();
         notes.splice(idx, 1);
         updateSpeed();
-        if (notes.length === 0) spawnNotes();
+        if (noRegularNotes()) spawnNotes();
       } else {
         addFloatingText('TOO EARLY', x, n.y, '#ef4444');
         soundMiss();
@@ -485,7 +548,7 @@
       }
       if (misses >= MAX_MISSES) {
         gameOver();
-      } else if (notes.length === 0) {
+      } else if (noRegularNotes()) {
         spawnNotes();
       }
     }
@@ -518,6 +581,11 @@
       // Check for notes that fell past good zone
       for (let i = notes.length - 1; i >= 0; i--) {
         if (notes[i].y > hitZoneY + GOOD_HALF + NOTE_RADIUS) {
+          if (notes[i].type === 'drum') {
+            // Drums silently disappear off-screen — no miss penalty
+            notes.splice(i, 1);
+            continue;
+          }
           addFloatingText('MISS', laneX(notes[i].lane), hitZoneY - 40, '#ef4444');
           soundMiss();
           notes.splice(i, 1);
@@ -529,7 +597,7 @@
         }
       }
 
-      if (notes.length === 0) spawnNotes();
+      if (noRegularNotes()) spawnNotes();
     }
 
     // --- Game loop ---
@@ -566,6 +634,7 @@
     }
 
     window.addEventListener('keydown', e => {
+      if (e.repeat) return;
       const key = getKeyLane(e);
       if (key >= 1 && key <= 9) {
         if (!started || (!gameRunning && !gameOverFlag)) {
