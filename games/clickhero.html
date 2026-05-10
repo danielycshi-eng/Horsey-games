@@ -491,25 +491,30 @@
 
         if (n.type === 'hold') {
           const color = LANE_COLORS[n.lane];
+          // While holding, lock the head at the hit zone so the tail visibly
+          // shrinks as the note progresses (the part that has crossed gets eaten)
+          const headY = n.holding ? Math.min(n.y, hitZoneY) : n.y;
           const tailTop = n.y - n.tailLength;
+          const tailBottom = headY;
           const tailW = NOTE_RADIUS * 1.2;
 
-          // Tail body
-          ctx.globalAlpha = n.holding ? 0.85 : 0.45;
-          ctx.fillStyle = color;
-          ctx.fillRect(x - tailW / 2, tailTop, tailW, n.tailLength);
-          // Rounded tail end cap
-          ctx.beginPath();
-          ctx.arc(x, tailTop, tailW / 2, Math.PI, 0);
-          ctx.fill();
-          ctx.globalAlpha = 1;
+          if (tailTop < tailBottom) {
+            ctx.globalAlpha = n.holding ? 0.9 : 0.45;
+            ctx.fillStyle = color;
+            ctx.fillRect(x - tailW / 2, tailTop, tailW, tailBottom - tailTop);
+            // Rounded tail end cap
+            ctx.beginPath();
+            ctx.arc(x, tailTop, tailW / 2, Math.PI, 0);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+          }
 
           // Head (with extra glow when holding)
           ctx.shadowColor = color;
           ctx.shadowBlur = n.holding ? 30 : 20;
           ctx.fillStyle = color;
           ctx.beginPath();
-          ctx.arc(x, n.y, NOTE_RADIUS, 0, Math.PI * 2);
+          ctx.arc(x, headY, NOTE_RADIUS, 0, Math.PI * 2);
           ctx.fill();
           ctx.shadowBlur = 0;
 
@@ -517,19 +522,19 @@
           ctx.strokeStyle = '#fff';
           ctx.lineWidth = 2;
           ctx.beginPath();
-          ctx.arc(x, n.y, NOTE_RADIUS + 2, 0, Math.PI * 2);
+          ctx.arc(x, headY, NOTE_RADIUS + 2, 0, Math.PI * 2);
           ctx.stroke();
 
           ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
           ctx.beginPath();
-          ctx.arc(x, n.y, NOTE_RADIUS * 0.5, 0, Math.PI * 2);
+          ctx.arc(x, headY, NOTE_RADIUS * 0.5, 0, Math.PI * 2);
           ctx.fill();
 
           ctx.fillStyle = '#fff';
           ctx.font = `bold ${NOTE_RADIUS}px sans-serif`;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText(n.lane + 1, x, n.y);
+          ctx.fillText(n.lane + 1, x, headY);
           ctx.textBaseline = 'alphabetic';
           continue;
         }
