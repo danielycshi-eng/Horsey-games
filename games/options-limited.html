@@ -135,9 +135,10 @@
     };
 
     // Given a target phrase, generate visibly-distinguishable "near" decoys:
-    // case shifts, punctuation tweaks, single-letter typos, word doubling,
-    // word concatenation, reversal. All fair — every variant is something
-    // a careful reader can distinguish from the target.
+    // case shifts, punctuation tweaks, single- and two-letter typos, vowel/
+    // consonant insertions, word doubling, word concat, reversal, internal
+    // caps. All fair — every variant is a transform of THIS target's words,
+    // so the grid stays on-topic.
     function generateNearVariants(target) {
       const out = new Set();
       const punctMatch = target.match(/[.!?,;:]+$/);
@@ -145,19 +146,20 @@
       const core = trail ? target.slice(0, -trail.length) : target;
       const words = core.split(' ');
       const add = (cv) => out.add(cv + trail);
+      const sub = (i, replacement) => {
+        const arr = [...words]; arr[i] = replacement;
+        add(arr.join(' '));
+      };
 
       // 1. Per-word capitalization
       for (let i = 0; i < words.length; i++) {
         const w = words[i];
-        const cands = [
+        for (const c of [
           w.toLowerCase(),
           w.toUpperCase(),
           w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(),
-        ];
-        for (const c of cands) {
-          if (c === w) continue;
-          const arr = [...words]; arr[i] = c;
-          add(arr.join(' '));
+        ]) {
+          if (c !== w) sub(i, c);
         }
       }
 
@@ -173,39 +175,33 @@
       }
       if (trail) out.add(core);
 
-      // 4. Duplicate a letter in a word
+      // 4. Duplicate a single letter
       for (let i = 0; i < words.length; i++) {
         const w = words[i];
         for (let j = 0; j < w.length; j++) {
-          const dup = w.slice(0, j) + w[j] + w.slice(j);
-          const arr = [...words]; arr[i] = dup;
-          add(arr.join(' '));
+          sub(i, w.slice(0, j) + w[j] + w.slice(j));
         }
       }
 
-      // 5. Drop a letter from a word (only if word > 3 chars)
+      // 5. Drop a letter (word > 3)
       for (let i = 0; i < words.length; i++) {
         const w = words[i];
         if (w.length <= 3) continue;
         for (let j = 0; j < w.length; j++) {
-          const drop = w.slice(0, j) + w.slice(j + 1);
-          const arr = [...words]; arr[i] = drop;
-          add(arr.join(' '));
+          sub(i, w.slice(0, j) + w.slice(j + 1));
         }
       }
 
-      // 6. Swap adjacent letters in a word
+      // 6. Swap adjacent letters
       for (let i = 0; i < words.length; i++) {
         const w = words[i];
         for (let j = 0; j < w.length - 1; j++) {
           if (w[j] === w[j + 1]) continue;
-          const swap = w.slice(0, j) + w[j + 1] + w[j] + w.slice(j + 2);
-          const arr = [...words]; arr[i] = swap;
-          add(arr.join(' '));
+          sub(i, w.slice(0, j) + w[j + 1] + w[j] + w.slice(j + 2));
         }
       }
 
-      // 7. Word-order reverse
+      // 7. Reverse word order
       if (words.length >= 2) add([...words].reverse().join(' '));
 
       // 8. Double a word
@@ -214,10 +210,41 @@
         add(arr.join(' '));
       }
 
-      // 9. Concat two adjacent words (drop the space)
+      // 9. Concat adjacent words
       for (let i = 0; i < words.length - 1; i++) {
         const arr = [...words]; arr.splice(i, 2, words[i] + words[i + 1]);
         add(arr.join(' '));
+      }
+
+      // 10. Two-letter dup within a word
+      for (let i = 0; i < words.length; i++) {
+        const w = words[i];
+        if (w.length < 3) continue;
+        for (let j = 0; j < w.length; j++) {
+          for (let k = j + 1; k < w.length; k++) {
+            sub(i, w.slice(0, j) + w[j] + w.slice(j, k) + w[k] + w.slice(k));
+          }
+        }
+      }
+
+      // 11. Insert a common letter at each position
+      const INSERTS = ['a', 'e', 'i', 'o', 'u', 'n', 's', 't', 'r', 'l'];
+      for (let i = 0; i < words.length; i++) {
+        const w = words[i];
+        for (let j = 0; j <= w.length; j++) {
+          for (const ch of INSERTS) {
+            sub(i, w.slice(0, j) + ch + w.slice(j));
+          }
+        }
+      }
+
+      // 12. Capitalize one internal letter
+      for (let i = 0; i < words.length; i++) {
+        const w = words[i];
+        for (let j = 1; j < w.length; j++) {
+          if (w[j].toUpperCase() === w[j]) continue;
+          sub(i, w.slice(0, j) + w[j].toUpperCase() + w.slice(j + 1));
+        }
       }
 
       out.delete(target);
@@ -230,18 +257,10 @@
       return nearCache.get(target);
     }
 
-    // Pool for a given target = its near-variants + every other target phrase
-    // and each of their near-variants. The "far" decoys (other targets'
-    // variants) act as background noise; the near-variants are the hard part.
+    // Pool for a given target = ONLY its own near-variants. Variants of the
+    // other 5 phrases would be off-topic, so they're excluded.
     function buildPool(target) {
-      const set = new Set(nearVariants(target));
-      for (const t of POSSIBLE_TARGETS) {
-        if (t === target) continue;
-        set.add(t);
-        for (const v of nearVariants(t)) set.add(v);
-      }
-      set.delete(target);
-      return [...set];
+      return nearVariants(target);
     }
 
     const menuEl = document.getElementById('menu');
