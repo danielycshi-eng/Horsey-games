@@ -121,70 +121,110 @@
   <script>
     const TARGET = "I am a robot";
 
-    // TODO: tune difficulty counts and pools
+    // TODO: tune difficulty counts
     const DIFFICULTY = {
-      easy:   { count: 20,  pool: 'mild'   },
-      medium: { count: 80,  pool: 'medium' },
-      hard:   { count: 200, pool: 'tricky' },
+      easy:   { count: 20  },
+      medium: { count: 80  },
+      hard:   { count: 200 },
     };
 
-    // TODO: expand decoy pools (visual confusables, punctuation/spacing variants, semantic decoys)
-    const DECOYS = {
-      mild: [
-        "I am a Robot",
-        "i am a robot",
-        "I am a robot.",
-        "I am a robot ",
-        "I'm a robot",
-        "I am a robots",
-        "I am  a robot",
-        "I am a rob ot",
-      ],
-      medium: [
-        "I am a Robot",
-        "i am a robot",
-        "I am a robot.",
-        "I'm a robot",
-        "I am a robots",
-        "I am the robot",
-        "I am not a robot",
-        "I might be a robot",
-        "I am a bot",
-        "Am I a robot",
-        "I am A robot",
-        "I am a Robot.",
-        "I was a robot",
-        "I am a robot?",
-        "i am a Robot",
-        "I am a rob ot",
-        "I am  a robot",
-      ],
-      tricky: [
-        "I am a Robot",
-        "i am a robot",
-        "I am a robot.",
-        "I'm a robot",
-        "I am the robot",
-        "I am not a robot",
-        "I might be a robot",
-        "I used to be a robot",
-        "I am a bot",
-        "Am I a robot",
-        "I am a r0bot",
-        "I am a rob0t",
-        "l am a robot",
-        "1 am a robot",
-        "I am a roboot",
-        "I am a roboto",
-        "I are a robot",
-        "I am a Robot.",
-        "i am a Robot",
-        "I am a robot ",
-        "I am  a robot",
-        "I am a rob ot",
-        " I am a robot",
-      ],
-    };
+    // Visibly distinguishable from target — safe at every level.
+    const VISIBLE_DECOYS = [
+      "I am a Robot", "i am a robot", "I'm a robot", "I am a robots",
+      "I am a bot", "I am the robot", "I am a robot.", "I am a robot!",
+      "I am a robot?", "I am a robot,", "I am not a robot", "Am I a robot",
+      "I am a droid", "I am a cyborg", "I am a machine", "I am a person",
+      "You are a robot", "We are robots", "He is a robot", "She is a robot",
+      "They are robots", "I might be a robot", "I used to be a robot",
+      "I'm not a robot", "I am no robot", "I am one robot", "I am an robot",
+      "I am a Robot.", "I am a Robot!", "i am a Robot", "I AM A ROBOT",
+      "I am robot", "robot am I a", "robot a am I", "I am a roboot",
+      "I am a roboto", "I am a rebot", "I am a robotic", "I am a robut",
+      "I am a robbot", "I am a r0bot", "I am a rob0t", "I am a rob.ot",
+      "I was a robot", "I were a robot", "I are a robot", "I be a robot",
+      "I think I'm a robot", "I wish I was a robot", "I am a robot too",
+      "I am still a robot", "I am also a robot", "Is I a robot",
+      "Am I not a robot", "I am a Roboto", "I am a Roboot", "I am a rabbit",
+      "I am a rocket", "I am a raccoon", "I am a radish", "I am a router",
+      "I am a record", "I am a refund", "I am a region",
+    ];
+
+    // Subtle case/punctuation tricks — medium and hard only.
+    const SUBTLE_DECOYS = [
+      "I am A robot", "I Am a robot", "I am a Robot,", "I am a Robot?",
+      "I am a robot:", "I am a robot;", "I am a robot...", "I am a robot-",
+      "I'm a Robot", "I'm a robots", "i'm a robot", "I am a-robot",
+      "I am  a Robot", "I-am a robot", "I am.a robot", "I am,a robot",
+      "I am a r oboto", "I am a robо t", "I am a Robбt",
+      "I am aa robot", "I aam a robot", "II am a robot", "I am a rrobot",
+      "I am a robott", "I am a robotz", "I am a robotx",
+    ];
+
+    // Invisible / homoglyph traps — render almost identical to the target.
+    // Hard only. THIS is what makes "looks right but isn't" a thing.
+    const TRAP_DECOYS = [
+      "I am a robot ",     // trailing space
+      " I am a robot",     // leading space
+      "I am  a robot",     // double space
+      "I  am a robot",     // double space earlier
+      "I am a  robot",     // double space later
+      "I am a robot.",     // trailing period (same as visible, but feels sneakier here)
+      "l am a robot",      // lowercase L instead of capital I
+      "1 am a robot",      // digit 1 instead of capital I
+      "I am a r0bot",      // zero
+      "I am a rob0t",      // zero
+      "I аm a robot",      // cyrillic а in "am"
+      "I am а robot",      // cyrillic а as the article
+      "I am a гobot",      // cyrillic г as r
+      "I am a roЬot",      // cyrillic Ь as b
+      "I am a rоbot",      // cyrillic о in robot
+      "I am a robоt",      // cyrillic о later
+      "I am a roboт",      // cyrillic т as t
+      "I am a robоt",
+      "I am a robot​", // zero-width space appended
+      "I am a robot",  // non-breaking space
+      "I am a robot",
+      "I am a robot",
+    ];
+
+    // Combinatorial generator: swap 2 of the 4 words to grow the pool.
+    // All substitutions are visibly distinct words, so the produced strings
+    // remain fair (no invisible-character tricks come from here).
+    const WORD_SUBS = [
+      ['I',     'i', 'You', 'We', 'They', 'He', 'She', 'Joe', 'Bob'],
+      ['am',    'was', 'were', 'are', "ain't", 'be', 'might be'],
+      ['a',     'the', 'an', 'no', 'one', 'some'],
+      ['robot', 'Robot', 'bot', 'droid', 'cyborg', 'machine', 'roboot', 'roboto', 'human', 'turtle'],
+    ];
+
+    function generateTwoWordSubs() {
+      const out = new Set();
+      const base = ['I', 'am', 'a', 'robot'];
+      for (let p1 = 0; p1 < 4; p1++) {
+        for (let p2 = p1 + 1; p2 < 4; p2++) {
+          for (const s1 of WORD_SUBS[p1]) {
+            for (const s2 of WORD_SUBS[p2]) {
+              if (s1 === base[p1] && s2 === base[p2]) continue;
+              const w = [...base];
+              w[p1] = s1; w[p2] = s2;
+              out.add(w.join(' '));
+            }
+          }
+        }
+      }
+      return [...out];
+    }
+
+    function buildPool(level) {
+      const set = new Set(VISIBLE_DECOYS);
+      if (level !== 'easy') {
+        for (const d of SUBTLE_DECOYS) set.add(d);
+        for (const d of generateTwoWordSubs()) set.add(d);
+      }
+      if (level === 'hard') for (const d of TRAP_DECOYS) set.add(d);
+      set.delete(TARGET);
+      return [...set];
+    }
 
     const menuEl = document.getElementById('menu');
     const playEl = document.getElementById('play');
@@ -207,11 +247,10 @@
 
     function buildGrid(level) {
       const cfg = DIFFICULTY[level];
-      const pool = DECOYS[cfg.pool];
-      const items = [];
-      for (let i = 0; i < cfg.count - 1; i++) {
-        items.push(pool[Math.floor(Math.random() * pool.length)]);
-      }
+      const pool = buildPool(level);
+      shuffle(pool);
+      const decoyCount = Math.min(cfg.count - 1, pool.length);
+      const items = pool.slice(0, decoyCount);
       items.push(TARGET);
       shuffle(items);
 
