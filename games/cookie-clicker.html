@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cookie Clicker - Horsey Games</title>
+  <link rel="stylesheet" href="../style.css">
+  <style>
+    body {
+      justify-content: flex-start;
+      padding-top: 3rem;
+      background: #0b0f24;
+      overflow-x: hidden;
+    }
+
+    canvas#bg {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 0;
+      pointer-events: none;
+    }
+    .vignette {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 1;
+      background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.55) 100%);
+    }
+    .back-link { z-index: 2; }
+    h1, .cookie-area, .reset-link { position: relative; z-index: 2; }
+
+    h1 {
+      font-size: 3rem;
+      margin-bottom: 1.6rem;
+      letter-spacing: 4px;
+      background: linear-gradient(135deg, #a0c4ff 0%, #4e7fff 35%, #c7a0ff 70%, #a0c4ff 100%);
+      background-size: 300% 300%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: shimmer 5s ease-in-out infinite, float 6s ease-in-out infinite;
+      filter: drop-shadow(0 0 18px rgba(78, 127, 255, 0.4));
+    }
+    @keyframes shimmer { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+    @keyframes float   { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+
+    .cookie-area {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.3rem;
+      animation: fadeIn 0.9s cubic-bezier(.2,.7,.2,1) both;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(15px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .counter {
+      font-size: 4rem;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-weight: 700;
+      background: linear-gradient(135deg, #f5d77a, #d49d3e);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 0 12px rgba(245, 215, 122, 0.35));
+      display: inline-block;
+      transform-origin: center;
+      line-height: 1.05;
+    }
+    .counter.pulse { animation: counterPulse 0.18s ease-out; }
+    @keyframes counterPulse {
+      0%   { transform: scale(1); }
+      50%  { transform: scale(1.06); }
+      100% { transform: scale(1); }
+    }
+
+    .cps {
+      color: #8ea7d6;
+      font-size: 0.9rem;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-bottom: 1.8rem;
+      opacity: 0.85;
+    }
+
+    .cookie-wrap {
+      position: relative;
+      width: min(340px, 82vw);
+      height: min(340px, 82vw);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .crumb-canvas {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .cookie-btn {
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      width: 92%;
+      height: 92%;
+      transform-origin: center;
+      transition: transform 0.12s cubic-bezier(.4,1.6,.5,1), filter 0.2s;
+      filter: drop-shadow(0 8px 30px rgba(180, 110, 40, 0.4));
+      z-index: 6;
+    }
+    .cookie-btn:hover { filter: drop-shadow(0 10px 38px rgba(220, 140, 50, 0.6)); }
+    .cookie-btn.pop { transform: scale(0.93); }
+    .cookie-btn:active { transform: scale(0.9); }
+    .cookie-btn:focus-visible { outline: 2px solid #a0c4ff; outline-offset: 10px; border-radius: 50%; }
+    .cookie-btn svg { width: 100%; height: 100%; display: block; }
+
+    .fx-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+      overflow: visible;
+    }
+
+    .fx-plus1 {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      font-size: 1.8rem;
+      font-weight: 700;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      color: #ffe48a;
+      text-shadow: 0 0 12px rgba(255, 220, 130, 0.7), 0 2px 4px rgba(0,0,0,0.4);
+      pointer-events: none;
+      animation: floatUp 0.85s ease-out forwards;
+      will-change: transform, opacity;
+    }
+    @keyframes floatUp {
+      0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+      15%  { opacity: 1; transform: translate(-50%, -60%) scale(1.15); }
+      100% { opacity: 0; transform: translate(-50%, -180%) scale(0.95); }
+    }
+
+    .reset-link {
+      position: fixed;
+      bottom: 0.8rem;
+      right: 1.2rem;
+      color: #555;
+      font-size: 0.75rem;
+      cursor: pointer;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      background: none;
+      border: none;
+      padding: 0.4rem 0.7rem;
+      font-family: inherit;
+      transition: color 0.15s;
+      z-index: 30;
+    }
+    .reset-link:hover { color: #aaa; }
+
+    /* TODO: shop / buildings panel goes here when added */
+  </style>
+</head>
+<body>
+  <canvas id="bg"></canvas>
+  <div class="vignette"></div>
+  <a href="../games.html" class="back-link">&larr; All Games</a>
+
+  <h1>Cookie Clicker</h1>
+
+  <div class="cookie-area">
+    <div class="counter" id="counter">0 cookies</div>
+    <div class="cps" id="cps">0 per second</div>
+    <div class="cookie-wrap">
+      <canvas class="crumb-canvas" id="crumb-canvas"></canvas>
+      <button class="cookie-btn" id="cookie" aria-label="Click the cookie">
+        <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <radialGradient id="cookieGrad" cx="38%" cy="32%" r="75%">
+              <stop offset="0%"  stop-color="#f0c98b"/>
+              <stop offset="55%" stop-color="#c68d4f"/>
+              <stop offset="100%" stop-color="#7a4520"/>
+            </radialGradient>
+            <radialGradient id="chipGrad" cx="35%" cy="30%" r="70%">
+              <stop offset="0%"  stop-color="#7a3a18"/>
+              <stop offset="100%" stop-color="#2a1206"/>
+            </radialGradient>
+          </defs>
+          <!-- cookie body -->
+          <circle cx="100" cy="100" r="94" fill="url(#cookieGrad)"/>
+          <!-- bumpy rim shadow -->
+          <circle cx="100" cy="100" r="94" fill="none" stroke="#4a2810" stroke-width="2.5" opacity="0.55"/>
+          <!-- subtle inner darker ring -->
+          <circle cx="100" cy="100" r="88" fill="none" stroke="#3a1f0a" stroke-width="1" opacity="0.25"/>
+          <!-- chocolate chips -->
+          <circle cx="60"  cy="58"  r="10" fill="url(#chipGrad)"/>
+          <circle cx="134" cy="48"  r="12" fill="url(#chipGrad)"/>
+          <circle cx="88"  cy="96"  r="8"  fill="url(#chipGrad)"/>
+          <circle cx="148" cy="115" r="11" fill="url(#chipGrad)"/>
+          <circle cx="52"  cy="138" r="10" fill="url(#chipGrad)"/>
+          <circle cx="118" cy="160" r="9"  fill="url(#chipGrad)"/>
+          <!-- tiny crumb specks -->
+          <circle cx="110" cy="75"  r="2" fill="#4a2810" opacity="0.6"/>
+          <circle cx="75"  cy="118" r="2" fill="#4a2810" opacity="0.6"/>
+          <circle cx="160" cy="80"  r="1.5" fill="#4a2810" opacity="0.6"/>
+          <!-- top-left highlight -->
+          <ellipse cx="65" cy="58" rx="38" ry="22" fill="#ffffff" opacity="0.10"/>
+        </svg>
+      </button>
+      <div class="fx-layer" id="fx-layer"></div>
+    </div>
+  </div>
+
+  <button class="reset-link" id="reset" title="Wipe save and start over">reset</button>
+
+  <script>
+    const STORAGE_KEY = 'horsey:cookieclicker:v1';
+
+    const cookieEl    = document.getElementById('cookie');
+    const counterEl   = document.getElementById('counter');
+    const cpsEl       = document.getElementById('cps');
+    const fxLayer     = document.getElementById('fx-layer');
+    const crumbCanvas = document.getElementById('crumb-canvas');
+    const ctxCrumbs   = crumbCanvas.getContext('2d');
+    const wrapEl      = cookieEl.parentNode;
+
+    function defaultState() { return { cookies: 0, cps: 0 }; }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) return Object.assign(defaultState(), JSON.parse(raw));
+      } catch (_) {}
+      return defaultState();
+    }
+
+    let state = loadState();
+    let saveTimer = null;
+    function saveStateDebounced() {
+      if (saveTimer) return;
+      saveTimer = setTimeout(() => {
+        saveTimer = null;
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (_) {}
+      }, 250);
+    }
+
+    function fmt(n) {
+      // v1: comma-formatted integer. TODO: K/M/B abbreviations later.
+      return Math.floor(n).toLocaleString();
+    }
+
+    function renderCounter() {
+      counterEl.textContent = fmt(state.cookies) + ' cookies';
+      counterEl.classList.remove('pulse');
+      void counterEl.offsetWidth;
+      counterEl.classList.add('pulse');
+      cpsEl.textContent = fmt(state.cps) + ' per second';
+    }
+
+    function bumpCookie() {
+      cookieEl.classList.remove('pop');
+      void cookieEl.offsetWidth;
+      cookieEl.classList.add('pop');
+    }
+
+    // ---- Floating "+1" ----
+    function spawnPlusOne(x, y) {
+      const el = document.createElement('span');
+      el.className = 'fx-plus1';
+      el.textContent = '+1';
+      el.style.left = x + 'px';
+      el.style.top  = y + 'px';
+      fxLayer.appendChild(el);
+      el.addEventListener('animationend', () => el.remove(), { once: true });
+    }
+
+    // ---- Crumb particles ----
+    const crumbs = [];
+    function resizeCrumbCanvas() {
+      const r = wrapEl.getBoundingClientRect();
+      crumbCanvas.width  = r.width;
+      crumbCanvas.height = r.height;
+    }
+    function spawnCrumbs(x, y) {
+      const n = 6 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < n; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const sp = 1.5 + Math.random() * 3;
+        crumbs.push({
+          x, y,
+          vx: Math.cos(a) * sp,
+          vy: Math.sin(a) * sp - 1.5,
+          r: 1.5 + Math.random() * 2.5,
+          life: 1,
+          color: Math.random() < 0.55 ? '#6b3a1a' : '#3a1f0a',
+        });
+      }
+    }
+    function tickCrumbs() {
+      ctxCrumbs.clearRect(0, 0, crumbCanvas.width, crumbCanvas.height);
+      for (let i = crumbs.length - 1; i >= 0; i--) {
+        const c = crumbs[i];
+        c.x += c.vx;
+        c.y += c.vy;
+        c.vy += 0.22;
+        c.life -= 0.018;
+        if (c.life <= 0) { crumbs.splice(i, 1); continue; }
+        ctxCrumbs.globalAlpha = Math.min(1, Math.max(0, c.life * 1.4));
+        ctxCrumbs.fillStyle = c.color;
+        ctxCrumbs.beginPath();
+        ctxCrumbs.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+        ctxCrumbs.fill();
+      }
+      ctxCrumbs.globalAlpha = 1;
+      requestAnimationFrame(tickCrumbs);
+    }
+
+    // ---- Click "pop" sound ----
+    let audioCtx = null;
+    function ensureAudio() {
+      if (audioCtx) return;
+      try {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) audioCtx = new AC();
+      } catch (_) {}
+    }
+    function playClickPop() {
+      ensureAudio();
+      if (!audioCtx) return;
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const t = audioCtx.currentTime;
+      const osc  = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      const f0 = 340 + Math.random() * 80;
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(f0, t);
+      osc.frequency.exponentialRampToValueAtTime(150, t + 0.07);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.18, t + 0.006);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(t);
+      osc.stop(t + 0.1);
+    }
+
+    // ---- Click handler ----
+    function onCookieClick(e) {
+      const wrap = wrapEl.getBoundingClientRect();
+      let cx, cy;
+      if (e.clientX || e.clientY) {
+        cx = e.clientX - wrap.left;
+        cy = e.clientY - wrap.top;
+      } else {
+        // keyboard activation: pop at button center
+        const r = cookieEl.getBoundingClientRect();
+        cx = r.left + r.width  / 2 - wrap.left;
+        cy = r.top  + r.height / 2 - wrap.top;
+      }
+      state.cookies += 1; // TODO: clickPower multiplier
+      renderCounter();
+      spawnPlusOne(cx, cy);
+      spawnCrumbs(cx, cy);
+      playClickPop();
+      bumpCookie();
+      saveStateDebounced();
+    }
+
+    // ---- CpS tick (no-op while cps=0; lives here so future buildings just set state.cps) ----
+    function startCpsLoop() {
+      setInterval(() => {
+        if (state.cps > 0) {
+          state.cookies += state.cps / 20;
+          renderCounter();
+          saveStateDebounced();
+        }
+      }, 50);
+    }
+
+    // ---- Reset ----
+    function resetState() {
+      if (!confirm('Reset all cookies? This wipes your save.')) return;
+      state = defaultState();
+      try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+      renderCounter();
+    }
+
+    cookieEl.addEventListener('click', onCookieClick);
+    document.getElementById('reset').addEventListener('click', resetState);
+    window.addEventListener('resize', resizeCrumbCanvas);
+
+    resizeCrumbCanvas();
+    renderCounter();
+    requestAnimationFrame(tickCrumbs);
+    startCpsLoop();
+
+    // TODO: buildings — push into a BUILDINGS array, each {name, baseCost, cps}; render in shop panel
+    // TODO: golden cookie spawner
+  </script>
+  <script src="../bg.js"></script>
+</body>
+</html>
