@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Options Limited - Horsey Games</title>
+  <link rel="stylesheet" href="../style.css">
+  <style>
+    body { justify-content: flex-start; padding-top: 4rem; }
+
+    h1 { font-size: 2.5rem; margin-bottom: 0.3rem; letter-spacing: 2px; }
+    .subtitle { color: #6b8ecf; font-size: 1rem; margin-bottom: 2rem; letter-spacing: 1px; }
+
+    .hidden { display: none !important; }
+
+    /* --- Menu (difficulty select) --- */
+    #menu {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.5rem;
+      margin-top: 1rem;
+    }
+    #menu .menu-tagline { color: #ddd; font-size: 1.1rem; text-align: center; }
+    #menu .menu-tagline strong { color: #fff; }
+    #menu .diff-row { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+    #menu .btn { min-width: 130px; }
+
+    /* --- Play screen --- */
+    #timer {
+      position: fixed;
+      top: 1.2rem;
+      right: 1.5rem;
+      font-family: monospace;
+      font-size: 1.6rem;
+      color: #a0c4ff;
+      z-index: 30;
+    }
+
+    #target-bar {
+      font-size: 1.1rem;
+      color: #aaa;
+      margin-bottom: 1.2rem;
+      text-align: center;
+    }
+    #target-bar strong { color: #fff; font-weight: 600; }
+
+    #options-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      justify-content: center;
+      max-width: 1100px;
+      width: 92%;
+      padding-bottom: 3rem;
+    }
+
+    .option {
+      background: #16213e;
+      border: 1px solid #0f3460;
+      border-radius: 6px;
+      padding: 0.4rem 0.7rem;
+      font-size: 0.95rem;
+      color: #ddd;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.1s, border-color 0.1s;
+      font-family: sans-serif;
+      white-space: pre;
+    }
+    .option:hover { background: #0f3460; border-color: #4e7fff; }
+    .option.wrong {
+      background: #4a1a22;
+      border-color: #e94560;
+      animation: shake 0.25s;
+    }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-3px); }
+      75% { transform: translateX(3px); }
+    }
+
+    /* --- Result screen --- */
+    #result {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.2rem;
+      margin-top: 2rem;
+    }
+    #result .time { font-size: 3rem; color: #a0c4ff; font-family: monospace; }
+    #result .label { color: #aaa; font-size: 1rem; }
+  </style>
+</head>
+<body>
+  <a href="../games.html" class="back-link">&larr; All Games</a>
+  <h1>Options Limited</h1>
+  <p class="subtitle">prove you're not a robot</p>
+
+  <div id="menu">
+    <div class="menu-tagline">Find <strong>I am a robot</strong> — as fast as you can.</div>
+    <div class="diff-row">
+      <button class="btn" data-level="easy">Easy</button>
+      <button class="btn" data-level="medium">Medium</button>
+      <button class="btn" data-level="hard">Hard</button>
+    </div>
+  </div>
+
+  <div id="play" class="hidden">
+    <div id="timer">0.0s</div>
+    <div id="target-bar">Find: <strong>I am a robot</strong></div>
+    <div id="options-grid"></div>
+  </div>
+
+  <div id="result" class="hidden">
+    <div class="label">Found in</div>
+    <div class="time" id="result-time">0.0s</div>
+    <button class="btn" id="play-again">Play Again</button>
+  </div>
+
+  <script>
+    const TARGET = "I am a robot";
+
+    // TODO: tune difficulty counts and pools
+    const DIFFICULTY = {
+      easy:   { count: 20,  pool: 'mild'   },
+      medium: { count: 80,  pool: 'medium' },
+      hard:   { count: 200, pool: 'tricky' },
+    };
+
+    // TODO: expand decoy pools (visual confusables, punctuation/spacing variants, semantic decoys)
+    const DECOYS = {
+      mild: [
+        "I am a Robot",
+        "i am a robot",
+        "I am a robot.",
+        "I am a robot ",
+        "I'm a robot",
+        "I am a robots",
+        "I am  a robot",
+        "I am a rob ot",
+      ],
+      medium: [
+        "I am a Robot",
+        "i am a robot",
+        "I am a robot.",
+        "I'm a robot",
+        "I am a robots",
+        "I am the robot",
+        "I am not a robot",
+        "I might be a robot",
+        "I am a bot",
+        "Am I a robot",
+        "I am A robot",
+        "I am a Robot.",
+        "I was a robot",
+        "I am a robot?",
+        "i am a Robot",
+        "I am a rob ot",
+        "I am  a robot",
+      ],
+      tricky: [
+        "I am a Robot",
+        "i am a robot",
+        "I am a robot.",
+        "I'm a robot",
+        "I am the robot",
+        "I am not a robot",
+        "I might be a robot",
+        "I used to be a robot",
+        "I am a bot",
+        "Am I a robot",
+        "I am a r0bot",
+        "I am a rob0t",
+        "l am a robot",
+        "1 am a robot",
+        "I am a roboot",
+        "I am a roboto",
+        "I are a robot",
+        "I am a Robot.",
+        "i am a Robot",
+        "I am a robot ",
+        "I am  a robot",
+        "I am a rob ot",
+        " I am a robot",
+      ],
+    };
+
+    const menuEl = document.getElementById('menu');
+    const playEl = document.getElementById('play');
+    const resultEl = document.getElementById('result');
+    const timerEl = document.getElementById('timer');
+    const gridEl = document.getElementById('options-grid');
+    const resultTimeEl = document.getElementById('result-time');
+
+    let startTime = 0;
+    let rafId = null;
+    let finished = false;
+
+    function shuffle(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    function buildGrid(level) {
+      const cfg = DIFFICULTY[level];
+      const pool = DECOYS[cfg.pool];
+      const items = [];
+      for (let i = 0; i < cfg.count - 1; i++) {
+        items.push(pool[Math.floor(Math.random() * pool.length)]);
+      }
+      items.push(TARGET);
+      shuffle(items);
+
+      gridEl.innerHTML = '';
+      for (const text of items) {
+        const el = document.createElement('div');
+        el.className = 'option';
+        el.textContent = text;
+        el.addEventListener('click', () => onOptionClick(el, text));
+        gridEl.appendChild(el);
+      }
+    }
+
+    function onOptionClick(el, text) {
+      if (finished) return;
+      if (text === TARGET) {
+        finish();
+      } else {
+        // TODO: decide wrong-click penalty (time add? game over? streak break?)
+        el.classList.remove('wrong');
+        void el.offsetWidth;
+        el.classList.add('wrong');
+      }
+    }
+
+    function tickTimer() {
+      const elapsed = (performance.now() - startTime) / 1000;
+      timerEl.textContent = elapsed.toFixed(1) + 's';
+      rafId = requestAnimationFrame(tickTimer);
+    }
+
+    function startGame(level) {
+      finished = false;
+      menuEl.classList.add('hidden');
+      resultEl.classList.add('hidden');
+      playEl.classList.remove('hidden');
+      buildGrid(level);
+      startTime = performance.now();
+      timerEl.textContent = '0.0s';
+      tickTimer();
+    }
+
+    function finish() {
+      finished = true;
+      cancelAnimationFrame(rafId);
+      const elapsed = (performance.now() - startTime) / 1000;
+      resultTimeEl.textContent = elapsed.toFixed(2) + 's';
+      playEl.classList.add('hidden');
+      resultEl.classList.remove('hidden');
+      // TODO: decide end condition — single find (current), N rounds, or countdown
+      // TODO: scoring / leaderboard?
+    }
+
+    function resetToMenu() {
+      cancelAnimationFrame(rafId);
+      playEl.classList.add('hidden');
+      resultEl.classList.add('hidden');
+      menuEl.classList.remove('hidden');
+    }
+
+    document.querySelectorAll('#menu .btn').forEach(btn => {
+      btn.addEventListener('click', () => startGame(btn.dataset.level));
+    });
+    document.getElementById('play-again').addEventListener('click', resetToMenu);
+  </script>
+</body>
+</html>
