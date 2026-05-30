@@ -27,6 +27,23 @@
       z-index: 1;
       background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.55) 100%);
     }
+    /* Full-screen FX canvas for falling cookies — above content, below +1s */
+    canvas#fx-canvas {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 15;
+      pointer-events: none;
+    }
+    /* Full-screen FX layer for +1 floats — above everything else */
+    .fx-layer {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 20;
+      overflow: visible;
+    }
+
     .back-link { z-index: 2; }
     h1, .cookie-area, .reset-link { position: relative; z-index: 2; }
 
@@ -95,13 +112,6 @@
       justify-content: center;
     }
 
-    .crumb-canvas {
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      z-index: 5;
-    }
-
     .cookie-btn {
       background: none;
       border: none;
@@ -111,7 +121,7 @@
       height: 92%;
       transform-origin: center;
       transition: transform 0.12s cubic-bezier(.4,1.6,.5,1), filter 0.2s;
-      filter: drop-shadow(0 8px 30px rgba(180, 110, 40, 0.4));
+      filter: drop-shadow(0 8px 30px rgba(180, 110, 40, 0.45));
       z-index: 6;
     }
     .cookie-btn:hover { filter: drop-shadow(0 10px 38px rgba(220, 140, 50, 0.6)); }
@@ -120,16 +130,8 @@
     .cookie-btn:focus-visible { outline: 2px solid #a0c4ff; outline-offset: 10px; border-radius: 50%; }
     .cookie-btn svg { width: 100%; height: 100%; display: block; }
 
-    .fx-layer {
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      z-index: 10;
-      overflow: visible;
-    }
-
     .fx-plus1 {
-      position: absolute;
+      position: fixed;
       transform: translate(-50%, -50%);
       font-size: 1.8rem;
       font-weight: 700;
@@ -137,13 +139,15 @@
       color: #ffe48a;
       text-shadow: 0 0 12px rgba(255, 220, 130, 0.7), 0 2px 4px rgba(0,0,0,0.4);
       pointer-events: none;
-      animation: floatUp 0.85s ease-out forwards;
+      animation: floatUp 1.4s cubic-bezier(.25,.7,.4,1) forwards;
       will-change: transform, opacity;
     }
+    /* Starts at click point, rises off the top of the viewport. */
     @keyframes floatUp {
       0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
-      15%  { opacity: 1; transform: translate(-50%, -60%) scale(1.15); }
-      100% { opacity: 0; transform: translate(-50%, -180%) scale(0.95); }
+      10%  { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+      85%  { opacity: 1; }
+      100% { opacity: 0; transform: translate(-50%, calc(-50% - 100vh)) scale(0.9); }
     }
 
     .reset-link {
@@ -170,6 +174,8 @@
 <body>
   <canvas id="bg"></canvas>
   <div class="vignette"></div>
+  <canvas id="fx-canvas"></canvas>
+  <div class="fx-layer" id="fx-layer"></div>
   <a href="../games.html" class="back-link">&larr; All Games</a>
 
   <h1>Cookie Clicker</h1>
@@ -178,42 +184,144 @@
     <div class="counter" id="counter">0 cookies</div>
     <div class="cps" id="cps">0 per second</div>
     <div class="cookie-wrap">
-      <canvas class="crumb-canvas" id="crumb-canvas"></canvas>
       <button class="cookie-btn" id="cookie" aria-label="Click the cookie">
         <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
           <defs>
-            <radialGradient id="cookieGrad" cx="38%" cy="32%" r="75%">
-              <stop offset="0%"  stop-color="#f0c98b"/>
-              <stop offset="55%" stop-color="#c68d4f"/>
-              <stop offset="100%" stop-color="#7a4520"/>
+            <radialGradient id="cookieBody" cx="38%" cy="32%" r="80%">
+              <stop offset="0%"   stop-color="#f3cd91"/>
+              <stop offset="25%"  stop-color="#e3b072"/>
+              <stop offset="55%"  stop-color="#b87b3c"/>
+              <stop offset="85%"  stop-color="#7a4520"/>
+              <stop offset="100%" stop-color="#4a2810"/>
             </radialGradient>
-            <radialGradient id="chipGrad" cx="35%" cy="30%" r="70%">
-              <stop offset="0%"  stop-color="#7a3a18"/>
-              <stop offset="100%" stop-color="#2a1206"/>
+            <radialGradient id="chipBody" cx="32%" cy="28%" r="80%">
+              <stop offset="0%"   stop-color="#8a4218"/>
+              <stop offset="45%"  stop-color="#3a1808"/>
+              <stop offset="100%" stop-color="#0a0301"/>
             </radialGradient>
           </defs>
-          <!-- cookie body -->
-          <circle cx="100" cy="100" r="94" fill="url(#cookieGrad)"/>
-          <!-- bumpy rim shadow -->
-          <circle cx="100" cy="100" r="94" fill="none" stroke="#4a2810" stroke-width="2.5" opacity="0.55"/>
-          <!-- subtle inner darker ring -->
-          <circle cx="100" cy="100" r="88" fill="none" stroke="#3a1f0a" stroke-width="1" opacity="0.25"/>
-          <!-- chocolate chips -->
-          <circle cx="60"  cy="58"  r="10" fill="url(#chipGrad)"/>
-          <circle cx="134" cy="48"  r="12" fill="url(#chipGrad)"/>
-          <circle cx="88"  cy="96"  r="8"  fill="url(#chipGrad)"/>
-          <circle cx="148" cy="115" r="11" fill="url(#chipGrad)"/>
-          <circle cx="52"  cy="138" r="10" fill="url(#chipGrad)"/>
-          <circle cx="118" cy="160" r="9"  fill="url(#chipGrad)"/>
-          <!-- tiny crumb specks -->
-          <circle cx="110" cy="75"  r="2" fill="#4a2810" opacity="0.6"/>
-          <circle cx="75"  cy="118" r="2" fill="#4a2810" opacity="0.6"/>
-          <circle cx="160" cy="80"  r="1.5" fill="#4a2810" opacity="0.6"/>
-          <!-- top-left highlight -->
-          <ellipse cx="65" cy="58" rx="38" ry="22" fill="#ffffff" opacity="0.10"/>
+
+          <!-- main body -->
+          <circle cx="100" cy="100" r="94" fill="url(#cookieBody)"/>
+
+          <!-- baked rim shading -->
+          <circle cx="100" cy="100" r="94" fill="none" stroke="#3a1f0a" stroke-width="2.5" opacity="0.6"/>
+          <circle cx="100" cy="100" r="90" fill="none" stroke="#5a3215" stroke-width="0.8" opacity="0.4"/>
+
+          <!-- irregular rim "bumps" — slight color blobs around the edge -->
+          <g opacity="0.55">
+            <ellipse cx="100" cy="9"   rx="13" ry="5"  fill="#9a5a25" transform="rotate(-3 100 9)"/>
+            <ellipse cx="170" cy="38"  rx="11" ry="6"  fill="#8c4c1c" transform="rotate(35 170 38)"/>
+            <ellipse cx="192" cy="105" rx="6"  ry="12" fill="#9a5a25" transform="rotate(8 192 105)"/>
+            <ellipse cx="170" cy="168" rx="11" ry="6"  fill="#8c4c1c" transform="rotate(-30 170 168)"/>
+            <ellipse cx="100" cy="192" rx="13" ry="5"  fill="#9a5a25"/>
+            <ellipse cx="35"  cy="170" rx="11" ry="6"  fill="#8c4c1c" transform="rotate(35 35 170)"/>
+            <ellipse cx="9"   cy="98"  rx="6"  ry="12" fill="#9a5a25" transform="rotate(-5 9 98)"/>
+            <ellipse cx="32"  cy="35"  rx="11" ry="6"  fill="#8c4c1c" transform="rotate(-30 32 35)"/>
+          </g>
+
+          <!-- baked texture: many tiny dark specks -->
+          <g fill="#3a1f0a" opacity="0.7">
+            <circle cx="55"  cy="80"  r="1.2"/>
+            <circle cx="78"  cy="42"  r="0.8"/>
+            <circle cx="120" cy="76"  r="1.5"/>
+            <circle cx="160" cy="100" r="1"/>
+            <circle cx="40"  cy="125" r="1.3"/>
+            <circle cx="100" cy="138" r="0.9"/>
+            <circle cx="138" cy="155" r="1.4"/>
+            <circle cx="62"  cy="172" r="1.1"/>
+            <circle cx="155" cy="72"  r="0.7"/>
+            <circle cx="32"  cy="102" r="1"/>
+            <circle cx="92"  cy="182" r="0.8"/>
+            <circle cx="172" cy="135" r="1.2"/>
+            <circle cx="73"  cy="62"  r="0.6"/>
+            <circle cx="142" cy="32"  r="0.9"/>
+            <circle cx="48"  cy="48"  r="0.7"/>
+            <circle cx="105" cy="105" r="0.6"/>
+            <circle cx="125" cy="148" r="0.8"/>
+            <circle cx="68"  cy="148" r="0.7"/>
+            <circle cx="153" cy="42"  r="0.6"/>
+            <circle cx="83"  cy="118" r="0.5"/>
+          </g>
+
+          <!-- lighter highlight specks (texture bumps catching light) -->
+          <g opacity="0.7">
+            <circle cx="68"  cy="88"  r="0.9" fill="#f4d9a8"/>
+            <circle cx="100" cy="58"  r="1.1" fill="#f4d9a8"/>
+            <circle cx="130" cy="98"  r="0.8" fill="#f4d9a8"/>
+            <circle cx="155" cy="128" r="1.0" fill="#e9c290"/>
+            <circle cx="48"  cy="158" r="0.9" fill="#e9c290"/>
+            <circle cx="125" cy="130" r="0.7" fill="#f4d9a8"/>
+            <circle cx="80"  cy="155" r="1.0" fill="#e9c290"/>
+            <circle cx="38"  cy="75"  r="0.8" fill="#f4d9a8"/>
+            <circle cx="148" cy="170" r="0.7" fill="#e9c290"/>
+            <circle cx="115" cy="180" r="0.8" fill="#e9c290"/>
+          </g>
+
+          <!-- subtle cracks -->
+          <path d="M 112 128 Q 132 142 145 165" stroke="#3a1f0a" stroke-width="0.8" fill="none" opacity="0.45"/>
+          <path d="M 50 75 Q 65 85 72 96"       stroke="#3a1f0a" stroke-width="0.7" fill="none" opacity="0.40"/>
+          <path d="M 130 50 Q 138 70 125 80"    stroke="#3a1f0a" stroke-width="0.6" fill="none" opacity="0.35"/>
+
+          <!-- chocolate chips (shadow + body + highlight for 3D feel) -->
+          <g>
+            <!-- top-left -->
+            <ellipse cx="60" cy="62" rx="10.5" ry="9.5" fill="#000" opacity="0.4"/>
+            <circle  cx="58" cy="58" r="10"    fill="url(#chipBody)"/>
+            <ellipse cx="55" cy="54" rx="3.2"  ry="2.1" fill="#a35528" opacity="0.7"/>
+
+            <!-- top-right (biggest) -->
+            <ellipse cx="137" cy="51" rx="12.5" ry="11.5" fill="#000" opacity="0.42"/>
+            <circle  cx="134" cy="48" r="12"    fill="url(#chipBody)"/>
+            <ellipse cx="130" cy="43" rx="3.8"  ry="2.6"  fill="#a35528" opacity="0.65"/>
+
+            <!-- center -->
+            <ellipse cx="89" cy="98" rx="9"  ry="8.5" fill="#000" opacity="0.38"/>
+            <circle  cx="87" cy="96" r="8.5" fill="url(#chipBody)"/>
+            <ellipse cx="84" cy="93" rx="2.6" ry="1.7" fill="#a35528" opacity="0.7"/>
+
+            <!-- right mid -->
+            <ellipse cx="151" cy="118" rx="11" ry="10.5" fill="#000" opacity="0.38"/>
+            <circle  cx="148" cy="115" r="10.5" fill="url(#chipBody)"/>
+            <ellipse cx="144" cy="110" rx="3.2" ry="2.2"  fill="#a35528" opacity="0.65"/>
+
+            <!-- bottom-left -->
+            <ellipse cx="55" cy="142" rx="10.5" ry="10" fill="#000" opacity="0.38"/>
+            <circle  cx="52" cy="138" r="10"    fill="url(#chipBody)"/>
+            <ellipse cx="49" cy="134" rx="3.0"  ry="2.0" fill="#a35528" opacity="0.7"/>
+
+            <!-- bottom-mid -->
+            <ellipse cx="121" cy="163" rx="10" ry="9.5" fill="#000" opacity="0.38"/>
+            <circle  cx="118" cy="160" r="9.5" fill="url(#chipBody)"/>
+            <ellipse cx="115" cy="156" rx="2.9" ry="1.9" fill="#a35528" opacity="0.7"/>
+
+            <!-- small top -->
+            <ellipse cx="101" cy="36" rx="6.5" ry="6"  fill="#000" opacity="0.32"/>
+            <circle  cx="98"  cy="33" r="6"    fill="url(#chipBody)"/>
+
+            <!-- small right-upper -->
+            <ellipse cx="168" cy="82" rx="5.5" ry="5"  fill="#000" opacity="0.32"/>
+            <circle  cx="166" cy="79" r="5"    fill="url(#chipBody)"/>
+
+            <!-- small left-mid -->
+            <ellipse cx="34" cy="116" rx="5.5" ry="5"  fill="#000" opacity="0.32"/>
+            <circle  cx="31" cy="113" r="5"    fill="url(#chipBody)"/>
+
+            <!-- small bottom-right -->
+            <ellipse cx="163" cy="150" rx="5.5" ry="5" fill="#000" opacity="0.32"/>
+            <circle  cx="160" cy="147" r="5"    fill="url(#chipBody)"/>
+
+            <!-- tiny near bottom -->
+            <ellipse cx="80" cy="180" rx="4.5" ry="4" fill="#000" opacity="0.3"/>
+            <circle  cx="78" cy="178" r="4"   fill="url(#chipBody)"/>
+          </g>
+
+          <!-- soft top-left highlight -->
+          <ellipse cx="62" cy="55" rx="44" ry="26" fill="#ffffff" opacity="0.09"/>
+          <!-- under-shadow within cookie (gives slight 3D dome) -->
+          <ellipse cx="100" cy="170" rx="80" ry="18" fill="#000000" opacity="0.08"/>
         </svg>
       </button>
-      <div class="fx-layer" id="fx-layer"></div>
     </div>
   </div>
 
@@ -222,13 +330,12 @@
   <script>
     const STORAGE_KEY = 'horsey:cookieclicker:v1';
 
-    const cookieEl    = document.getElementById('cookie');
-    const counterEl   = document.getElementById('counter');
-    const cpsEl       = document.getElementById('cps');
-    const fxLayer     = document.getElementById('fx-layer');
-    const crumbCanvas = document.getElementById('crumb-canvas');
-    const ctxCrumbs   = crumbCanvas.getContext('2d');
-    const wrapEl      = cookieEl.parentNode;
+    const cookieEl  = document.getElementById('cookie');
+    const counterEl = document.getElementById('counter');
+    const cpsEl     = document.getElementById('cps');
+    const fxLayer   = document.getElementById('fx-layer');
+    const fxCanvas  = document.getElementById('fx-canvas');
+    const fxCtx     = fxCanvas.getContext('2d');
 
     function defaultState() { return { cookies: 0, cps: 0 }; }
 
@@ -269,56 +376,109 @@
       cookieEl.classList.add('pop');
     }
 
-    // ---- Floating "+1" ----
-    function spawnPlusOne(x, y) {
+    // ---- Floating "+1" (rises all the way off the top of the screen) ----
+    function spawnPlusOne(clientX, clientY) {
       const el = document.createElement('span');
       el.className = 'fx-plus1';
       el.textContent = '+1';
-      el.style.left = x + 'px';
-      el.style.top  = y + 'px';
+      el.style.left = clientX + 'px';
+      el.style.top  = clientY + 'px';
       fxLayer.appendChild(el);
       el.addEventListener('animationend', () => el.remove(), { once: true });
     }
 
-    // ---- Crumb particles ----
-    const crumbs = [];
-    function resizeCrumbCanvas() {
-      const r = wrapEl.getBoundingClientRect();
-      crumbCanvas.width  = r.width;
-      crumbCanvas.height = r.height;
+    // ---- Falling chocolate-chip cookies (replaces crumbs) ----
+    // Pre-render a tiny cookie sprite once so each particle is one drawImage call.
+    const MINI = (() => {
+      const c = document.createElement('canvas');
+      const S = 64;
+      c.width = c.height = S;
+      const g = c.getContext('2d');
+      const cx = S / 2, cy = S / 2, r = S * 0.46;
+      const grad = g.createRadialGradient(cx - r*0.25, cy - r*0.3, 0, cx, cy, r);
+      grad.addColorStop(0,    '#f3cd91');
+      grad.addColorStop(0.55, '#b87b3c');
+      grad.addColorStop(1,    '#5a3015');
+      g.fillStyle = grad;
+      g.beginPath();
+      g.arc(cx, cy, r, 0, Math.PI * 2);
+      g.fill();
+      // rim
+      g.strokeStyle = 'rgba(42, 18, 6, 0.7)';
+      g.lineWidth = 1.4;
+      g.stroke();
+      // chips
+      const chips = [
+        [-0.45, -0.40, 0.18],
+        [ 0.42, -0.45, 0.20],
+        [-0.22,  0.30, 0.16],
+        [ 0.35,  0.28, 0.18],
+        [-0.40,  0.05, 0.15],
+        [ 0.10, -0.10, 0.14],
+      ];
+      g.fillStyle = '#1c0a04';
+      for (const [dx, dy, fr] of chips) {
+        g.beginPath();
+        g.arc(cx + dx * r, cy + dy * r, fr * r, 0, Math.PI * 2);
+        g.fill();
+      }
+      // tiny highlight on each chip
+      g.fillStyle = 'rgba(180, 95, 45, 0.55)';
+      for (const [dx, dy, fr] of chips) {
+        g.beginPath();
+        g.arc(cx + (dx - 0.06) * r, cy + (dy - 0.06) * r, fr * r * 0.35, 0, Math.PI * 2);
+        g.fill();
+      }
+      // top-left soft highlight on body
+      g.fillStyle = 'rgba(255, 255, 255, 0.10)';
+      g.beginPath();
+      g.ellipse(cx - r*0.3, cy - r*0.35, r*0.35, r*0.18, 0, 0, Math.PI * 2);
+      g.fill();
+      return c;
+    })();
+
+    const falling = [];
+    function resizeFxCanvas() {
+      fxCanvas.width  = window.innerWidth;
+      fxCanvas.height = window.innerHeight;
     }
-    function spawnCrumbs(x, y) {
-      const n = 6 + Math.floor(Math.random() * 3);
+    function spawnFallingCookies(x, y) {
+      const n = 4 + Math.floor(Math.random() * 3);
       for (let i = 0; i < n; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const sp = 1.5 + Math.random() * 3;
-        crumbs.push({
+        const angle = -Math.PI / 2 + (Math.random() - 0.5) * 1.6; // upward fan
+        const sp = 4 + Math.random() * 5;
+        falling.push({
           x, y,
-          vx: Math.cos(a) * sp,
-          vy: Math.sin(a) * sp - 1.5,
-          r: 1.5 + Math.random() * 2.5,
-          life: 1,
-          color: Math.random() < 0.55 ? '#6b3a1a' : '#3a1f0a',
+          vx: Math.cos(angle) * sp,
+          vy: Math.sin(angle) * sp,
+          size: 14 + Math.random() * 16,            // px (full diameter)
+          rot: Math.random() * Math.PI * 2,
+          vr:  (Math.random() - 0.5) * 0.35,
+          life: 1,                                  // fades when leaving the screen
         });
       }
     }
-    function tickCrumbs() {
-      ctxCrumbs.clearRect(0, 0, crumbCanvas.width, crumbCanvas.height);
-      for (let i = crumbs.length - 1; i >= 0; i--) {
-        const c = crumbs[i];
-        c.x += c.vx;
-        c.y += c.vy;
-        c.vy += 0.22;
-        c.life -= 0.018;
-        if (c.life <= 0) { crumbs.splice(i, 1); continue; }
-        ctxCrumbs.globalAlpha = Math.min(1, Math.max(0, c.life * 1.4));
-        ctxCrumbs.fillStyle = c.color;
-        ctxCrumbs.beginPath();
-        ctxCrumbs.arc(c.x, c.y, c.r, 0, Math.PI * 2);
-        ctxCrumbs.fill();
+    function tickFalling() {
+      fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+      const h = fxCanvas.height;
+      for (let i = falling.length - 1; i >= 0; i--) {
+        const c = falling[i];
+        c.x   += c.vx;
+        c.y   += c.vy;
+        c.vy  += 0.32;                              // gravity
+        c.vx  *= 0.998;                             // mild drag
+        c.rot += c.vr;
+        // start fading when below the screen edge
+        if (c.y > h - 40) c.life -= 0.04;
+        if (c.life <= 0 || c.y > h + 80) { falling.splice(i, 1); continue; }
+        fxCtx.save();
+        fxCtx.globalAlpha = Math.min(1, c.life);
+        fxCtx.translate(c.x, c.y);
+        fxCtx.rotate(c.rot);
+        fxCtx.drawImage(MINI, -c.size / 2, -c.size / 2, c.size, c.size);
+        fxCtx.restore();
       }
-      ctxCrumbs.globalAlpha = 1;
-      requestAnimationFrame(tickCrumbs);
+      requestAnimationFrame(tickFalling);
     }
 
     // ---- Click "pop" sound ----
@@ -351,21 +511,20 @@
 
     // ---- Click handler ----
     function onCookieClick(e) {
-      const wrap = wrapEl.getBoundingClientRect();
       let cx, cy;
       if (e.clientX || e.clientY) {
-        cx = e.clientX - wrap.left;
-        cy = e.clientY - wrap.top;
+        cx = e.clientX;
+        cy = e.clientY;
       } else {
         // keyboard activation: pop at button center
         const r = cookieEl.getBoundingClientRect();
-        cx = r.left + r.width  / 2 - wrap.left;
-        cy = r.top  + r.height / 2 - wrap.top;
+        cx = r.left + r.width  / 2;
+        cy = r.top  + r.height / 2;
       }
       state.cookies += 1; // TODO: clickPower multiplier
       renderCounter();
       spawnPlusOne(cx, cy);
-      spawnCrumbs(cx, cy);
+      spawnFallingCookies(cx, cy);
       playClickPop();
       bumpCookie();
       saveStateDebounced();
@@ -392,11 +551,11 @@
 
     cookieEl.addEventListener('click', onCookieClick);
     document.getElementById('reset').addEventListener('click', resetState);
-    window.addEventListener('resize', resizeCrumbCanvas);
+    window.addEventListener('resize', resizeFxCanvas);
 
-    resizeCrumbCanvas();
+    resizeFxCanvas();
     renderCounter();
-    requestAnimationFrame(tickCrumbs);
+    requestAnimationFrame(tickFalling);
     startCpsLoop();
 
     // TODO: buildings — push into a BUILDINGS array, each {name, baseCost, cps}; render in shop panel
