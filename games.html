@@ -6,7 +6,7 @@
   <title>Horsey Games - All Games</title>
   <link rel="stylesheet" href="style.css">
   <style>
-    body { overflow: hidden; position: relative; }
+    body { overflow: hidden; position: relative; background: #0b0f24; }
 
     canvas {
       position: fixed;
@@ -16,31 +16,56 @@
       pointer-events: none;
     }
 
+    .vignette {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 1;
+      background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.55) 100%);
+    }
+
     .content {
       position: relative;
-      z-index: 1;
+      z-index: 2;
       display: flex;
       flex-direction: column;
       align-items: center;
       width: 100%;
+      animation: contentIn 1s cubic-bezier(.2,.7,.2,1) both;
+    }
+    @keyframes contentIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
     }
 
     h1 {
       margin-bottom: 0.3rem;
-      background: linear-gradient(135deg, #a0c4ff, #4e7fff, #a0c4ff);
-      background-size: 200% 200%;
+      letter-spacing: 3px;
+      background: linear-gradient(135deg, #a0c4ff 0%, #4e7fff 35%, #c7a0ff 70%, #a0c4ff 100%);
+      background-size: 300% 300%;
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
-      animation: shimmer 3s ease-in-out infinite;
+      animation: shimmer 5s ease-in-out infinite, float 6s ease-in-out infinite;
+      filter: drop-shadow(0 0 18px rgba(78, 127, 255, 0.4));
     }
-
     @keyframes shimmer {
       0%, 100% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
+      50%      { background-position: 100% 50%; }
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50%      { transform: translateY(-4px); }
     }
 
-    .subtitle { color: #6b8ecf; font-size: 1rem; margin-bottom: 2rem; letter-spacing: 2px; }
+    .subtitle {
+      color: #8ea7d6;
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      opacity: 0.85;
+    }
 
     .game-grid {
       display: grid;
@@ -51,33 +76,47 @@
     }
 
     .game-card {
-      background: #16213e;
+      background: rgba(22, 33, 62, 0.7);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
       border: 2px solid #0f3460;
       border-radius: 14px;
       padding: 1.5rem 1rem;
       text-align: center;
       cursor: pointer;
-      transition: background 0.2s, transform 0.15s, border-color 0.2s, box-shadow 0.2s;
+      transition: background 0.2s, transform 0.2s, border-color 0.2s, box-shadow 0.2s;
       box-shadow: 0 0 0 rgba(78, 127, 255, 0);
+      animation: cardIn 0.8s cubic-bezier(.2,.7,.2,1) both;
+    }
+    .game-card:nth-child(1) { animation-delay: 0.05s; }
+    .game-card:nth-child(2) { animation-delay: 0.12s; }
+    .game-card:nth-child(3) { animation-delay: 0.19s; }
+    .game-card:nth-child(4) { animation-delay: 0.26s; }
+    .game-card:nth-child(5) { animation-delay: 0.33s; }
+    .game-card:nth-child(6) { animation-delay: 0.40s; }
+    @keyframes cardIn {
+      from { opacity: 0; transform: translateY(14px) scale(0.96); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
     }
 
     .game-card:hover {
-      background: #0f3460;
-      transform: translateY(-4px);
+      background: rgba(15, 52, 96, 0.85);
+      transform: translateY(-6px);
       border-color: #4e7fff;
-      box-shadow: 0 0 25px rgba(78, 127, 255, 0.4), 0 0 60px rgba(78, 127, 255, 0.15);
+      box-shadow: 0 0 30px rgba(78, 127, 255, 0.5), 0 0 80px rgba(78, 127, 255, 0.2);
     }
 
     .game-card .icon { font-size: 2.8rem; margin-bottom: 0.6rem; }
-    .game-card .name { font-size: 1.1rem; font-weight: 600; }
+    .game-card .name { font-size: 1.1rem; font-weight: 600; letter-spacing: 1px; }
   </style>
 </head>
 <body>
   <canvas id="bg"></canvas>
+  <div class="vignette"></div>
   <a href="index.html" class="back-link">&larr; Home</a>
   <div class="content">
     <h1>Horsey Games</h1>
-    <p class="subtitle">Pick a game to play</p>
+    <p class="subtitle">pick your game</p>
 
     <div class="game-grid">
       <a href="games/tictactoe.html" class="game-card">
@@ -184,56 +223,6 @@
     </div>
   </div>
 
-  <script>
-    const canvas = document.getElementById('bg');
-    const ctx = canvas.getContext('2d');
-    let w, h, lines;
-
-    function resize() { w = canvas.width = window.innerWidth; h = canvas.height = window.innerHeight; }
-
-    function createLines() {
-      lines = [];
-      for (let i = 0; i < 40; i++) {
-        lines.push({
-          x: Math.random() * w, y: Math.random() * h,
-          len: 80 + Math.random() * 200,
-          angle: Math.random() * Math.PI * 2,
-          speed: 0.2 + Math.random() * 0.6,
-          drift: (Math.random() - 0.5) * 0.003,
-          alpha: 0.12 + Math.random() * 0.18,
-          width: 1.5 + Math.random() * 2.5,
-        });
-      }
-    }
-
-    function draw() {
-      ctx.clearRect(0, 0, w, h);
-      for (const l of lines) {
-        const ex = l.x + Math.cos(l.angle) * l.len;
-        const ey = l.y + Math.sin(l.angle) * l.len;
-        const grad = ctx.createLinearGradient(l.x, l.y, ex, ey);
-        grad.addColorStop(0, `rgba(78, 127, 255, 0)`);
-        grad.addColorStop(0.5, `rgba(78, 127, 255, ${l.alpha})`);
-        grad.addColorStop(1, `rgba(78, 127, 255, 0)`);
-        ctx.beginPath();
-        ctx.moveTo(l.x, l.y);
-        ctx.lineTo(ex, ey);
-        ctx.strokeStyle = grad;
-        ctx.lineWidth = l.width;
-        ctx.stroke();
-        l.x += Math.cos(l.angle) * l.speed;
-        l.y += Math.sin(l.angle) * l.speed;
-        l.angle += l.drift;
-        if (l.x < -l.len) l.x = w + l.len;
-        if (l.x > w + l.len) l.x = -l.len;
-        if (l.y < -l.len) l.y = h + l.len;
-        if (l.y > h + l.len) l.y = -l.len;
-      }
-      requestAnimationFrame(draw);
-    }
-
-    window.addEventListener('resize', () => { resize(); createLines(); });
-    resize(); createLines(); draw();
-  </script>
+  <script src="bg.js"></script>
 </body>
 </html>
