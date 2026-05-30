@@ -22,7 +22,6 @@
       margin-top: 1rem;
     }
     #menu .menu-tagline { color: #ddd; font-size: 1.1rem; text-align: center; }
-    #menu .menu-tagline strong { color: #fff; }
     #menu .diff-row { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
     #menu .btn { min-width: 130px; }
 
@@ -38,7 +37,7 @@
     }
 
     #target-bar {
-      font-size: 1.1rem;
+      font-size: 1.2rem;
       color: #aaa;
       margin-bottom: 1.2rem;
       text-align: center;
@@ -97,7 +96,7 @@
   <p class="subtitle">prove you're not a robot</p>
 
   <div id="menu">
-    <div class="menu-tagline">Find <strong>I am a robot</strong> — as fast as you can.</div>
+    <div class="menu-tagline">Find the phrase shown — as fast as you can.</div>
     <div class="diff-row">
       <button class="btn" data-level="easy">Easy</button>
       <button class="btn" data-level="medium">Medium</button>
@@ -107,7 +106,7 @@
 
   <div id="play" class="hidden">
     <div id="timer">0.0s</div>
-    <div id="target-bar">Find: <strong>I am a robot</strong></div>
+    <div id="target-bar">Find: <strong id="target-text"></strong></div>
     <div id="options-grid"></div>
   </div>
 
@@ -118,7 +117,15 @@
   </div>
 
   <script>
-    const TARGET = "I am a robot";
+    // The 6 possible target phrases. One is picked at random each round.
+    const POSSIBLE_TARGETS = [
+      "I am a robot",
+      "I love to eat",
+      "Horses are goated",
+      "You find that thing now!",
+      "Do your homework!",
+      "Horse and cat reunite",
+    ];
 
     // TODO: tune counts
     const DIFFICULTY = {
@@ -127,66 +134,113 @@
       hard:   { count: 200 },
     };
 
-    // Every entry is visibly distinguishable from the target.
-    // Difficulty only changes how many chips appear, not their fairness.
-    const DECOYS = [
-      "I am a Robot", "i am a robot", "I'm a robot", "I am a robots",
-      "I am a bot", "I am the robot", "I am a robot.", "I am a robot!",
-      "I am a robot?", "I am a robot,", "I am a robot:", "I am a robot;",
-      "I am a robot...", "I am a robot-", "I am not a robot", "Am I a robot",
-      "I am a droid", "I am a cyborg", "I am a machine", "I am a person",
-      "You are a robot", "We are robots", "He is a robot", "She is a robot",
-      "They are robots", "I might be a robot", "I used to be a robot",
-      "I'm not a robot", "I am no robot", "I am one robot", "I am an robot",
-      "I am a Robot.", "I am a Robot!", "I am a Robot,", "I am a Robot?",
-      "i am a Robot", "I AM A ROBOT", "I am A robot", "I Am a robot",
-      "I am robot", "robot am I a", "robot a am I", "I am a roboot",
-      "I am a roboto", "I am a rebot", "I am a robotic", "I am a robut",
-      "I am a robbot", "I am a robott", "I am a robotz", "I am a robotx",
-      "I am a Roboto", "I am a Roboot", "I am a rrobot", "II am a robot",
-      "I aam a robot", "I am aa robot",
-      "I am a r0bot", "I am a rob0t", "I am a rob.ot",
-      "I was a robot", "I were a robot", "I are a robot", "I be a robot",
-      "I think I'm a robot", "I wish I was a robot", "I am a robot too",
-      "I am still a robot", "I am also a robot", "Is I a robot",
-      "Am I not a robot",
-      "I am a-robot", "I-am a robot", "I am.a robot", "I am,a robot",
-      "I'm a Robot", "I'm a robots", "i'm a robot", "I am a r oboto",
-      "I am a rabbit", "I am a rocket", "I am a raccoon", "I am a radish",
-      "I am a router", "I am a record", "I am a refund", "I am a region",
-    ];
-
-    // Combinatorial generator: swap 1 or 2 of the 4 words with visibly
-    // distinct alternatives to grow the pool to ~hundreds of unique chips.
-    const WORD_SUBS = [
-      ['I',     'i', 'You', 'We', 'They', 'He', 'She', 'Joe', 'Bob'],
-      ['am',    'was', 'were', 'are', "ain't", 'be', 'might be'],
-      ['a',     'the', 'an', 'no', 'one', 'some'],
-      ['robot', 'Robot', 'bot', 'droid', 'cyborg', 'machine', 'roboot', 'roboto', 'human', 'turtle'],
-    ];
-
-    function generateSubs() {
+    // Given a target phrase, generate visibly-distinguishable "near" decoys:
+    // case shifts, punctuation tweaks, single-letter typos, word doubling,
+    // word concatenation, reversal. All fair — every variant is something
+    // a careful reader can distinguish from the target.
+    function generateNearVariants(target) {
       const out = new Set();
-      const base = ['I', 'am', 'a', 'robot'];
-      for (let p1 = 0; p1 < 4; p1++) {
-        for (let p2 = p1 + 1; p2 < 4; p2++) {
-          for (const s1 of WORD_SUBS[p1]) {
-            for (const s2 of WORD_SUBS[p2]) {
-              if (s1 === base[p1] && s2 === base[p2]) continue;
-              const w = [...base];
-              w[p1] = s1; w[p2] = s2;
-              out.add(w.join(' '));
-            }
-          }
+      const punctMatch = target.match(/[.!?,;:]+$/);
+      const trail = punctMatch ? punctMatch[0] : '';
+      const core = trail ? target.slice(0, -trail.length) : target;
+      const words = core.split(' ');
+      const add = (cv) => out.add(cv + trail);
+
+      // 1. Per-word capitalization
+      for (let i = 0; i < words.length; i++) {
+        const w = words[i];
+        const cands = [
+          w.toLowerCase(),
+          w.toUpperCase(),
+          w.charAt(0).toUpperCase() + w.slice(1).toLowerCase(),
+        ];
+        for (const c of cands) {
+          if (c === w) continue;
+          const arr = [...words]; arr[i] = c;
+          add(arr.join(' '));
         }
       }
+
+      // 2. Full-string case
+      out.add(target.toLowerCase());
+      out.add(target.toUpperCase());
+      add(core.toLowerCase());
+      add(core.toUpperCase());
+
+      // 3. Punctuation swap
+      for (const p of ['.', '!', '?', ',', ';', ':', '...', '!!', '??', '-']) {
+        if (p !== trail) out.add(core + p);
+      }
+      if (trail) out.add(core);
+
+      // 4. Duplicate a letter in a word
+      for (let i = 0; i < words.length; i++) {
+        const w = words[i];
+        for (let j = 0; j < w.length; j++) {
+          const dup = w.slice(0, j) + w[j] + w.slice(j);
+          const arr = [...words]; arr[i] = dup;
+          add(arr.join(' '));
+        }
+      }
+
+      // 5. Drop a letter from a word (only if word > 3 chars)
+      for (let i = 0; i < words.length; i++) {
+        const w = words[i];
+        if (w.length <= 3) continue;
+        for (let j = 0; j < w.length; j++) {
+          const drop = w.slice(0, j) + w.slice(j + 1);
+          const arr = [...words]; arr[i] = drop;
+          add(arr.join(' '));
+        }
+      }
+
+      // 6. Swap adjacent letters in a word
+      for (let i = 0; i < words.length; i++) {
+        const w = words[i];
+        for (let j = 0; j < w.length - 1; j++) {
+          if (w[j] === w[j + 1]) continue;
+          const swap = w.slice(0, j) + w[j + 1] + w[j] + w.slice(j + 2);
+          const arr = [...words]; arr[i] = swap;
+          add(arr.join(' '));
+        }
+      }
+
+      // 7. Word-order reverse
+      if (words.length >= 2) add([...words].reverse().join(' '));
+
+      // 8. Double a word
+      for (let i = 0; i < words.length; i++) {
+        const arr = [...words]; arr.splice(i, 0, words[i]);
+        add(arr.join(' '));
+      }
+
+      // 9. Concat two adjacent words (drop the space)
+      for (let i = 0; i < words.length - 1; i++) {
+        const arr = [...words]; arr.splice(i, 2, words[i] + words[i + 1]);
+        add(arr.join(' '));
+      }
+
+      out.delete(target);
       return [...out];
     }
 
-    function buildPool() {
-      const set = new Set(DECOYS);
-      for (const d of generateSubs()) set.add(d);
-      set.delete(TARGET);
+    const nearCache = new Map();
+    function nearVariants(target) {
+      if (!nearCache.has(target)) nearCache.set(target, generateNearVariants(target));
+      return nearCache.get(target);
+    }
+
+    // Pool for a given target = its near-variants + every other target phrase
+    // and each of their near-variants. The "far" decoys (other targets'
+    // variants) act as background noise; the near-variants are the hard part.
+    function buildPool(target) {
+      const set = new Set(nearVariants(target));
+      for (const t of POSSIBLE_TARGETS) {
+        if (t === target) continue;
+        set.add(t);
+        for (const v of nearVariants(t)) set.add(v);
+      }
+      set.delete(target);
       return [...set];
     }
 
@@ -195,8 +249,10 @@
     const resultEl = document.getElementById('result');
     const timerEl = document.getElementById('timer');
     const gridEl = document.getElementById('options-grid');
+    const targetTextEl = document.getElementById('target-text');
     const resultTimeEl = document.getElementById('result-time');
 
+    let currentTarget = '';
     let startTime = 0;
     let rafId = null;
     let finished = false;
@@ -209,13 +265,17 @@
       return arr;
     }
 
+    function pickTarget() {
+      return POSSIBLE_TARGETS[Math.floor(Math.random() * POSSIBLE_TARGETS.length)];
+    }
+
     function buildGrid(level) {
       const cfg = DIFFICULTY[level];
-      const pool = buildPool();
+      const pool = buildPool(currentTarget);
       shuffle(pool);
       const decoyCount = Math.min(cfg.count - 1, pool.length);
       const items = pool.slice(0, decoyCount);
-      items.push(TARGET);
+      items.push(currentTarget);
       shuffle(items);
 
       gridEl.innerHTML = '';
@@ -230,7 +290,7 @@
 
     function onOptionClick(el, text) {
       if (finished) return;
-      if (text === TARGET) {
+      if (text === currentTarget) {
         finish();
       } else {
         // TODO: decide wrong-click penalty (time add? game over? streak break?)
@@ -248,6 +308,8 @@
 
     function startGame(level) {
       finished = false;
+      currentTarget = pickTarget();
+      targetTextEl.textContent = currentTarget;
       menuEl.classList.add('hidden');
       resultEl.classList.add('hidden');
       playEl.classList.remove('hidden');
