@@ -595,6 +595,22 @@
     const SVG_FINGER_WHITE = handCursorSvg('#ffffff', '#e0e0e0', '#aaaaaa');
     const SVG_FINGER_PINK  = handCursorSvg('#ff9ec1', '#ffd6e6', '#d57aa0');
 
+    const SVG_ROLLING_PIN =
+      '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">' +
+        // handles (small darker-brown caps at each end)
+        '<rect x="1.5" y="13.5" width="5" height="5" rx="1.6" fill="#8b6f47" stroke="#3a2510" stroke-width="1"/>' +
+        '<rect x="25.5" y="13.5" width="5" height="5" rx="1.6" fill="#8b6f47" stroke="#3a2510" stroke-width="1"/>' +
+        // dark connector pegs between handle and main body
+        '<rect x="5.5" y="15" width="1.6" height="2" fill="#5a3a18"/>' +
+        '<rect x="25" y="15" width="1.6" height="2" fill="#5a3a18"/>' +
+        // main beige rolling body
+        '<rect x="6" y="9" width="20" height="14" rx="3.5" fill="#d4a574" stroke="#3a2510" stroke-width="1.3"/>' +
+        // soft top highlight
+        '<ellipse cx="16" cy="12.5" rx="8" ry="1.4" fill="#ecc88a" opacity="0.75"/>' +
+        // subtle bottom shadow
+        '<ellipse cx="16" cy="20.5" rx="8" ry="1" fill="#8a5828" opacity="0.4"/>' +
+      '</svg>';
+
     const UPGRADES = [
       {
         id: 'reinforced_fingers',
@@ -617,6 +633,16 @@
         clickMult: 2,
         buildingMult: { autoclicker: 2 },
         requires: () => (state.buildings.autoclicker || 0) >= 1,
+      },
+      {
+        id: 'wheelchair_reinforcements',
+        name: 'Wheelchair Reinforcements',
+        desc: 'Thanks deary',
+        cost: 1000,
+        effectText: 'Grandma ×2',
+        svg: SVG_ROLLING_PIN,
+        buildingMult: { grandma: 2 },
+        requires: () => (state.buildings.grandma || 0) >= 1,
       },
     ];
 
