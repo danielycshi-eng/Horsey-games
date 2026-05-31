@@ -320,6 +320,68 @@
       font-family: ui-monospace, Menlo, Consolas, monospace;
     }
     .building-card.locked .b-rate { color: #98a8c5; }
+
+    /* --- Upgrades grid + hover tooltip --- */
+    .upgrades-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      margin-bottom: 0.5rem;
+    }
+    .upgrade-tile {
+      width: 50px;
+      height: 50px;
+      background: rgba(22, 33, 62, 0.7);
+      border: 2px solid #0f3460;
+      border-radius: 9px;
+      padding: 5px;
+      cursor: pointer;
+      position: relative;
+      transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+      font-family: inherit;
+    }
+    .upgrade-tile:hover { transform: translateY(-2px); border-color: #4e7fff; z-index: 10; }
+    .upgrade-tile.affordable { border-color: #22c55e; box-shadow: 0 0 10px rgba(34,197,94,0.3); }
+    .upgrade-tile.affordable:hover { box-shadow: 0 0 16px rgba(34,197,94,0.55); }
+    .upgrade-tile:not(.affordable) { opacity: 0.75; cursor: not-allowed; }
+    .upgrade-tile > svg { width: 100%; height: 100%; display: block; }
+
+    .upgrade-tooltip {
+      display: none;
+      position: absolute;
+      top: 50%;
+      right: calc(100% + 12px);
+      transform: translateY(-50%);
+      width: 240px;
+      background: rgba(20, 30, 56, 0.98);
+      border: 1.5px solid #4e7fff;
+      border-radius: 10px;
+      padding: 0.7rem 0.8rem;
+      z-index: 100;
+      pointer-events: none;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.55);
+      text-align: left;
+    }
+    .upgrade-tile:hover .upgrade-tooltip,
+    .upgrade-tile:focus-visible .upgrade-tooltip { display: block; }
+    .tip-head { display: flex; gap: 0.6rem; align-items: center; margin-bottom: 0.55rem; }
+    .tip-icon { width: 36px; height: 36px; flex-shrink: 0; }
+    .tip-icon svg { width: 100%; height: 100%; display: block; }
+    .tip-name { color: #fff; font-weight: 700; font-size: 0.95rem; line-height: 1.1; }
+    .tip-cost { color: #f5d77a; font-size: 0.78rem; font-family: ui-monospace, Menlo, Consolas, monospace; margin-top: 2px; }
+    .tip-effect {
+      color: #a0c4ff;
+      font-size: 0.8rem;
+      padding: 0.4rem 0;
+      border-top: 1px solid rgba(78,127,255,0.22);
+      border-bottom: 1px solid rgba(78,127,255,0.22);
+      margin-bottom: 0.4rem;
+    }
+    .tip-desc {
+      color: #b0b8ce;
+      font-size: 0.78rem;
+      font-style: italic;
+    }
     .b-desc {
       font-size: 0.72rem;
       color: #98a8c5;
@@ -481,7 +543,8 @@
     <!-- RIGHT: upgrades + store -->
     <div class="col-right panel">
       <h2 class="panel-title">Upgrades</h2>
-      <div class="empty-state">No upgrades yet.</div>
+      <div id="upgrades-row" class="upgrades-row"></div>
+      <div id="upgrades-empty" class="empty-state">No upgrades yet.</div>
       <h2 class="panel-title">Store</h2>
       <div id="store-buildings"></div>
     </div>
@@ -501,6 +564,49 @@
       { id: 'factory',     name: 'Factory',     desc: 'Produces large quantities of cookies',               baseCost: 130000, baseCps: 260.0, icon: '🏭' },
     ];
 
+    // --- Upgrades catalog ---
+    // Each upgrade can multiply click power and/or per-building CPS.
+    // `requires(state)` must return true for the upgrade to appear in the panel.
+    const SVG_FINGER_WHITE =
+      '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">' +
+      '<rect x="8" y="22" width="16" height="9" rx="3" fill="#ffffff" stroke="#222" stroke-width="1.4"/>' +
+      '<rect x="13" y="3" width="6" height="22" rx="3" fill="#ffffff" stroke="#222" stroke-width="1.4"/>' +
+      '<ellipse cx="16" cy="6.5" rx="2" ry="1.4" fill="#e2e2e2" stroke="#888" stroke-width="0.4"/>' +
+      '<path d="M 13 13 Q 16 12, 19 13" stroke="#aaa" stroke-width="0.7" fill="none"/>' +
+      '</svg>';
+    const SVG_FINGER_PINK =
+      '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">' +
+      '<rect x="8" y="22" width="16" height="9" rx="3" fill="#ff9ec1" stroke="#222" stroke-width="1.4"/>' +
+      '<rect x="13" y="3" width="6" height="22" rx="3" fill="#ff9ec1" stroke="#222" stroke-width="1.4"/>' +
+      '<ellipse cx="16" cy="6.5" rx="2" ry="1.4" fill="#ffd6e6" stroke="#b85a82" stroke-width="0.4"/>' +
+      '<path d="M 13 13 Q 16 12, 19 13" stroke="#d57aa0" stroke-width="0.7" fill="none"/>' +
+      '</svg>';
+
+    const UPGRADES = [
+      {
+        id: 'reinforced_fingers',
+        name: 'Reinforced Fingers',
+        desc: 'prod prod',
+        cost: 100,
+        effectText: 'Click power ×2 · Autoclicker ×2',
+        svg: SVG_FINGER_WHITE,
+        clickMult: 2,
+        buildingMult: { autoclicker: 2 },
+        requires: () => (state.buildings.autoclicker || 0) >= 1,
+      },
+      {
+        id: 'serious_finger_protection',
+        name: 'Serious Finger Protection',
+        desc: 'it... hurts... to click...',
+        cost: 500,
+        effectText: 'Click power ×2 · Autoclicker ×2',
+        svg: SVG_FINGER_PINK,
+        clickMult: 2,
+        buildingMult: { autoclicker: 2 },
+        requires: () => (state.buildings.autoclicker || 0) >= 1,
+      },
+    ];
+
     // Progressive reveal: at start, only Autoclicker + Grandma are revealed
     // and a single ??? teaser sits below them. When the player's cookies
     // pass 5/6 of the next building's base cost, that building reveals and
@@ -515,6 +621,7 @@
         totalClicks: 0,
         cps: 0,
         buildings,
+        upgrades: [],       // ids of purchased upgrades
         revealedCount: 2,   // AC + Grandma visible from the start
         mysterySlots: 1,    // one ??? teaser
       };
@@ -540,6 +647,9 @@
           }
           merged.revealedCount = Math.max(parsed.revealedCount || 2, minRevealed);
           merged.mysterySlots = merged.revealedCount > 2 ? 2 : (parsed.mysterySlots || 1);
+          // Filter upgrades to known ids only.
+          const validIds = new Set(UPGRADES.map(u => u.id));
+          merged.upgrades = (Array.isArray(parsed.upgrades) ? parsed.upgrades : []).filter(id => validIds.has(id));
           return merged;
         }
       } catch (_) {}
@@ -574,9 +684,29 @@
     function buildingCost(b, owned) {
       return Math.ceil(b.baseCost * Math.pow(1.15, owned));
     }
+
+    // Multiplier helpers (from purchased upgrades). Apply to click power and per-building CPS.
+    function getClickMult() {
+      let m = 1;
+      for (const u of UPGRADES) {
+        if (state.upgrades.includes(u.id) && u.clickMult) m *= u.clickMult;
+      }
+      return m;
+    }
+    function getBuildingMult(id) {
+      let m = 1;
+      for (const u of UPGRADES) {
+        if (state.upgrades.includes(u.id) && u.buildingMult && u.buildingMult[id]) {
+          m *= u.buildingMult[id];
+        }
+      }
+      return m;
+    }
     function recomputeCps() {
       let s = 0;
-      for (const b of BUILDINGS) s += (state.buildings[b.id] || 0) * b.baseCps;
+      for (const b of BUILDINGS) {
+        s += (state.buildings[b.id] || 0) * b.baseCps * getBuildingMult(b.id);
+      }
       state.cps = s;
     }
 
@@ -658,14 +788,74 @@
         saveStateDebounced();
       }
     }
+
+    // --- Upgrades panel ---
+    const upgradesRowEl   = document.getElementById('upgrades-row');
+    const upgradesEmptyEl = document.getElementById('upgrades-empty');
+
+    function appendUpgradeTile(u) {
+      const tile = document.createElement('button');
+      tile.className = 'upgrade-tile';
+      tile.dataset.upgrade = u.id;
+      tile.innerHTML =
+        u.svg +
+        '<div class="upgrade-tooltip">' +
+          '<div class="tip-head">' +
+            '<div class="tip-icon">' + u.svg + '</div>' +
+            '<div>' +
+              '<div class="tip-name">' + u.name + '</div>' +
+              '<div class="tip-cost">' + fmt(u.cost) + ' cookies</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="tip-effect">' + u.effectText + '</div>' +
+          '<div class="tip-desc">&ldquo;' + u.desc + '&rdquo;</div>' +
+        '</div>';
+      tile.addEventListener('click', () => buyUpgrade(u.id));
+      upgradesRowEl.appendChild(tile);
+    }
+    function renderUpgrades() {
+      upgradesRowEl.innerHTML = '';
+      let any = false;
+      for (const u of UPGRADES) {
+        if (state.upgrades.includes(u.id)) continue;     // already owned
+        if (!u.requires()) continue;                     // not unlocked yet
+        appendUpgradeTile(u);
+        any = true;
+      }
+      upgradesEmptyEl.style.display = any ? 'none' : 'block';
+    }
+    function updateUpgradeAffordability() {
+      const tiles = upgradesRowEl.querySelectorAll('.upgrade-tile');
+      for (const tile of tiles) {
+        const u = UPGRADES.find(x => x.id === tile.dataset.upgrade);
+        if (!u) continue;
+        tile.classList.toggle('affordable', state.cookies >= u.cost);
+      }
+    }
+    function buyUpgrade(id) {
+      const u = UPGRADES.find(x => x.id === id);
+      if (!u) return;
+      if (state.upgrades.includes(id)) return;
+      if (!u.requires()) return;
+      if (state.cookies < u.cost) return;
+      state.cookies -= u.cost;
+      state.upgrades.push(id);
+      recomputeCps();
+      renderUpgrades();
+      updateCounterText();
+      updateAffordability();
+      updateUpgradeAffordability();
+      saveStateDebounced();
+      playPurchase();
+    }
     function renderStats() {
       document.getElementById('s-cookies').textContent  = fmt(state.cookies);
       document.getElementById('s-total').textContent    = fmt(state.totalEarned);
       document.getElementById('s-cps').textContent      = fmt1(state.cps);
-      document.getElementById('s-perclick').textContent = '1';
+      document.getElementById('s-perclick').textContent = fmt(getClickMult());
       document.getElementById('s-clicks').textContent   = fmt(state.totalClicks);
 
-      // owned buildings
+      // owned buildings — show effective contribution (post-multipliers)
       const owned = BUILDINGS.filter(b => (state.buildings[b.id] || 0) > 0);
       if (owned.length === 0) {
         buildingStatsEl.innerHTML = '<div class="empty-state">No buildings yet. Open the store →</div>';
@@ -673,7 +863,7 @@
         let html = '';
         for (const b of owned) {
           const n = state.buildings[b.id];
-          const contrib = n * b.baseCps;
+          const contrib = n * b.baseCps * getBuildingMult(b.id);
           html += '<div class="stat-row">' +
                     '<span class="label">' + b.icon + ' ' + b.name + ' &times; ' + n + '</span>' +
                     '<span class="val">+' + fmt1(contrib) + ' / s</span>' +
@@ -685,7 +875,7 @@
 
     function buy(id) {
       const b = BUILDINGS.find(x => x.id === id);
-      if (!b || b.locked) return;
+      if (!b) return;
       const owned = state.buildings[id] || 0;
       const cost = buildingCost(b, owned);
       if (state.cookies < cost) return;
@@ -694,15 +884,17 @@
       recomputeCps();
       updateCounterText();
       updateAffordability();
+      renderUpgrades();              // newly purchased building can unlock upgrades
+      updateUpgradeAffordability();
       saveStateDebounced();
       playPurchase();
     }
 
-    // --- Floating "+1" ---
-    function spawnPlusOne(clientX, clientY) {
+    // --- Floating "+N" (N = click power) ---
+    function spawnPlusOne(clientX, clientY, value) {
       const el = document.createElement('span');
       el.className = 'fx-plus1';
-      el.textContent = '+1';
+      el.textContent = '+' + (value || 1);
       el.style.left = clientX + 'px';
       el.style.top  = clientY + 'px';
       fxLayer.appendChild(el);
@@ -893,14 +1085,16 @@
         cx = r.left + r.width / 2;
         cy = r.top  + r.height / 2;
       }
-      state.cookies     += 1;
-      state.totalEarned += 1;
+      const power = getClickMult();
+      state.cookies     += power;
+      state.totalEarned += power;
       state.totalClicks += 1;
       updateCounterText();
       updateAffordability();
+      updateUpgradeAffordability();
       checkReveals();
       pulseCounter();
-      spawnPlusOne(cx, cy);
+      spawnPlusOne(cx, cy, power);
       spawnFallingCookie(cx, cy);
       playClickPop();
       bumpCookie();
@@ -915,6 +1109,7 @@
         state.totalEarned += gained;
         updateCounterText();
         updateAffordability();
+        updateUpgradeAffordability();
         checkReveals();
         saveStateDebounced();
       }
@@ -945,6 +1140,7 @@
       recomputeCps();
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (_) {}
       renderStore();
+      renderUpgrades();
       updateCounterText();
       updateAffordability();
       renderStats();
@@ -961,8 +1157,10 @@
     recomputeCps();
     resizeFxCanvas();
     renderStore();
+    renderUpgrades();
     updateCounterText();
     updateAffordability();
+    updateUpgradeAffordability();
     renderStats();
     requestAnimationFrame(tickFalling);
     requestAnimationFrame(tickCursors);
