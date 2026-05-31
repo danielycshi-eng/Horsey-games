@@ -308,7 +308,6 @@
       font-weight: 700;
       color: #fff;
       font-size: 0.92rem;
-      text-transform: lowercase;
       letter-spacing: 0.5px;
     }
     .b-desc {
@@ -483,11 +482,12 @@
 
     // --- Buildings catalog ---
     const BUILDINGS = [
-      { id: 'autoclicker', name: 'autoclicker', desc: 'clicks when your hand is tired',     baseCost: 15,  baseCps: 0.1, icon: '👆', locked: false },
-      { id: 'grandma',     name: 'grandma',     desc: 'a nice grandma to make you cookies', baseCost: 100, baseCps: 1.0, icon: '👵', locked: false },
-      { id: 'mystery1',    name: '???',         desc: '???',                                 baseCost: 0,   baseCps: 0,   icon: '🔒', locked: true  },
-      { id: 'mystery2',    name: '???',         desc: '???',                                 baseCost: 0,   baseCps: 0,   icon: '🔒', locked: true  },
-      { id: 'mystery3',    name: '???',         desc: '???',                                 baseCost: 0,   baseCps: 0,   icon: '🔒', locked: true  },
+      { id: 'autoclicker', name: 'Autoclicker', desc: 'Clicks when your hand is tired',           baseCost: 15,   baseCps: 0.1, icon: '👆', locked: false },
+      { id: 'grandma',     name: 'Grandma',     desc: 'A nice grandma to make you cookies',       baseCost: 100,  baseCps: 1.0, icon: '👵', locked: false },
+      { id: 'farm',        name: 'Farm',        desc: 'A cookie farm that grows cookies from cookie seeds', baseCost: 1100, baseCps: 8.0, icon: '🌾', locked: false },
+      { id: 'mystery1',    name: '???',         desc: '???',                                       baseCost: 0,    baseCps: 0,   icon: '🔒', locked: true  },
+      { id: 'mystery2',    name: '???',         desc: '???',                                       baseCost: 0,    baseCps: 0,   icon: '🔒', locked: true  },
+      { id: 'mystery3',    name: '???',         desc: '???',                                       baseCost: 0,    baseCps: 0,   icon: '🔒', locked: true  },
     ];
 
     function defaultState() {
