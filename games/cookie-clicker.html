@@ -611,6 +611,26 @@
         '<ellipse cx="16" cy="20.5" rx="8" ry="1" fill="#8a5828" opacity="0.4"/>' +
       '</svg>';
 
+    const SVG_WATERING_CAN =
+      '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">' +
+        // spout — quadrilateral angling up-left from the body
+        '<path d="M 11 14 L 3 11 L 3 19 L 11 20 Z" fill="#4caf50" stroke="#1b5e20" stroke-width="1.2" stroke-linejoin="round"/>' +
+        // sprinkler rose at the tip of the spout
+        '<ellipse cx="3" cy="15" rx="1.6" ry="3.6" fill="#388e3c" stroke="#1b5e20" stroke-width="1"/>' +
+        // shower holes
+        '<circle cx="2.3" cy="13.5" r="0.35" fill="#0d3a0f"/>' +
+        '<circle cx="2.3" cy="15"   r="0.35" fill="#0d3a0f"/>' +
+        '<circle cx="2.3" cy="16.5" r="0.35" fill="#0d3a0f"/>' +
+        // main body
+        '<rect x="11" y="11" width="15" height="16" rx="2.5" fill="#4caf50" stroke="#1b5e20" stroke-width="1.3"/>' +
+        // top opening rim
+        '<ellipse cx="18.5" cy="11" rx="5.5" ry="1.5" fill="#2e7d32" stroke="#1b5e20" stroke-width="1"/>' +
+        // arched handle
+        '<path d="M 14 11 Q 18.5 4, 23 11" stroke="#1b5e20" stroke-width="2" fill="none" stroke-linecap="round"/>' +
+        // body highlight stripe
+        '<rect x="13" y="14" width="2" height="10" rx="1" fill="#81c784" opacity="0.65"/>' +
+      '</svg>';
+
     const UPGRADES = [
       {
         id: 'reinforced_fingers',
@@ -643,6 +663,16 @@
         svg: SVG_ROLLING_PIN,
         buildingMult: { grandma: 2 },
         requires: () => (state.buildings.grandma || 0) >= 1,
+      },
+      {
+        id: 'we_have_hoes_now',
+        name: 'We have hoes now',
+        desc: 'Rake in the dough!',
+        cost: 11000,
+        effectText: 'Farms are twice as efficient',
+        svg: SVG_WATERING_CAN,
+        buildingMult: { farm: 2 },
+        requires: () => (state.buildings.farm || 0) >= 1,
       },
     ];
 
