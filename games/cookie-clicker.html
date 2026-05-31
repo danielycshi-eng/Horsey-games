@@ -321,6 +321,20 @@
     }
     .building-card.locked .b-rate { color: #98a8c5; }
 
+    /* Owned-upgrades list inside the middle (Stats) panel */
+    .owned-up-row {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      padding: 0.32rem 0.5rem;
+      border-bottom: 1px solid rgba(78,127,255,0.08);
+      color: #ddd;
+      font-size: 0.85rem;
+    }
+    .ou-icon { width: 24px; height: 24px; flex-shrink: 0; }
+    .ou-icon svg { width: 100%; height: 100%; display: block; }
+    .ou-name { color: #ddd; }
+
     /* --- Upgrades grid + hover tooltip --- */
     .upgrades-row {
       display: flex;
@@ -535,6 +549,11 @@
       <div id="building-stats">
         <div class="empty-state">No buildings yet. Open the store →</div>
       </div>
+
+      <h2 class="panel-title">Owned upgrades</h2>
+      <div id="owned-upgrades">
+        <div class="empty-state">No upgrades yet.</div>
+      </div>
     </div>
 
     <!-- RIGHT: upgrades + store -->
@@ -611,6 +630,17 @@
         '<ellipse cx="16" cy="20.5" rx="8" ry="1" fill="#8a5828" opacity="0.4"/>' +
       '</svg>';
 
+    // A plain cookie — same warm-brown body as the big cookie, but no
+    // chocolate chips. Used as the icon for the "Plain Cookie" upgrade.
+    const SVG_PLAIN_COOKIE =
+      '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">' +
+        '<circle cx="16" cy="16" r="13" fill="#c68d4f" stroke="#3a1f0a" stroke-width="1.4"/>' +
+        '<circle cx="14" cy="13" r="10" fill="#dda069" opacity="0.55"/>' +
+        '<circle cx="16" cy="16" r="11" fill="none" stroke="#5a3215" stroke-width="0.4" opacity="0.5"/>' +
+        '<ellipse cx="11" cy="11" rx="5" ry="2.8" fill="#ffffff" opacity="0.18"/>' +
+        '<ellipse cx="20" cy="22" rx="6" ry="2.5" fill="#000000" opacity="0.12"/>' +
+      '</svg>';
+
     const SVG_WATERING_CAN =
       '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">' +
         // spout — quadrilateral angling up-left from the body
@@ -674,6 +704,16 @@
         buildingMult: { farm: 2 },
         requires: () => (state.buildings.farm || 0) >= 1,
       },
+      {
+        id: 'plain_cookie',
+        name: 'Plain Cookie',
+        desc: 'We all gotta start somewhere',
+        cost: 999999,
+        effectText: 'Cookie production +1%',
+        svg: SVG_PLAIN_COOKIE,
+        cpsMult: 1.01,
+        requires: () => state.cookies >= 50000,
+      },
     ];
 
     // Progressive reveal: at start, only Autoclicker + Grandma are revealed
@@ -690,9 +730,10 @@
         totalClicks: 0,
         cps: 0,
         buildings,
-        upgrades: [],       // ids of purchased upgrades
-        revealedCount: 2,   // AC + Grandma visible from the start
-        mysterySlots: 1,    // one ??? teaser
+        upgrades: [],            // ids of purchased upgrades
+        revealedUpgrades: [],    // upgrades whose requires() has fired at least once
+        revealedCount: 2,        // AC + Grandma visible from the start
+        mysterySlots: 1,         // one ??? teaser
       };
     }
 
@@ -719,6 +760,7 @@
           // Filter upgrades to known ids only.
           const validIds = new Set(UPGRADES.map(u => u.id));
           merged.upgrades = (Array.isArray(parsed.upgrades) ? parsed.upgrades : []).filter(id => validIds.has(id));
+          merged.revealedUpgrades = (Array.isArray(parsed.revealedUpgrades) ? parsed.revealedUpgrades : []).filter(id => validIds.has(id));
           return merged;
         }
       } catch (_) {}
@@ -771,12 +813,24 @@
       }
       return m;
     }
+    // Global multiplier — applied to total CPS (and to per-building rate
+    // shown in the store) but NOT to manual click power.
+    function getCpsMult() {
+      let m = 1;
+      for (const u of UPGRADES) {
+        if (state.upgrades.includes(u.id) && u.cpsMult) m *= u.cpsMult;
+      }
+      return m;
+    }
+    function buildingEffectiveCps(b) {
+      return b.baseCps * getBuildingMult(b.id) * getCpsMult();
+    }
     function recomputeCps() {
       let s = 0;
       for (const b of BUILDINGS) {
         s += (state.buildings[b.id] || 0) * b.baseCps * getBuildingMult(b.id);
       }
-      state.cps = s;
+      state.cps = s * getCpsMult();
     }
 
     // --- Rendering ---
@@ -836,7 +890,7 @@
         if (!b) continue;
         const owned = state.buildings[id] || 0;
         const cost  = buildingCost(b, owned);
-        const eff   = b.baseCps * getBuildingMult(b.id);
+        const eff   = buildingEffectiveCps(b);
         const costEl  = card.querySelector('.b-cost');
         const countEl = card.querySelector('.b-count');
         const rateEl  = card.querySelector('.b-rate');
@@ -912,13 +966,28 @@
       tile.addEventListener('click', () => buyUpgrade(u.id));
       upgradesRowEl.appendChild(tile);
     }
+    // Sticky reveal: once an upgrade's requires() fires we remember it,
+    // so dropping below the threshold (e.g. spending cookies) doesn't
+    // make the tile disappear.
+    function checkUpgradeReveals() {
+      let changed = false;
+      for (const u of UPGRADES) {
+        if (state.upgrades.includes(u.id)) continue;
+        if (state.revealedUpgrades.includes(u.id)) continue;
+        if (u.requires()) {
+          state.revealedUpgrades.push(u.id);
+          changed = true;
+        }
+      }
+      if (changed) renderUpgrades();
+    }
     function renderUpgrades() {
       hideTooltip();
       upgradesRowEl.innerHTML = '';
       let any = false;
       for (const u of UPGRADES) {
-        if (state.upgrades.includes(u.id)) continue;     // already owned
-        if (!u.requires()) continue;                     // not unlocked yet
+        if (state.upgrades.includes(u.id)) continue;
+        if (!state.revealedUpgrades.includes(u.id)) continue;
         appendUpgradeTile(u);
         any = true;
       }
@@ -936,7 +1005,7 @@
       const u = UPGRADES.find(x => x.id === id);
       if (!u) return;
       if (state.upgrades.includes(id)) return;
-      if (!u.requires()) return;
+      if (!state.revealedUpgrades.includes(id)) return;
       if (state.cookies < u.cost) return;
       state.cookies -= u.cost;
       state.upgrades.push(id);
@@ -945,6 +1014,7 @@
       updateCounterText();
       updateAffordability();
       updateUpgradeAffordability();
+      renderStats();
       saveStateDebounced();
       playPurchase();
     }
@@ -963,13 +1033,29 @@
         let html = '';
         for (const b of owned) {
           const n = state.buildings[b.id];
-          const contrib = n * b.baseCps * getBuildingMult(b.id);
+          const contrib = n * buildingEffectiveCps(b);
           html += '<div class="stat-row">' +
                     '<span class="label">' + b.icon + ' ' + b.name + ' &times; ' + n + '</span>' +
                     '<span class="val">+' + fmt1(contrib) + ' / s</span>' +
                   '</div>';
         }
         buildingStatsEl.innerHTML = html;
+      }
+
+      // owned upgrades
+      const ownedUpsEl = document.getElementById('owned-upgrades');
+      const ownedUps = UPGRADES.filter(u => state.upgrades.includes(u.id));
+      if (ownedUps.length === 0) {
+        ownedUpsEl.innerHTML = '<div class="empty-state">No upgrades yet.</div>';
+      } else {
+        let html = '';
+        for (const u of ownedUps) {
+          html += '<div class="owned-up-row">' +
+                    '<div class="ou-icon">' + u.svg + '</div>' +
+                    '<div class="ou-name">' + u.name + '</div>' +
+                  '</div>';
+        }
+        ownedUpsEl.innerHTML = html;
       }
     }
 
@@ -984,8 +1070,9 @@
       recomputeCps();
       updateCounterText();
       updateAffordability();
-      renderUpgrades();              // newly purchased building can unlock upgrades
+      checkUpgradeReveals();         // newly purchased building can unlock upgrades
       updateUpgradeAffordability();
+      renderStats();
       saveStateDebounced();
       playPurchase();
     }
@@ -1193,6 +1280,7 @@
       updateAffordability();
       updateUpgradeAffordability();
       checkReveals();
+      checkUpgradeReveals();
       pulseCounter();
       spawnPlusOne(cx, cy, power);
       spawnFallingCookie(cx, cy);
@@ -1211,6 +1299,7 @@
         updateAffordability();
         updateUpgradeAffordability();
         checkReveals();
+        checkUpgradeReveals();
         saveStateDebounced();
       }
     }
@@ -1256,6 +1345,7 @@
 
     recomputeCps();
     resizeFxCanvas();
+    checkUpgradeReveals();
     renderStore();
     renderUpgrades();
     updateCounterText();
