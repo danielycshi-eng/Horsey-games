@@ -880,22 +880,23 @@
     const SVG_GEARS_CHALCED = withExtra(gearsSvg('#ff9930', '#944506'), ICON_SPARKLES);
     const SVG_GEARS_BUTTER  = withExtra(gearsSvg('#f7d34a', '#b8860b'), ICON_SPARKLES);
 
-    // --- Money bag ---
-    // Two cloth peaks above a cinch line, with a rounded sack body.
-    // Color tiers parallel the rest: brown / pink / blue / chalced / butter.
+    // --- Money pouch ---
+    // Cinched neck at top, round bulging belly, rounded bottom, with two
+    // drawstring ends curling up above the tie. Color tiers parallel the
+    // rest: brown / pink / blue / chalced / butter.
     function moneyBagSvg(body, stroke, highlight) {
       return '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">' +
-        // cloth peaks (drawn first so the cinch overlaps their bases)
-        '<polygon points="11,12 13,4 15,12" fill="' + body + '" stroke="' + stroke + '" stroke-width="0.8" stroke-linejoin="round"/>' +
-        '<polygon points="17,12 19,4 21,12" fill="' + body + '" stroke="' + stroke + '" stroke-width="0.8" stroke-linejoin="round"/>' +
-        // bag body
-        '<path d="M 7 12 Q 3 19, 6 27 Q 9 30.5, 16 30.5 Q 23 30.5, 26 27 Q 29 19, 25 12 Z" fill="' + body + '" stroke="' + stroke + '" stroke-width="1.3" stroke-linejoin="round"/>' +
-        // cinch (drawstring) curve
-        '<path d="M 7 12 Q 16 14, 25 12" stroke="' + stroke + '" stroke-width="1" fill="none"/>' +
-        // soft highlight stripe on the left
-        '<ellipse cx="11" cy="20" rx="2.5" ry="6" fill="' + highlight + '" opacity="0.6"/>' +
+        // pouch silhouette — narrow neck (x:11-21), wide belly (x:3-29 around y=19), rounded bottom
+        '<path d="M 11 11 Q 8 11, 6 14 Q 3 19, 5 25 Q 7 30, 14 30.5 L 18 30.5 Q 25 30, 27 25 Q 29 19, 26 14 Q 24 11, 21 11 Z" fill="' + body + '" stroke="' + stroke + '" stroke-width="1.3" stroke-linejoin="round"/>' +
+        // cinch line across the neck (slightly sagging)
+        '<path d="M 11 11 Q 16 12.5, 21 11" stroke="' + stroke + '" stroke-width="1.2" fill="none" stroke-linecap="round"/>' +
+        // drawstring ends curling up above the cinch
+        '<path d="M 13 11 Q 11 7, 12 4" stroke="' + stroke + '" stroke-width="1.3" fill="none" stroke-linecap="round"/>' +
+        '<path d="M 19 11 Q 21 7, 20 4" stroke="' + stroke + '" stroke-width="1.3" fill="none" stroke-linecap="round"/>' +
+        // soft highlight stripe on the left belly
+        '<ellipse cx="9.5" cy="20" rx="2.2" ry="6" fill="' + highlight + '" opacity="0.6"/>' +
         // sharp metallic gloss line
-        '<rect x="10.5" y="15" width="1.4" height="11" rx="0.4" fill="#ffffff" opacity="0.5"/>' +
+        '<rect x="9" y="16" width="1.5" height="10" rx="0.4" fill="#ffffff" opacity="0.5"/>' +
       '</svg>';
     }
     const SVG_MONEY_BAG_BROWN   = moneyBagSvg('#8b6f47', '#3a2510', '#a18a5e');
