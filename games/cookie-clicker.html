@@ -310,6 +310,16 @@
       font-size: 0.92rem;
       letter-spacing: 0.5px;
     }
+    .b-rate {
+      color: #f5d77a;
+      font-weight: 600;
+      font-size: 0.72rem;
+      letter-spacing: 0.5px;
+      margin-left: 0.4rem;
+      opacity: 0.85;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+    }
+    .building-card.locked .b-rate { color: #98a8c5; }
     .b-desc {
       font-size: 0.72rem;
       color: #98a8c5;
@@ -487,7 +497,8 @@
       { id: 'autoclicker', name: 'Autoclicker', desc: 'Clicks when your hand is tired',                     baseCost: 15,   baseCps: 0.1, icon: '👆' },
       { id: 'grandma',     name: 'Grandma',     desc: 'A nice grandma to make you cookies',                 baseCost: 100,  baseCps: 1.0, icon: '👵' },
       { id: 'farm',        name: 'Farm',        desc: 'A cookie farm that grows cookies from cookie seeds', baseCost: 1100,  baseCps: 8.0,  icon: '🌾' },
-      { id: 'mine',        name: 'Mine',        desc: 'Digs out cookie dough and chocolate chips',          baseCost: 12000, baseCps: 47.0, icon: '⛏️' },
+      { id: 'mine',        name: 'Mine',        desc: 'Digs out cookie dough and chocolate chips',          baseCost: 12000,  baseCps: 47.0,  icon: '⛏️' },
+      { id: 'factory',     name: 'Factory',     desc: 'Produces large quantities of cookies',               baseCost: 130000, baseCps: 260.0, icon: '🏭' },
     ];
 
     // Progressive reveal: at start, only Autoclicker + Grandma are revealed
@@ -587,7 +598,7 @@
       card.innerHTML =
         '<div class="b-icon">' + b.icon + '</div>' +
         '<div class="b-info">' +
-          '<div class="b-name">' + b.name + '</div>' +
+          '<div class="b-name">' + b.name + ' <span class="b-rate">' + fmt1(b.baseCps) + ' /s</span></div>' +
           '<div class="b-desc">' + b.desc + '</div>' +
         '</div>' +
         '<div class="b-meta">' +
@@ -603,7 +614,7 @@
       card.innerHTML =
         '<div class="b-icon">🔒</div>' +
         '<div class="b-info">' +
-          '<div class="b-name">???</div>' +
+          '<div class="b-name">??? <span class="b-rate">??? /s</span></div>' +
           '<div class="b-desc">???</div>' +
         '</div>' +
         '<div class="b-meta">' +
