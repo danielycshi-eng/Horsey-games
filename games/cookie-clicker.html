@@ -480,20 +480,32 @@
   <script>
     const STORAGE_KEY = 'horsey:cookieclicker:v1';
 
-    // --- Buildings catalog ---
+    // --- Buildings catalog (only defined buildings; mystery slots are
+    //     virtual placeholders rendered separately). When new buildings get
+    //     names later, push them onto this list. ---
     const BUILDINGS = [
-      { id: 'autoclicker', name: 'Autoclicker', desc: 'Clicks when your hand is tired',           baseCost: 15,   baseCps: 0.1, icon: '👆', locked: false },
-      { id: 'grandma',     name: 'Grandma',     desc: 'A nice grandma to make you cookies',       baseCost: 100,  baseCps: 1.0, icon: '👵', locked: false },
-      { id: 'farm',        name: 'Farm',        desc: 'A cookie farm that grows cookies from cookie seeds', baseCost: 1100, baseCps: 8.0, icon: '🌾', locked: false },
-      { id: 'mystery1',    name: '???',         desc: '???',                                       baseCost: 0,    baseCps: 0,   icon: '🔒', locked: true  },
-      { id: 'mystery2',    name: '???',         desc: '???',                                       baseCost: 0,    baseCps: 0,   icon: '🔒', locked: true  },
-      { id: 'mystery3',    name: '???',         desc: '???',                                       baseCost: 0,    baseCps: 0,   icon: '🔒', locked: true  },
+      { id: 'autoclicker', name: 'Autoclicker', desc: 'Clicks when your hand is tired',                     baseCost: 15,   baseCps: 0.1, icon: '👆' },
+      { id: 'grandma',     name: 'Grandma',     desc: 'A nice grandma to make you cookies',                 baseCost: 100,  baseCps: 1.0, icon: '👵' },
+      { id: 'farm',        name: 'Farm',        desc: 'A cookie farm that grows cookies from cookie seeds', baseCost: 1100, baseCps: 8.0, icon: '🌾' },
     ];
 
+    // Progressive reveal: at start, only Autoclicker + Grandma are revealed
+    // and a single ??? teaser sits below them. When the player's cookies
+    // pass 5/6 of the next building's base cost, that building reveals and
+    // one more ??? appears (the first reveal bumps the teaser count from
+    // 1 to 2; after that, ??? count stays at 2).
     function defaultState() {
       const buildings = {};
       for (const b of BUILDINGS) buildings[b.id] = 0;
-      return { cookies: 0, totalEarned: 0, totalClicks: 0, cps: 0, buildings };
+      return {
+        cookies: 0,
+        totalEarned: 0,
+        totalClicks: 0,
+        cps: 0,
+        buildings,
+        revealedCount: 2,   // AC + Grandma visible from the start
+        mysterySlots: 1,    // one ??? teaser
+      };
     }
 
     function loadState() {
@@ -501,8 +513,21 @@
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) {
           const parsed = JSON.parse(raw);
-          const merged = Object.assign(defaultState(), parsed);
-          merged.buildings = Object.assign({}, defaultState().buildings, parsed.buildings || {});
+          const def = defaultState();
+          const merged = Object.assign(def, parsed);
+          // Keep only known building keys (drops stale mystery1/2/3 from old saves).
+          const cleanBuildings = {};
+          for (const id in def.buildings) {
+            cleanBuildings[id] = (parsed.buildings && parsed.buildings[id]) || 0;
+          }
+          merged.buildings = cleanBuildings;
+          // Auto-advance reveals: anything the player has already bought is revealed.
+          let minRevealed = 2;
+          for (let i = 2; i < BUILDINGS.length; i++) {
+            if (cleanBuildings[BUILDINGS[i].id] > 0) minRevealed = i + 1;
+          }
+          merged.revealedCount = Math.max(parsed.revealedCount || 2, minRevealed);
+          merged.mysterySlots = merged.revealedCount > 2 ? 2 : (parsed.mysterySlots || 1);
           return merged;
         }
       } catch (_) {}
@@ -553,35 +578,51 @@
       void counterNumEl.offsetWidth;
       counterNumEl.classList.add('pulse');
     }
+    function appendBuildingCard(b) {
+      const owned = state.buildings[b.id] || 0;
+      const card = document.createElement('button');
+      card.className = 'building-card';
+      card.dataset.building = b.id;
+      card.innerHTML =
+        '<div class="b-icon">' + b.icon + '</div>' +
+        '<div class="b-info">' +
+          '<div class="b-name">' + b.name + '</div>' +
+          '<div class="b-desc">' + b.desc + '</div>' +
+        '</div>' +
+        '<div class="b-meta">' +
+          '<div class="b-cost">' + fmt(buildingCost(b, owned)) + '</div>' +
+          '<div class="b-count">' + owned + '</div>' +
+        '</div>';
+      card.addEventListener('click', () => buy(b.id));
+      storeEl.appendChild(card);
+    }
+    function appendMysteryCard() {
+      const card = document.createElement('div');
+      card.className = 'building-card locked';
+      card.innerHTML =
+        '<div class="b-icon">🔒</div>' +
+        '<div class="b-info">' +
+          '<div class="b-name">???</div>' +
+          '<div class="b-desc">???</div>' +
+        '</div>' +
+        '<div class="b-meta">' +
+          '<div class="b-cost">???</div>' +
+          '<div class="b-count">0</div>' +
+        '</div>';
+      storeEl.appendChild(card);
+    }
     function renderStore() {
       storeEl.innerHTML = '';
-      for (const b of BUILDINGS) {
-        const owned = state.buildings[b.id] || 0;
-        const card = document.createElement('button');
-        card.className = 'building-card';
-        card.dataset.building = b.id;
-        if (b.locked) card.classList.add('locked');
-        const costText = b.locked ? '???' : fmt(buildingCost(b, owned));
-        card.innerHTML =
-          '<div class="b-icon">' + b.icon + '</div>' +
-          '<div class="b-info">' +
-            '<div class="b-name">' + b.name + '</div>' +
-            '<div class="b-desc">' + b.desc + '</div>' +
-          '</div>' +
-          '<div class="b-meta">' +
-            '<div class="b-cost">' + costText + '</div>' +
-            '<div class="b-count">' + owned + '</div>' +
-          '</div>';
-        if (!b.locked) card.addEventListener('click', () => buy(b.id));
-        storeEl.appendChild(card);
-      }
+      const shown = Math.min(state.revealedCount, BUILDINGS.length);
+      for (let i = 0; i < shown; i++) appendBuildingCard(BUILDINGS[i]);
+      for (let s = 0; s < state.mysterySlots; s++) appendMysteryCard();
     }
     function updateAffordability() {
-      const cards = storeEl.querySelectorAll('.building-card');
+      const cards = storeEl.querySelectorAll('.building-card[data-building]');
       for (const card of cards) {
         const id = card.dataset.building;
         const b = BUILDINGS.find(x => x.id === id);
-        if (!b || b.locked) continue;
+        if (!b) continue;
         const owned = state.buildings[id] || 0;
         const cost = buildingCost(b, owned);
         const costEl = card.querySelector('.b-cost');
@@ -589,6 +630,20 @@
         if (costEl)  costEl.textContent  = fmt(cost);
         if (countEl) countEl.textContent = owned;
         card.classList.toggle('affordable', state.cookies >= cost);
+      }
+    }
+
+    // 5/6-of-cost reveal trigger for the next undiscovered building.
+    function checkReveals() {
+      if (state.revealedCount >= BUILDINGS.length) return;
+      const next = BUILDINGS[state.revealedCount];
+      if (!next || !next.baseCost) return;
+      if (state.cookies >= next.baseCost * 5 / 6) {
+        state.revealedCount++;
+        if (state.mysterySlots < 2) state.mysterySlots = 2;
+        renderStore();
+        updateAffordability();
+        saveStateDebounced();
       }
     }
     function renderStats() {
@@ -831,6 +886,7 @@
       state.totalClicks += 1;
       updateCounterText();
       updateAffordability();
+      checkReveals();
       pulseCounter();
       spawnPlusOne(cx, cy);
       spawnFallingCookie(cx, cy);
@@ -847,18 +903,24 @@
         state.totalEarned += gained;
         updateCounterText();
         updateAffordability();
+        checkReveals();
         saveStateDebounced();
       }
     }
     setInterval(gameTick, 50);
     setInterval(renderStats, 200); // less frequent — stats panel changes are mostly cosmetic
 
-    // --- Eat ---
+    // --- Eat: full wipe (cookies, buildings, stats, reveals) ---
     let eating = false;
     function eatCookies() {
       if (eating) return;
-      if (state.cookies < 1) { alert("You don't have any cookies to eat yet!"); return; }
-      const msg = 'Are you sure you want to eat all your cookies? You have ' + fmt(state.cookies) + '.';
+      if (state.cookies < 1 && state.totalEarned < 1) {
+        alert("You don't have any cookies to eat yet!");
+        return;
+      }
+      const msg = 'Are you sure you want to eat all your cookies?\n\n'
+                + 'This wipes everything — cookies, buildings, CPS, and stats.\n'
+                + 'You currently have ' + fmt(state.cookies) + ' cookies.';
       if (!confirm(msg)) return;
       eating = true;
       eatBtn.disabled = true;
@@ -867,10 +929,13 @@
       cookieEl.addEventListener('animationend', onEatDone, { once: true });
     }
     function onEatDone() {
-      state.cookies = 0;
+      state = defaultState();
+      recomputeCps();
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (_) {}
+      renderStore();
       updateCounterText();
       updateAffordability();
+      renderStats();
       cookieEl.classList.remove('eating');
       eatBtn.disabled = false;
       eating = false;
