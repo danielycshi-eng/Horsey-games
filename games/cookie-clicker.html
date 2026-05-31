@@ -247,6 +247,36 @@
     .eat-btn:active { transform: translateY(0); }
     .eat-btn:disabled { opacity: 0.4; cursor: default; transform: none; box-shadow: none; }
 
+    .btn-row {
+      display: flex;
+      gap: 0.6rem;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    /* Dev/test "+1000" button — dashed border signals it isn't a normal
+       gameplay button. Sits next to "Time to eat!". */
+    .test-btn {
+      padding: 0.55rem 1rem;
+      background: rgba(80, 100, 140, 0.55);
+      border: 2px dashed #6b7c97;
+      border-radius: 12px;
+      color: #e0e6f0;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s, border-color 0.15s, transform 0.1s;
+    }
+    .test-btn:hover {
+      background: rgba(110, 135, 180, 0.75);
+      border-color: #9ab2d6;
+      transform: translateY(-1px);
+    }
+    .test-btn:active { transform: translateY(1px); }
+
     /* === MIDDLE COLUMN: stats === */
     .stat-row {
       display: flex;
@@ -533,7 +563,10 @@
           </svg>
         </button>
       </div>
-      <button class="eat-btn" id="eat" title="Eat all your cookies">Time to eat!</button>
+      <div class="btn-row">
+        <button class="eat-btn" id="eat" title="Eat all your cookies">Time to eat!</button>
+        <button class="test-btn" id="test-1000" title="Dev: +1000 cookies">+1000 🧪</button>
+      </div>
     </div>
 
     <!-- MIDDLE: stats -->
@@ -1341,6 +1374,17 @@
     // --- Wire up ---
     cookieEl.addEventListener('click', onCookieClick);
     eatBtn.addEventListener('click', eatCookies);
+    document.getElementById('test-1000').addEventListener('click', () => {
+      state.cookies     += 1000;
+      state.totalEarned += 1000;
+      updateCounterText();
+      updateAffordability();
+      updateUpgradeAffordability();
+      checkReveals();
+      checkUpgradeReveals();
+      renderStats();
+      saveStateDebounced();
+    });
     window.addEventListener('resize', resizeFxCanvas);
 
     recomputeCps();
