@@ -564,6 +564,8 @@
       <div class="btn-row">
         <button class="eat-btn" id="eat" title="Eat all your cookies">Time to eat!</button>
         <button class="test-btn" id="test-1000" title="Dev: +1000 cookies">+1000 🧪</button>
+        <button class="test-btn" id="test-x5"   title="Dev: multiply your bank by 5">×5 🧪</button>
+        <button class="test-btn" id="test-x10"  title="Dev: multiply your bank by 10">×10 🧪</button>
       </div>
     </div>
 
@@ -840,7 +842,7 @@
         effectText: 'Cookie production +2%',
         svg: SVG_PEANUT_BUTTER,
         cpsMult: 1.02,
-        requires: () => state.totalEarned >= 2500000,
+        requires: () => state.cookies >= 2500000,
       },
       {
         id: 'coconut_cookies',
@@ -850,7 +852,7 @@
         effectText: 'Cookie production +2%',
         svg: SVG_COCONUT_COOKIE,
         cpsMult: 1.02,
-        requires: () => state.totalEarned >= 5000000,
+        requires: () => state.cookies >= 5000000,
       },
     ];
 
@@ -1495,9 +1497,9 @@
     // --- Wire up ---
     cookieEl.addEventListener('click', onCookieClick);
     eatBtn.addEventListener('click', eatCookies);
-    document.getElementById('test-1000').addEventListener('click', () => {
-      state.cookies     += 1000;
-      state.totalEarned += 1000;
+    function devGrant(delta) {
+      state.cookies     += delta;
+      state.totalEarned += delta;
       updateCounterText();
       updateAffordability();
       updateUpgradeAffordability();
@@ -1505,6 +1507,17 @@
       checkUpgradeReveals();
       renderStats();
       saveStateDebounced();
+    }
+    document.getElementById('test-1000').addEventListener('click', () => devGrant(1000));
+    document.getElementById('test-x5').addEventListener('click', () => {
+      const before = state.cookies;
+      const gained = before * 4;          // bank × 5 means +4× to reach 5× total
+      if (gained > 0) devGrant(gained);
+    });
+    document.getElementById('test-x10').addEventListener('click', () => {
+      const before = state.cookies;
+      const gained = before * 9;          // bank × 10 → +9× current
+      if (gained > 0) devGrant(gained);
     });
     window.addEventListener('resize', resizeFxCanvas);
 
