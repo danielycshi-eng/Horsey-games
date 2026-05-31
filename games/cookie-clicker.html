@@ -587,6 +587,11 @@
       <div id="owned-upgrades">
         <div class="empty-state">No upgrades yet.</div>
       </div>
+
+      <h2 class="panel-title">Cookies</h2>
+      <div id="owned-cookies">
+        <div class="empty-state">No cookies yet.</div>
+      </div>
     </div>
 
     <!-- RIGHT: upgrades + store -->
@@ -808,6 +813,7 @@
         id: 'plain_cookie',
         name: 'Plain Cookie',
         desc: 'We all gotta start somewhere',
+        category: 'cookie',
         cost: 999999,
         effectText: 'Cookie production +1%',
         svg: SVG_PLAIN_COOKIE,
@@ -818,6 +824,7 @@
         id: 'sugar_cookies',
         name: 'Sugar Cookies',
         desc: 'Tasty, but a little unoriginal',
+        category: 'cookie',
         cost: 5000000,
         effectText: 'Cookie production +1%',
         svg: SVG_SUGAR_COOKIE,
@@ -828,6 +835,7 @@
         id: 'oatmeal_raisin_cookies',
         name: 'Oatmeal Raisin Cookies',
         desc: 'No rasin to hate these',
+        category: 'cookie',
         cost: 10000000,
         effectText: 'Cookie production +1%',
         svg: SVG_OATMEAL_RAISIN,
@@ -838,6 +846,7 @@
         id: 'peanut_butter_cookies',
         name: 'Peanut Butter Cookies',
         desc: 'You might want to get some jam',
+        category: 'cookie',
         cost: 50000000,
         effectText: 'Cookie production +2%',
         svg: SVG_PEANUT_BUTTER,
@@ -848,6 +857,7 @@
         id: 'coconut_cookies',
         name: 'Coconut Cookies',
         desc: "Flaky and messy, but you wouldn't know how many people go crazy for these cookies these days",
+        category: 'cookie',
         cost: 100000000,
         effectText: 'Cookie production +2%',
         svg: SVG_COCONUT_COOKIE,
@@ -1134,22 +1144,20 @@
       upgradesEmptyEl.style.display = any ? 'none' : 'block';
     }
 
-    // Owned-upgrades tiles. Only rebuild on actual change (init / buy /
+    // Owned-upgrade tiles. Only rebuild on actual change (init / buy /
     // eat-reset) so hover transitions don't get interrupted every tick.
-    function renderOwnedUpgrades() {
-      const ownedUpsEl = document.getElementById('owned-upgrades');
-      ownedUpsEl.innerHTML = '';
-      const ownedUps = UPGRADES.filter(u => state.upgrades.includes(u.id));
-      if (ownedUps.length === 0) {
+    function renderOwnedTilesInto(targetEl, items, emptyText) {
+      targetEl.innerHTML = '';
+      if (items.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'empty-state';
-        empty.textContent = 'No upgrades yet.';
-        ownedUpsEl.appendChild(empty);
+        empty.textContent = emptyText;
+        targetEl.appendChild(empty);
         return;
       }
       const row = document.createElement('div');
       row.className = 'upgrades-row';
-      for (const u of ownedUps) {
+      for (const u of items) {
         const tile = document.createElement('div');
         tile.className = 'upgrade-tile owned';
         tile.innerHTML = u.svg;
@@ -1157,7 +1165,19 @@
         tile.addEventListener('mouseleave', hideTooltip);
         row.appendChild(tile);
       }
-      ownedUpsEl.appendChild(row);
+      targetEl.appendChild(row);
+    }
+    function renderOwnedUpgrades() {
+      const owned = UPGRADES.filter(u =>
+        state.upgrades.includes(u.id) && u.category !== 'cookie'
+      );
+      renderOwnedTilesInto(document.getElementById('owned-upgrades'), owned, 'No upgrades yet.');
+    }
+    function renderOwnedCookies() {
+      const owned = UPGRADES.filter(u =>
+        state.upgrades.includes(u.id) && u.category === 'cookie'
+      );
+      renderOwnedTilesInto(document.getElementById('owned-cookies'), owned, 'No cookies yet.');
     }
     function updateUpgradeAffordability() {
       const tiles = upgradesRowEl.querySelectorAll('.upgrade-tile');
@@ -1178,6 +1198,7 @@
       recomputeCps();
       renderUpgrades();
       renderOwnedUpgrades();
+      renderOwnedCookies();
       updateCounterText();
       updateAffordability();
       updateUpgradeAffordability();
@@ -1486,6 +1507,7 @@
       renderStore();
       renderUpgrades();
       renderOwnedUpgrades();
+      renderOwnedCookies();
       updateCounterText();
       updateAffordability();
       renderStats();
