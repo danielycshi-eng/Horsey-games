@@ -351,20 +351,6 @@
     }
     .building-card.locked .b-rate { color: #98a8c5; }
 
-    /* Owned-upgrades list inside the middle (Stats) panel */
-    .owned-up-row {
-      display: flex;
-      align-items: center;
-      gap: 0.55rem;
-      padding: 0.32rem 0.5rem;
-      border-bottom: 1px solid rgba(78,127,255,0.08);
-      color: #ddd;
-      font-size: 0.85rem;
-    }
-    .ou-icon { width: 24px; height: 24px; flex-shrink: 0; }
-    .ou-icon svg { width: 100%; height: 100%; display: block; }
-    .ou-name { color: #ddd; }
-
     /* --- Upgrades grid + hover tooltip --- */
     .upgrades-row {
       display: flex;
@@ -387,7 +373,19 @@
     .upgrade-tile:hover { transform: translateY(-2px); border-color: #4e7fff; z-index: 10; }
     .upgrade-tile.affordable { border-color: #22c55e; box-shadow: 0 0 10px rgba(34,197,94,0.3); }
     .upgrade-tile.affordable:hover { box-shadow: 0 0 16px rgba(34,197,94,0.55); }
-    .upgrade-tile:not(.affordable) { opacity: 0.75; cursor: not-allowed; }
+    .upgrade-tile:not(.affordable):not(.owned) { opacity: 0.75; cursor: not-allowed; }
+    .upgrade-tile.owned {
+      cursor: default;
+      opacity: 1;
+      border-color: #f5d77a;
+      background: rgba(70, 55, 25, 0.6);
+      box-shadow: 0 0 10px rgba(245, 215, 122, 0.25);
+    }
+    .upgrade-tile.owned:hover {
+      border-color: #ffe28a;
+      background: rgba(95, 75, 35, 0.7);
+      box-shadow: 0 0 18px rgba(245, 215, 122, 0.5);
+    }
     .upgrade-tile > svg { width: 100%; height: 100%; display: block; }
 
     /* Portal tooltip, lives at body level so the right-column panel's
@@ -1075,20 +1073,27 @@
         buildingStatsEl.innerHTML = html;
       }
 
-      // owned upgrades
+      // owned upgrades — small tiles, same hover tooltip as the store
       const ownedUpsEl = document.getElementById('owned-upgrades');
+      ownedUpsEl.innerHTML = '';
       const ownedUps = UPGRADES.filter(u => state.upgrades.includes(u.id));
       if (ownedUps.length === 0) {
-        ownedUpsEl.innerHTML = '<div class="empty-state">No upgrades yet.</div>';
+        const empty = document.createElement('div');
+        empty.className = 'empty-state';
+        empty.textContent = 'No upgrades yet.';
+        ownedUpsEl.appendChild(empty);
       } else {
-        let html = '';
+        const row = document.createElement('div');
+        row.className = 'upgrades-row';
         for (const u of ownedUps) {
-          html += '<div class="owned-up-row">' +
-                    '<div class="ou-icon">' + u.svg + '</div>' +
-                    '<div class="ou-name">' + u.name + '</div>' +
-                  '</div>';
+          const tile = document.createElement('div');
+          tile.className = 'upgrade-tile owned';
+          tile.innerHTML = u.svg;
+          tile.addEventListener('mouseenter', () => showTooltipFor(tile, u));
+          tile.addEventListener('mouseleave', hideTooltip);
+          row.appendChild(tile);
         }
-        ownedUpsEl.innerHTML = html;
+        ownedUpsEl.appendChild(row);
       }
     }
 
