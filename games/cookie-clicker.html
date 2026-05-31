@@ -650,8 +650,42 @@
         '<line x1="19" y1="24" x2="24" y2="24" stroke="' + knuckleColor + '" stroke-width="0.6"/>' +
         '</svg>';
     }
-    const SVG_FINGER_WHITE = handCursorSvg('#ffffff', '#e0e0e0', '#aaaaaa');
-    const SVG_FINGER_PINK  = handCursorSvg('#ff9ec1', '#ffd6e6', '#d57aa0');
+    // --- Shared icon helpers ---
+    // Sparkle = a small white "+" mark. Used to label chalcedhoney/buttergold
+    // tiers so they read as magic/precious-metal.
+    function sparklesAt(positions) {
+      let out = '';
+      for (const p of positions) {
+        const cx = p[0], cy = p[1], sz = p[2];
+        out += '<g transform="translate(' + cx + ', ' + cy + ')" stroke="#ffffff" ' +
+                 'stroke-width="' + (sz * 0.35) + '" stroke-linecap="round" opacity="0.95">' +
+                 '<line x1="0" y1="' + (-sz) + '" x2="0" y2="' + sz + '"/>' +
+                 '<line x1="' + (-sz) + '" y1="0" x2="' + sz + '" y2="0"/>' +
+               '</g>';
+      }
+      return out;
+    }
+    // Inject extra SVG markup before the closing </svg> of an existing
+    // SVG string. Lets us add shines/sparkles without forking each generator.
+    function withExtra(svgString, extra) {
+      return svgString.replace('</svg>', extra + '</svg>');
+    }
+
+    // Shared sparkle layout — 4 marks around the corners of an icon.
+    const ICON_SPARKLES = sparklesAt([[5, 5, 1.8], [27, 7, 1.6], [3, 25, 1.5], [28, 25, 1.5]]);
+
+    // Metallic specular shine for the hand cursor (white streaks along the
+    // index finger and the fist).
+    const HAND_METALLIC =
+      '<line x1="14.5" y1="6" x2="14.5" y2="15" stroke="#ffffff" stroke-width="0.85" opacity="0.6" stroke-linecap="round"/>' +
+      '<line x1="9"    y1="19" x2="9"    y2="27" stroke="#ffffff" stroke-width="0.7"  opacity="0.45" stroke-linecap="round"/>' +
+      '<line x1="5.2"  y1="18" x2="5.2"  y2="22" stroke="#ffffff" stroke-width="0.6"  opacity="0.5" stroke-linecap="round"/>';
+
+    const SVG_FINGER_WHITE   = handCursorSvg('#ffffff', '#e0e0e0', '#aaaaaa');
+    const SVG_FINGER_PINK    = withExtra(handCursorSvg('#ff9ec1', '#ffd6e6', '#d57aa0'), HAND_METALLIC);
+    const SVG_FINGER_BLUE    = withExtra(handCursorSvg('#5fb8e8', '#b3dcf2', '#2e6e94'), HAND_METALLIC);
+    const SVG_FINGER_CHALCED = withExtra(handCursorSvg('#ff9930', '#ffcc88', '#944506'), HAND_METALLIC + ICON_SPARKLES);
+    const SVG_FINGER_BUTTER  = withExtra(handCursorSvg('#f7d34a', '#fff2c0', '#b8860b'), HAND_METALLIC + ICON_SPARKLES);
 
     // Rolling pin — body, handle caps, connector pegs, and highlight/shadow
     // all driven by color so we can mint pink / blue variants for the
@@ -677,9 +711,11 @@
         '<ellipse cx="16" cy="20.5" rx="8" ry="1" fill="' + shadow + '" opacity="0.45"/>' +
       '</svg>';
     }
-    const SVG_ROLLING_PIN      = rollingPinSvg('#d4a574', '#8b6f47', '#3a2510', '#5a3a18', '#ecc88a', '#8a5828');
-    const SVG_ROLLING_PIN_PINK = rollingPinSvg('#ff9ec1', '#b85a82', '#5a1f3a', '#3a132a', '#ffd6e6', '#a04e72');
-    const SVG_ROLLING_PIN_BLUE = rollingPinSvg('#7fc4e8', '#2e6e94', '#143a55', '#0a2535', '#b3dcf2', '#3a7798');
+    const SVG_ROLLING_PIN         = rollingPinSvg('#d4a574', '#8b6f47', '#3a2510', '#5a3a18', '#ecc88a', '#8a5828');
+    const SVG_ROLLING_PIN_PINK    = rollingPinSvg('#ff9ec1', '#b85a82', '#5a1f3a', '#3a132a', '#ffd6e6', '#a04e72');
+    const SVG_ROLLING_PIN_BLUE    = rollingPinSvg('#7fc4e8', '#2e6e94', '#143a55', '#0a2535', '#b3dcf2', '#3a7798');
+    const SVG_ROLLING_PIN_CHALCED = withExtra(rollingPinSvg('#ff9930', '#b85a08', '#5a2c04', '#3a1c02', '#ffcc88', '#b85a08'), ICON_SPARKLES);
+    const SVG_ROLLING_PIN_BUTTER  = withExtra(rollingPinSvg('#f7d34a', '#b8860b', '#7a5d0a', '#5a4408', '#fff2c0', '#b8860b'), ICON_SPARKLES);
 
     // A plain cookie — same warm-brown body as the big cookie, but no
     // chocolate chips. Used as the icon for the "Plain Cookie" upgrade.
@@ -785,9 +821,11 @@
         '<ellipse cx="23" cy="13.5" rx="2" ry="0.7" fill="#ffffff" opacity="0.35"/>' +
       '</svg>';
     }
-    const SVG_WATERING_CAN      = wateringCanSvg('#4caf50', '#1b5e20', '#2e7d32', '#0d3a0f', '#81c784');
-    const SVG_WATERING_CAN_PINK = wateringCanSvg('#ff9ec1', '#5a1f3a', '#b85a82', '#3a132a', '#ffd6e6');
-    const SVG_WATERING_CAN_BLUE = wateringCanSvg('#7fc4e8', '#143a55', '#2e6e94', '#0a2535', '#b3dcf2');
+    const SVG_WATERING_CAN         = wateringCanSvg('#4caf50', '#1b5e20', '#2e7d32', '#0d3a0f', '#81c784');
+    const SVG_WATERING_CAN_PINK    = wateringCanSvg('#ff9ec1', '#5a1f3a', '#b85a82', '#3a132a', '#ffd6e6');
+    const SVG_WATERING_CAN_BLUE    = wateringCanSvg('#7fc4e8', '#143a55', '#2e6e94', '#0a2535', '#b3dcf2');
+    const SVG_WATERING_CAN_CHALCED = withExtra(wateringCanSvg('#ff9930', '#5a2c04', '#b85a08', '#3a1c02', '#ffcc88'), ICON_SPARKLES);
+    const SVG_WATERING_CAN_BUTTER  = withExtra(wateringCanSvg('#f7d34a', '#7a5d0a', '#b8860b', '#5a4408', '#fff2c0'), ICON_SPARKLES);
 
     // Pickaxe — wood handle is fixed (brown); head color varies for tiers.
     // When `allMetal` is true the whole pickaxe (head AND handle) takes the
@@ -811,9 +849,11 @@
         '<line x1="16.9" y1="12" x2="16.9" y2="27" stroke="' + handleStroke + '" stroke-width="0.5" opacity="0.6"/>' +
       '</svg>';
     }
-    const SVG_PICKAXE_PLAIN = pickaxeSvg('#aaaaaa', '#555555', false);
-    const SVG_PICKAXE_PINK  = pickaxeSvg('#ff80b0', '#a8456e', true);
-    const SVG_PICKAXE_BLUE  = pickaxeSvg('#5fb8e8', '#236389', true);
+    const SVG_PICKAXE_PLAIN   = pickaxeSvg('#aaaaaa', '#555555', false);
+    const SVG_PICKAXE_PINK    = pickaxeSvg('#ff80b0', '#a8456e', true);
+    const SVG_PICKAXE_BLUE    = pickaxeSvg('#5fb8e8', '#236389', true);
+    const SVG_PICKAXE_CHALCED = withExtra(pickaxeSvg('#ff9930', '#944506', true), ICON_SPARKLES);
+    const SVG_PICKAXE_BUTTER  = withExtra(pickaxeSvg('#f7d34a', '#b8860b', true), ICON_SPARKLES);
 
     // Two interlocking gears (one large, one small).
     function gearsSvg(fill, stroke) {
@@ -834,9 +874,35 @@
         gear(22, 21, 4, -5.5, 2) +
       '</svg>';
     }
-    const SVG_GEARS_PLAIN = gearsSvg('#aaaaaa', '#555555');
-    const SVG_GEARS_PINK  = gearsSvg('#ff9ec1', '#b85a82');
-    const SVG_GEARS_BLUE  = gearsSvg('#7fc4e8', '#2e6e94');
+    const SVG_GEARS_PLAIN   = gearsSvg('#aaaaaa', '#555555');
+    const SVG_GEARS_PINK    = gearsSvg('#ff9ec1', '#b85a82');
+    const SVG_GEARS_BLUE    = gearsSvg('#7fc4e8', '#2e6e94');
+    const SVG_GEARS_CHALCED = withExtra(gearsSvg('#ff9930', '#944506'), ICON_SPARKLES);
+    const SVG_GEARS_BUTTER  = withExtra(gearsSvg('#f7d34a', '#b8860b'), ICON_SPARKLES);
+
+    // --- Money bag ---
+    // Two cloth peaks above a cinch line, with a rounded sack body.
+    // Color tiers parallel the rest: brown / pink / blue / chalced / butter.
+    function moneyBagSvg(body, stroke, highlight) {
+      return '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">' +
+        // cloth peaks (drawn first so the cinch overlaps their bases)
+        '<polygon points="11,12 13,4 15,12" fill="' + body + '" stroke="' + stroke + '" stroke-width="0.8" stroke-linejoin="round"/>' +
+        '<polygon points="17,12 19,4 21,12" fill="' + body + '" stroke="' + stroke + '" stroke-width="0.8" stroke-linejoin="round"/>' +
+        // bag body
+        '<path d="M 7 12 Q 3 19, 6 27 Q 9 30.5, 16 30.5 Q 23 30.5, 26 27 Q 29 19, 25 12 Z" fill="' + body + '" stroke="' + stroke + '" stroke-width="1.3" stroke-linejoin="round"/>' +
+        // cinch (drawstring) curve
+        '<path d="M 7 12 Q 16 14, 25 12" stroke="' + stroke + '" stroke-width="1" fill="none"/>' +
+        // soft highlight stripe on the left
+        '<ellipse cx="11" cy="20" rx="2.5" ry="6" fill="' + highlight + '" opacity="0.6"/>' +
+        // sharp metallic gloss line
+        '<rect x="10.5" y="15" width="1.4" height="11" rx="0.4" fill="#ffffff" opacity="0.5"/>' +
+      '</svg>';
+    }
+    const SVG_MONEY_BAG_BROWN   = moneyBagSvg('#8b6f47', '#3a2510', '#a18a5e');
+    const SVG_MONEY_BAG_PINK    = moneyBagSvg('#ff80b0', '#5a1f3a', '#ffd6e6');
+    const SVG_MONEY_BAG_BLUE    = moneyBagSvg('#5fb8e8', '#143a55', '#b3dcf2');
+    const SVG_MONEY_BAG_CHALCED = withExtra(moneyBagSvg('#ff9930', '#944506', '#ffcc88'), ICON_SPARKLES);
+    const SVG_MONEY_BAG_BUTTER  = withExtra(moneyBagSvg('#f7d34a', '#b8860b', '#fff2c0'), ICON_SPARKLES);
 
     const UPGRADES = [
       {
@@ -860,6 +926,39 @@
         clickMult: 2,
         buildingMult: { autoclicker: 2 },
         requires: () => (state.buildings.autoclicker || 0) >= 1,
+      },
+      {
+        id: 'ambidextrous',
+        name: 'Ambidextrous',
+        desc: 'look see, both hands!',
+        cost: 10000,
+        effectText: 'You and autoclickers are both twice as efficient!',
+        svg: SVG_FINGER_BLUE,
+        clickMult: 2,
+        buildingMult: { autoclicker: 2 },
+        requires: () => (state.buildings.autoclicker || 0) >= 10,
+      },
+      {
+        id: 'thousand_fingers',
+        name: 'Thousand fingers',
+        desc: 'clickity',
+        cost: 100000,
+        effectText: 'You and autoclickers are both twice as efficient!',
+        svg: SVG_FINGER_CHALCED,
+        clickMult: 2,
+        buildingMult: { autoclicker: 2 },
+        requires: () => (state.buildings.autoclicker || 0) >= 25,
+      },
+      {
+        id: 'million_fingers',
+        name: 'Million fingers',
+        desc: 'clickityclickity',
+        cost: 10000000,
+        effectText: 'You and autoclickers are both twice as efficient!',
+        svg: SVG_FINGER_BUTTER,
+        clickMult: 2,
+        buildingMult: { autoclicker: 2 },
+        requires: () => (state.buildings.autoclicker || 0) >= 50,
       },
       {
         id: 'wheelchair_reinforcements',
@@ -892,6 +991,26 @@
         requires: () => (state.buildings.grandma || 0) >= 25,
       },
       {
+        id: 'prune_juice',
+        name: 'Prune Juice',
+        desc: "Gets me goin'",
+        cost: 5000000,
+        effectText: 'Grandmas are twice as efficient',
+        svg: SVG_ROLLING_PIN_CHALCED,
+        buildingMult: { grandma: 2 },
+        requires: () => (state.buildings.grandma || 0) >= 50,
+      },
+      {
+        id: 'double_thick_glasses',
+        name: 'Double-thick Glasses',
+        desc: "Oh... so THAT'S what I've been baking...",
+        cost: 500000000,
+        effectText: 'Grandmas are twice as efficient',
+        svg: SVG_ROLLING_PIN_BUTTER,
+        buildingMult: { grandma: 2 },
+        requires: () => (state.buildings.grandma || 0) >= 100,
+      },
+      {
         id: 'we_have_hoes_now',
         name: 'We have hoes now',
         desc: 'Rake in the dough!',
@@ -920,6 +1039,26 @@
         svg: SVG_WATERING_CAN_BLUE,
         buildingMult: { farm: 2 },
         requires: () => (state.buildings.farm || 0) >= 25,
+      },
+      {
+        id: 'genetically_modified_cookies',
+        name: 'Genetically-modified cookies',
+        desc: 'All-natural mutations',
+        cost: 55000000,
+        effectText: 'Farms are twice as efficient',
+        svg: SVG_WATERING_CAN_CHALCED,
+        buildingMult: { farm: 2 },
+        requires: () => (state.buildings.farm || 0) >= 50,
+      },
+      {
+        id: 'gingerbread_scarecrows',
+        name: 'Gingerbread Scarecrows',
+        desc: 'The only flaw is the crows might eat them',
+        cost: 5500000000,
+        effectText: 'Farms are twice as efficient',
+        svg: SVG_WATERING_CAN_BUTTER,
+        buildingMult: { farm: 2 },
+        requires: () => (state.buildings.farm || 0) >= 100,
       },
       {
         id: 'sugar_gas',
@@ -952,6 +1091,26 @@
         requires: () => (state.buildings.mine || 0) >= 25,
       },
       {
+        id: 'ultimadrill',
+        name: 'Ultimadrill',
+        desc: 'Pierce the heavens, drill the mantle, eat at the air, etc.',
+        cost: 600000000,
+        effectText: 'Mines are twice as efficient',
+        svg: SVG_PICKAXE_CHALCED,
+        buildingMult: { mine: 2 },
+        requires: () => (state.buildings.mine || 0) >= 50,
+      },
+      {
+        id: 'h_bomb_mining',
+        name: 'H-bomb Mining',
+        desc: 'Questionable efficency, but who cares?',
+        cost: 60000000000,
+        effectText: 'Mines are twice as efficient',
+        svg: SVG_PICKAXE_BUTTER,
+        buildingMult: { mine: 2 },
+        requires: () => (state.buildings.mine || 0) >= 100,
+      },
+      {
         id: 'sturdier_conveyor_belts',
         name: 'Sturdier Conveyor Belts',
         desc: "You're going places",
@@ -980,6 +1139,76 @@
         svg: SVG_GEARS_BLUE,
         buildingMult: { factory: 2 },
         requires: () => (state.buildings.factory || 0) >= 25,
+      },
+      {
+        id: 'radium_reactors',
+        name: 'Radium Reactors',
+        desc: 'Gives your cookies a healthy glow',
+        cost: 6500000000,
+        effectText: 'Factories are twice as efficient',
+        svg: SVG_GEARS_CHALCED,
+        buildingMult: { factory: 2 },
+        requires: () => (state.buildings.factory || 0) >= 50,
+      },
+      {
+        id: 'recombobulators',
+        name: 'Recombobulators',
+        desc: 'A major part in cookies recombobulating.',
+        cost: 650000000000,
+        effectText: 'Factories are twice as efficient',
+        svg: SVG_GEARS_BUTTER,
+        buildingMult: { factory: 2 },
+        requires: () => (state.buildings.factory || 0) >= 100,
+      },
+      {
+        id: 'taller_tellers',
+        name: 'Taller tellers',
+        desc: 'Taller teller tell taller tales',
+        cost: 14000000,
+        effectText: 'Banks are twice as efficient',
+        svg: SVG_MONEY_BAG_BROWN,
+        buildingMult: { bank: 2 },
+        requires: () => (state.buildings.bank || 0) >= 1,
+      },
+      {
+        id: 'rip_resistant_credit_cards',
+        name: 'Rip-resistant Credit Cards',
+        desc: 'For very messy customers',
+        cost: 70000000,
+        effectText: 'Banks are twice as efficient',
+        svg: SVG_MONEY_BAG_PINK,
+        buildingMult: { bank: 2 },
+        requires: () => (state.buildings.bank || 0) >= 5,
+      },
+      {
+        id: 'acid_proof_vaults',
+        name: 'Acid-Proof Vaults',
+        desc: 'You know what they say: Better to be safe than sorry',
+        cost: 700000000,
+        effectText: 'Banks are twice as efficient',
+        svg: SVG_MONEY_BAG_BLUE,
+        buildingMult: { bank: 2 },
+        requires: () => (state.buildings.bank || 0) >= 25,
+      },
+      {
+        id: 'chocolate_coins',
+        name: 'Chocolate coins',
+        desc: "It's much easier to shape into coins and ingots - and tastes better for a change",
+        cost: 70000000000,
+        effectText: 'Banks are twice as efficient',
+        svg: SVG_MONEY_BAG_CHALCED,
+        buildingMult: { bank: 2 },
+        requires: () => (state.buildings.bank || 0) >= 50,
+      },
+      {
+        id: 'exponential_interest_rates',
+        name: 'Exponential intrest rates',
+        desc: "Can't argue with mathematics! Now hand it over",
+        cost: 7000000000000,
+        effectText: 'Banks are twice as efficient',
+        svg: SVG_MONEY_BAG_BUTTER,
+        buildingMult: { bank: 2 },
+        requires: () => (state.buildings.bank || 0) >= 100,
       },
       {
         id: 'plain_cookie',
