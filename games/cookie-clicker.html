@@ -672,6 +672,73 @@
         '<ellipse cx="20" cy="22" rx="6" ry="2.5" fill="#000000" opacity="0.12"/>' +
       '</svg>';
 
+    const SVG_SUGAR_COOKIE =
+      '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">' +
+        '<circle cx="16" cy="16" r="13" fill="#f4e8c1" stroke="#a08850" stroke-width="1.4"/>' +
+        '<circle cx="14" cy="13" r="10" fill="#fdf5d3" opacity="0.55"/>' +
+        '<circle cx="10" cy="14" r="0.9" fill="#fff"/>' +
+        '<circle cx="14" cy="18" r="0.8" fill="#fff"/>' +
+        '<circle cx="20" cy="14" r="0.7" fill="#fff"/>' +
+        '<circle cx="22" cy="20" r="0.8" fill="#fff"/>' +
+        '<circle cx="15" cy="22" r="0.7" fill="#fff"/>' +
+        '<circle cx="19" cy="10" r="0.6" fill="#fff"/>' +
+        '<ellipse cx="11" cy="11" rx="5" ry="2.8" fill="#ffffff" opacity="0.35"/>' +
+      '</svg>';
+
+    const SVG_OATMEAL_RAISIN =
+      '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">' +
+        '<circle cx="16" cy="16" r="13" fill="#c69968" stroke="#7a4f24" stroke-width="1.4"/>' +
+        '<circle cx="14" cy="13" r="10" fill="#d8b285" opacity="0.55"/>' +
+        // raisins
+        '<ellipse cx="11" cy="11" rx="1.7" ry="1.4" fill="#3a1f10"/>' +
+        '<ellipse cx="20" cy="10" rx="1.5" ry="1.2" fill="#3a1f10"/>' +
+        '<ellipse cx="22" cy="17" rx="1.7" ry="1.4" fill="#3a1f10"/>' +
+        '<ellipse cx="9"  cy="19" rx="1.5" ry="1.2" fill="#3a1f10"/>' +
+        '<ellipse cx="16" cy="22" rx="1.6" ry="1.3" fill="#3a1f10"/>' +
+        '<ellipse cx="14" cy="16" rx="1.4" ry="1.1" fill="#3a1f10"/>' +
+        // oat flecks
+        '<circle cx="8"  cy="14" r="0.4" fill="#8a6a3a"/>' +
+        '<circle cx="17" cy="14" r="0.4" fill="#8a6a3a"/>' +
+        '<circle cx="24" cy="20" r="0.4" fill="#8a6a3a"/>' +
+        '<circle cx="11" cy="22" r="0.4" fill="#8a6a3a"/>' +
+        '<ellipse cx="11" cy="11" rx="5" ry="2.8" fill="#ffffff" opacity="0.15"/>' +
+      '</svg>';
+
+    const SVG_PEANUT_BUTTER =
+      '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">' +
+        '<circle cx="16" cy="16" r="13" fill="#d4a86a" stroke="#7c4f24" stroke-width="1.4"/>' +
+        '<circle cx="14" cy="13" r="10" fill="#e3c08b" opacity="0.55"/>' +
+        // fork # criss-cross (coords stay inside the cookie body)
+        '<g stroke="#8a5c28" stroke-width="0.95" stroke-linecap="round">' +
+          '<line x1="11" y1="7"  x2="11" y2="25"/>' +
+          '<line x1="16" y1="5"  x2="16" y2="27"/>' +
+          '<line x1="21" y1="7"  x2="21" y2="25"/>' +
+          '<line x1="7"  y1="11" x2="25" y2="11"/>' +
+          '<line x1="5"  y1="16" x2="27" y2="16"/>' +
+          '<line x1="7"  y1="21" x2="25" y2="21"/>' +
+        '</g>' +
+        '<ellipse cx="11" cy="11" rx="5" ry="2.8" fill="#ffffff" opacity="0.18"/>' +
+      '</svg>';
+
+    const SVG_COCONUT_COOKIE =
+      '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">' +
+        '<circle cx="16" cy="16" r="13" fill="#f5ecd6" stroke="#a09060" stroke-width="1.4"/>' +
+        '<circle cx="14" cy="13" r="10" fill="#fff9e8" opacity="0.55"/>' +
+        // coconut shreds — tiny angled white slivers
+        '<g stroke="#fff" stroke-width="1.1" stroke-linecap="round">' +
+          '<line x1="9"  y1="14" x2="11" y2="12"/>' +
+          '<line x1="13" y1="10" x2="15" y2="11"/>' +
+          '<line x1="20" y1="11" x2="22" y2="13"/>' +
+          '<line x1="11" y1="17" x2="13" y2="19"/>' +
+          '<line x1="18" y1="16" x2="20" y2="14"/>' +
+          '<line x1="14" y1="22" x2="16" y2="20"/>' +
+          '<line x1="22" y1="20" x2="23" y2="22"/>' +
+          '<line x1="9"  y1="20" x2="10" y2="22"/>' +
+          '<line x1="18" y1="22" x2="20" y2="23"/>' +
+        '</g>' +
+        '<ellipse cx="11" cy="11" rx="5" ry="2.8" fill="#ffffff" opacity="0.45"/>' +
+      '</svg>';
+
     const SVG_WATERING_CAN =
       '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">' +
         // spout — quadrilateral angling up-left from the body
@@ -744,6 +811,46 @@
         svg: SVG_PLAIN_COOKIE,
         cpsMult: 1.01,
         requires: () => state.cookies >= 50000,
+      },
+      {
+        id: 'sugar_cookies',
+        name: 'Sugar Cookies',
+        desc: 'Tasty, but a little unoriginal',
+        cost: 5000000,
+        effectText: 'Cookie production +1%',
+        svg: SVG_SUGAR_COOKIE,
+        cpsMult: 1.01,
+        requires: () => state.cookies >= 250000,
+      },
+      {
+        id: 'oatmeal_raisin_cookies',
+        name: 'Oatmeal Raisin Cookies',
+        desc: 'No rasin to hate these',
+        cost: 10000000,
+        effectText: 'Cookie production +1%',
+        svg: SVG_OATMEAL_RAISIN,
+        cpsMult: 1.01,
+        requires: () => state.cookies >= 500000,
+      },
+      {
+        id: 'peanut_butter_cookies',
+        name: 'Peanut Butter Cookies',
+        desc: 'You might want to get some jam',
+        cost: 50000000,
+        effectText: 'Cookie production +2%',
+        svg: SVG_PEANUT_BUTTER,
+        cpsMult: 1.02,
+        requires: () => state.totalEarned >= 2500000,
+      },
+      {
+        id: 'coconut_cookies',
+        name: 'Coconut Cookies',
+        desc: "Flaky and messy, but you wouldn't know how many people go crazy for these cookies these days",
+        cost: 100000000,
+        effectText: 'Cookie production +2%',
+        svg: SVG_COCONUT_COOKIE,
+        cpsMult: 1.02,
+        requires: () => state.totalEarned >= 5000000,
       },
     ];
 
@@ -1024,6 +1131,32 @@
       }
       upgradesEmptyEl.style.display = any ? 'none' : 'block';
     }
+
+    // Owned-upgrades tiles. Only rebuild on actual change (init / buy /
+    // eat-reset) so hover transitions don't get interrupted every tick.
+    function renderOwnedUpgrades() {
+      const ownedUpsEl = document.getElementById('owned-upgrades');
+      ownedUpsEl.innerHTML = '';
+      const ownedUps = UPGRADES.filter(u => state.upgrades.includes(u.id));
+      if (ownedUps.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'empty-state';
+        empty.textContent = 'No upgrades yet.';
+        ownedUpsEl.appendChild(empty);
+        return;
+      }
+      const row = document.createElement('div');
+      row.className = 'upgrades-row';
+      for (const u of ownedUps) {
+        const tile = document.createElement('div');
+        tile.className = 'upgrade-tile owned';
+        tile.innerHTML = u.svg;
+        tile.addEventListener('mouseenter', () => showTooltipFor(tile, u));
+        tile.addEventListener('mouseleave', hideTooltip);
+        row.appendChild(tile);
+      }
+      ownedUpsEl.appendChild(row);
+    }
     function updateUpgradeAffordability() {
       const tiles = upgradesRowEl.querySelectorAll('.upgrade-tile');
       for (const tile of tiles) {
@@ -1042,6 +1175,7 @@
       state.upgrades.push(id);
       recomputeCps();
       renderUpgrades();
+      renderOwnedUpgrades();
       updateCounterText();
       updateAffordability();
       updateUpgradeAffordability();
@@ -1073,28 +1207,9 @@
         buildingStatsEl.innerHTML = html;
       }
 
-      // owned upgrades — small tiles, same hover tooltip as the store
-      const ownedUpsEl = document.getElementById('owned-upgrades');
-      ownedUpsEl.innerHTML = '';
-      const ownedUps = UPGRADES.filter(u => state.upgrades.includes(u.id));
-      if (ownedUps.length === 0) {
-        const empty = document.createElement('div');
-        empty.className = 'empty-state';
-        empty.textContent = 'No upgrades yet.';
-        ownedUpsEl.appendChild(empty);
-      } else {
-        const row = document.createElement('div');
-        row.className = 'upgrades-row';
-        for (const u of ownedUps) {
-          const tile = document.createElement('div');
-          tile.className = 'upgrade-tile owned';
-          tile.innerHTML = u.svg;
-          tile.addEventListener('mouseenter', () => showTooltipFor(tile, u));
-          tile.addEventListener('mouseleave', hideTooltip);
-          row.appendChild(tile);
-        }
-        ownedUpsEl.appendChild(row);
-      }
+      // owned upgrades are NOT rebuilt here — see renderOwnedUpgrades.
+      // Doing it on the 200ms tick was wiping :hover state mid-transition
+      // and made the tiles bounce.
     }
 
     function buy(id) {
@@ -1368,6 +1483,7 @@
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (_) {}
       renderStore();
       renderUpgrades();
+      renderOwnedUpgrades();
       updateCounterText();
       updateAffordability();
       renderStats();
@@ -1397,6 +1513,7 @@
     checkUpgradeReveals();
     renderStore();
     renderUpgrades();
+    renderOwnedUpgrades();
     updateCounterText();
     updateAffordability();
     updateUpgradeAffordability();
