@@ -346,24 +346,21 @@
     .upgrade-tile:not(.affordable) { opacity: 0.75; cursor: not-allowed; }
     .upgrade-tile > svg { width: 100%; height: 100%; display: block; }
 
-    .upgrade-tooltip {
-      display: none;
-      position: absolute;
-      top: 50%;
-      right: calc(100% + 12px);
-      transform: translateY(-50%);
+    /* Portal tooltip, lives at body level so the right-column panel's
+       overflow-y: auto can't clip it. Positioned by JS on hover. */
+    .upgrade-tooltip-portal {
+      position: fixed;
       width: 240px;
       background: rgba(20, 30, 56, 0.98);
       border: 1.5px solid #4e7fff;
       border-radius: 10px;
       padding: 0.7rem 0.8rem;
-      z-index: 100;
+      z-index: 9999;
       pointer-events: none;
       box-shadow: 0 8px 30px rgba(0,0,0,0.55);
       text-align: left;
+      font-family: sans-serif;
     }
-    .upgrade-tile:hover .upgrade-tooltip,
-    .upgrade-tile:focus-visible .upgrade-tooltip { display: block; }
     .tip-head { display: flex; gap: 0.6rem; align-items: center; margin-bottom: 0.55rem; }
     .tip-icon { width: 36px; height: 36px; flex-shrink: 0; }
     .tip-icon svg { width: 100%; height: 100%; display: block; }
@@ -567,20 +564,36 @@
     // --- Upgrades catalog ---
     // Each upgrade can multiply click power and/or per-building CPS.
     // `requires(state)` must return true for the upgrade to appear in the panel.
-    const SVG_FINGER_WHITE =
-      '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">' +
-      '<rect x="8" y="22" width="16" height="9" rx="3" fill="#ffffff" stroke="#222" stroke-width="1.4"/>' +
-      '<rect x="13" y="3" width="6" height="22" rx="3" fill="#ffffff" stroke="#222" stroke-width="1.4"/>' +
-      '<ellipse cx="16" cy="6.5" rx="2" ry="1.4" fill="#e2e2e2" stroke="#888" stroke-width="0.4"/>' +
-      '<path d="M 13 13 Q 16 12, 19 13" stroke="#aaa" stroke-width="0.7" fill="none"/>' +
-      '</svg>';
-    const SVG_FINGER_PINK =
-      '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">' +
-      '<rect x="8" y="22" width="16" height="9" rx="3" fill="#ff9ec1" stroke="#222" stroke-width="1.4"/>' +
-      '<rect x="13" y="3" width="6" height="22" rx="3" fill="#ff9ec1" stroke="#222" stroke-width="1.4"/>' +
-      '<ellipse cx="16" cy="6.5" rx="2" ry="1.4" fill="#ffd6e6" stroke="#b85a82" stroke-width="0.4"/>' +
-      '<path d="M 13 13 Q 16 12, 19 13" stroke="#d57aa0" stroke-width="0.7" fill="none"/>' +
-      '</svg>';
+    // Web-pointer hand: closed fist + thumb on the left + index finger up.
+    function handCursorSvg(fillColor, nailColor, knuckleColor) {
+      return '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">' +
+        // thumb (drawn first so the fist overlaps it slightly)
+        '<ellipse cx="6.5" cy="20" rx="2.3" ry="3.4" fill="' + fillColor + '" stroke="#222" stroke-width="1.3"/>' +
+        // fist + index finger as one outline
+        '<path d="' +
+          'M 13 5 ' +
+          'Q 13 3, 16 3 ' +
+          'Q 18 3, 18 5 ' +
+          'L 18 16 ' +
+          'L 22 16 ' +
+          'Q 25 16, 25 19 ' +
+          'L 25 27 ' +
+          'Q 25 29.5, 22 29.5 ' +
+          'L 10 29.5 ' +
+          'Q 7 29.5, 7 27 ' +
+          'L 7 19 ' +
+          'Q 7 16, 10 16 ' +
+          'L 13 16 Z' +
+        '" fill="' + fillColor + '" stroke="#222" stroke-width="1.4" stroke-linejoin="round"/>' +
+        // fingernail
+        '<ellipse cx="15.7" cy="5.8" rx="1.4" ry="1.1" fill="' + nailColor + '" opacity="0.75"/>' +
+        // folded knuckles on the right
+        '<line x1="19" y1="20" x2="24" y2="20" stroke="' + knuckleColor + '" stroke-width="0.6"/>' +
+        '<line x1="19" y1="24" x2="24" y2="24" stroke="' + knuckleColor + '" stroke-width="0.6"/>' +
+        '</svg>';
+    }
+    const SVG_FINGER_WHITE = handCursorSvg('#ffffff', '#e0e0e0', '#aaaaaa');
+    const SVG_FINGER_PINK  = handCursorSvg('#ff9ec1', '#ffd6e6', '#d57aa0');
 
     const UPGRADES = [
       {
@@ -766,11 +779,14 @@
         const b = BUILDINGS.find(x => x.id === id);
         if (!b) continue;
         const owned = state.buildings[id] || 0;
-        const cost = buildingCost(b, owned);
-        const costEl = card.querySelector('.b-cost');
+        const cost  = buildingCost(b, owned);
+        const eff   = b.baseCps * getBuildingMult(b.id);
+        const costEl  = card.querySelector('.b-cost');
         const countEl = card.querySelector('.b-count');
+        const rateEl  = card.querySelector('.b-rate');
         if (costEl)  costEl.textContent  = fmt(cost);
         if (countEl) countEl.textContent = owned;
+        if (rateEl)  rateEl.textContent  = fmt1(eff) + ' /s';
         card.classList.toggle('affordable', state.cookies >= cost);
       }
     }
@@ -793,27 +809,55 @@
     const upgradesRowEl   = document.getElementById('upgrades-row');
     const upgradesEmptyEl = document.getElementById('upgrades-empty');
 
+    // Single tooltip "portal" lives at body level; positioned via JS so it
+    // escapes the right-column panel's overflow clipping.
+    const tooltipPortal = document.createElement('div');
+    tooltipPortal.className = 'upgrade-tooltip-portal';
+    tooltipPortal.style.display = 'none';
+    document.body.appendChild(tooltipPortal);
+
+    function showTooltipFor(tile, u) {
+      tooltipPortal.innerHTML =
+        '<div class="tip-head">' +
+          '<div class="tip-icon">' + u.svg + '</div>' +
+          '<div>' +
+            '<div class="tip-name">' + u.name + '</div>' +
+            '<div class="tip-cost">' + fmt(u.cost) + ' cookies</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="tip-effect">' + u.effectText + '</div>' +
+        '<div class="tip-desc">&ldquo;' + u.desc + '&rdquo;</div>';
+      tooltipPortal.style.display = 'block';
+      const r  = tile.getBoundingClientRect();
+      const tr = tooltipPortal.getBoundingClientRect();
+      let left = r.left - tr.width - 12;
+      let top  = r.top + r.height / 2 - tr.height / 2;
+      if (left < 10) left = r.right + 12;                                 // flip to right side
+      if (top < 10) top = 10;
+      if (top + tr.height > window.innerHeight - 10) {
+        top = window.innerHeight - tr.height - 10;
+      }
+      tooltipPortal.style.left = left + 'px';
+      tooltipPortal.style.top  = top  + 'px';
+    }
+    function hideTooltip() {
+      tooltipPortal.style.display = 'none';
+    }
+
     function appendUpgradeTile(u) {
       const tile = document.createElement('button');
       tile.className = 'upgrade-tile';
       tile.dataset.upgrade = u.id;
-      tile.innerHTML =
-        u.svg +
-        '<div class="upgrade-tooltip">' +
-          '<div class="tip-head">' +
-            '<div class="tip-icon">' + u.svg + '</div>' +
-            '<div>' +
-              '<div class="tip-name">' + u.name + '</div>' +
-              '<div class="tip-cost">' + fmt(u.cost) + ' cookies</div>' +
-            '</div>' +
-          '</div>' +
-          '<div class="tip-effect">' + u.effectText + '</div>' +
-          '<div class="tip-desc">&ldquo;' + u.desc + '&rdquo;</div>' +
-        '</div>';
+      tile.innerHTML = u.svg;
+      tile.addEventListener('mouseenter', () => showTooltipFor(tile, u));
+      tile.addEventListener('mouseleave', hideTooltip);
+      tile.addEventListener('focus',      () => showTooltipFor(tile, u));
+      tile.addEventListener('blur',       hideTooltip);
       tile.addEventListener('click', () => buyUpgrade(u.id));
       upgradesRowEl.appendChild(tile);
     }
     function renderUpgrades() {
+      hideTooltip();
       upgradesRowEl.innerHTML = '';
       let any = false;
       for (const u of UPGRADES) {
