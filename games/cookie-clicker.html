@@ -623,10 +623,11 @@
     // Each upgrade can multiply click power and/or per-building CPS.
     // `requires(state)` must return true for the upgrade to appear in the panel.
     // Web-pointer hand: closed fist + thumb on the left + index finger up.
-    function handCursorSvg(fillColor, nailColor, knuckleColor) {
+    function handCursorSvg(fillColor, nailColor, knuckleColor, outlineColor) {
+      const outline = outlineColor || '#222';
       return '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">' +
         // thumb (drawn first so the fist overlaps it slightly)
-        '<ellipse cx="6.5" cy="20" rx="2.3" ry="3.4" fill="' + fillColor + '" stroke="#222" stroke-width="1.3"/>' +
+        '<ellipse cx="6.5" cy="20" rx="2.3" ry="3.4" fill="' + fillColor + '" stroke="' + outline + '" stroke-width="1.3"/>' +
         // fist + index finger as one outline
         '<path d="' +
           'M 13 5 ' +
@@ -642,7 +643,7 @@
           'L 7 19 ' +
           'Q 7 16, 10 16 ' +
           'L 13 16 Z' +
-        '" fill="' + fillColor + '" stroke="#222" stroke-width="1.4" stroke-linejoin="round"/>' +
+        '" fill="' + fillColor + '" stroke="' + outline + '" stroke-width="1.4" stroke-linejoin="round"/>' +
         // fingernail
         '<ellipse cx="15.7" cy="5.8" rx="1.4" ry="1.1" fill="' + nailColor + '" opacity="0.75"/>' +
         // folded knuckles on the right
@@ -653,11 +654,12 @@
     // --- Shared icon helpers ---
     // Sparkle = a small white "+" mark. Used to label chalcedhoney/buttergold
     // tiers so they read as magic/precious-metal.
-    function sparklesAt(positions) {
+    function sparklesAt(positions, color) {
+      const c = color || '#ffffff';
       let out = '';
       for (const p of positions) {
         const cx = p[0], cy = p[1], sz = p[2];
-        out += '<g transform="translate(' + cx + ', ' + cy + ')" stroke="#ffffff" ' +
+        out += '<g transform="translate(' + cx + ', ' + cy + ')" stroke="' + c + '" ' +
                  'stroke-width="' + (sz * 0.35) + '" stroke-linecap="round" opacity="0.95">' +
                  '<line x1="0" y1="' + (-sz) + '" x2="0" y2="' + sz + '"/>' +
                  '<line x1="' + (-sz) + '" y1="0" x2="' + sz + '" y2="0"/>' +
@@ -672,7 +674,14 @@
     }
 
     // Shared sparkle layout — 4 marks around the corners of an icon.
-    const ICON_SPARKLES = sparklesAt([[5, 5, 1.8], [27, 7, 1.6], [3, 25, 1.5], [28, 25, 1.5]]);
+    const ICON_SPARKLE_POSITIONS = [[5, 5, 1.8], [27, 7, 1.6], [3, 25, 1.5], [28, 25, 1.5]];
+    const ICON_SPARKLES = sparklesAt(ICON_SPARKLE_POSITIONS);
+
+    // Tiny molten drips that hang off the bottom of the Sugarmuck hand.
+    const SUGARMUCK_DRIPS =
+      '<path d="M 10 29.5 Q 8.6 30.7, 10 32 Q 11.4 30.7, 10 29.5 Z" fill="#d4a04a" stroke="#8a6020" stroke-width="0.5"/>' +
+      '<path d="M 16 29.5 Q 14.2 31, 16 32.2 Q 17.8 31, 16 29.5 Z" fill="#d4a04a" stroke="#8a6020" stroke-width="0.5"/>' +
+      '<path d="M 22 29.5 Q 20.6 30.7, 22 32 Q 23.4 30.7, 22 29.5 Z" fill="#d4a04a" stroke="#8a6020" stroke-width="0.5"/>';
 
     // Metallic specular shine for the hand cursor (white streaks along the
     // index finger and the fist).
@@ -686,6 +695,38 @@
     const SVG_FINGER_BLUE    = withExtra(handCursorSvg('#5fb8e8', '#b3dcf2', '#2e6e94'), HAND_METALLIC);
     const SVG_FINGER_CHALCED = withExtra(handCursorSvg('#ff9930', '#ffcc88', '#944506'), HAND_METALLIC + ICON_SPARKLES);
     const SVG_FINGER_BUTTER  = withExtra(handCursorSvg('#f7d34a', '#fff2c0', '#b8860b'), HAND_METALLIC + ICON_SPARKLES);
+
+    // --- Exotic hand tiers (cursor upgrades from Billion fingers onward) ---
+    const SVG_FINGER_SUGARMUCK = withExtra(
+      handCursorSvg('#d4a04a', '#f0d088', '#8a6020', '#5a3215'),
+      HAND_METALLIC + SUGARMUCK_DRIPS + sparklesAt(ICON_SPARKLE_POSITIONS, '#fff2c0'));
+    const SVG_FINGER_JETMINT = withExtra(
+      handCursorSvg('#1a1a1a', '#6a6a6a', '#3a3a3a', '#5dffb8'),
+      HAND_METALLIC);
+    const SVG_FINGER_CHERRYSILVER = withExtra(
+      handCursorSvg('#c8c8c8', '#f4f4f4', '#8a8a8a', '#cc0000'),
+      HAND_METALLIC);
+    const SVG_FINGER_HAZELRALD = withExtra(
+      handCursorSvg('#4caf50', '#a5d6a7', '#1b5e20', '#0d3a0f'),
+      HAND_METALLIC + sparklesAt(ICON_SPARKLE_POSITIONS, '#c6ffd0'));
+    const SVG_FINGER_MOONCANDY = withExtra(
+      handCursorSvg('#4dbbff', '#a5ddff', '#236389', '#6a3aa3'),
+      HAND_METALLIC + sparklesAt(ICON_SPARKLE_POSITIONS, '#7fc4e8'));
+    const SVG_FINGER_ASTROFUDGE = withExtra(
+      handCursorSvg('#a06840', '#c8a878', '#5a3a18', '#6a3a72'),
+      HAND_METALLIC + sparklesAt(ICON_SPARKLE_POSITIONS, '#5a3215'));
+    const SVG_FINGER_ALABASCREAM = withExtra(
+      handCursorSvg('#fff5d6', '#fffce0', '#c8a868', '#d4b830'),
+      HAND_METALLIC + sparklesAt(ICON_SPARKLE_POSITIONS, '#fff0a8'));
+    const SVG_FINGER_IRIDYUM = withExtra(
+      handCursorSvg('#2a2a3a', '#5a5a6a', '#444455', '#c84ae8'),
+      HAND_METALLIC + sparklesAt(ICON_SPARKLE_POSITIONS, '#aa4488'));
+    const SVG_FINGER_GLUCOSMIUM = withExtra(
+      handCursorSvg('#b3dcf2', '#d8eff8', '#5a8aa8', '#8a0000'),
+      HAND_METALLIC + sparklesAt(ICON_SPARKLE_POSITIONS, '#5fb8e8'));
+    const SVG_FINGER_DOUGHNIUM = withExtra(
+      handCursorSvg('#d4a574', '#ecc88a', '#7a4520', '#d4af37'),
+      HAND_METALLIC + sparklesAt(ICON_SPARKLE_POSITIONS, '#fff2c0'));
 
     // Rolling pin — body, handle caps, connector pegs, and highlight/shadow
     // all driven by color so we can mint pink / blue variants for the
@@ -1049,6 +1090,116 @@
         clickMult: 2,
         buildingMult: { autoclicker: 2 },
         requires: () => (state.buildings.autoclicker || 0) >= 50,
+      },
+      {
+        id: 'billion_fingers',
+        name: 'Billion fingers',
+        desc: 'clickityclickityclickity',
+        cost: 100000000,
+        effectText: 'Multiplies the gain from Thousand fingers by 10',
+        svg: SVG_FINGER_SUGARMUCK,
+        clickMult: 10,
+        buildingMult: { autoclicker: 10 },
+        requires: () => (state.buildings.autoclicker || 0) >= 100,
+      },
+      {
+        id: 'trillion_fingers',
+        name: 'Trillion fingers',
+        desc: 'clickityclickityclickityclickity',
+        cost: 1000000000,
+        effectText: 'Multiplies the gain from Thousand fingers by 20',
+        svg: SVG_FINGER_JETMINT,
+        clickMult: 20,
+        buildingMult: { autoclicker: 20 },
+        requires: () => (state.buildings.autoclicker || 0) >= 150,
+      },
+      {
+        id: 'quadrillion_fingers',
+        name: 'Quadrillion fingers',
+        desc: 'clickityclickityclickityclickityclick',
+        cost: 10000000000,
+        effectText: 'Multiplies the gain from Thousand fingers by 20',
+        svg: SVG_FINGER_CHERRYSILVER,
+        clickMult: 20,
+        buildingMult: { autoclicker: 20 },
+        requires: () => (state.buildings.autoclicker || 0) >= 200,
+      },
+      {
+        id: 'quintillion_fingers',
+        name: 'Quintillion fingers',
+        desc: 'man, just go click click click click click, it’s real easy, man.',
+        cost: 10000000000000,
+        effectText: 'Multiplies the gain from Thousand fingers by 20',
+        svg: SVG_FINGER_HAZELRALD,
+        clickMult: 20,
+        buildingMult: { autoclicker: 20 },
+        requires: () => (state.buildings.autoclicker || 0) >= 250,
+      },
+      {
+        id: 'sextillion_fingers',
+        name: 'Sextillion fingers',
+        desc: 'sometimes things just go click',
+        cost: 10000000000000000,
+        effectText: 'Multiplies the gain from Thousand fingers by 20',
+        svg: SVG_FINGER_MOONCANDY,
+        clickMult: 20,
+        buildingMult: { autoclicker: 20 },
+        requires: () => (state.buildings.autoclicker || 0) >= 300,
+      },
+      {
+        id: 'septillion_fingers',
+        name: 'Septillion fingers',
+        desc: '[cursory flavor text]',
+        cost: 1e19,
+        effectText: 'Multiplies the gain from Thousand fingers by 20',
+        svg: SVG_FINGER_ASTROFUDGE,
+        clickMult: 20,
+        buildingMult: { autoclicker: 20 },
+        requires: () => (state.buildings.autoclicker || 0) >= 350,
+      },
+      {
+        id: 'octillion_fingers',
+        name: 'Octillion fingers',
+        desc: 'Turns out you can quite put your finger on it.',
+        cost: 1e22,
+        effectText: 'Multiplies the gain from Thousand fingers by 20',
+        svg: SVG_FINGER_ALABASCREAM,
+        clickMult: 20,
+        buildingMult: { autoclicker: 20 },
+        requires: () => (state.buildings.autoclicker || 0) >= 400,
+      },
+      {
+        id: 'nonillion_fingers',
+        name: 'Nonillion fingers',
+        desc: 'Only for the freakiest handshakes.',
+        cost: 1e25,
+        effectText: 'Multiplies the gain from Thousand fingers by 20',
+        svg: SVG_FINGER_IRIDYUM,
+        clickMult: 20,
+        buildingMult: { autoclicker: 20 },
+        requires: () => (state.buildings.autoclicker || 0) >= 450,
+      },
+      {
+        id: 'decillion_fingers',
+        name: 'Decillion fingers',
+        desc: "If you still can't quite put your finger on it, you must not be trying very hard.",
+        cost: 1e28,
+        effectText: 'Multiplies the gain from Thousand fingers by 20',
+        svg: SVG_FINGER_GLUCOSMIUM,
+        clickMult: 20,
+        buildingMult: { autoclicker: 20 },
+        requires: () => (state.buildings.autoclicker || 0) >= 500,
+      },
+      {
+        id: 'undecillion_fingers',
+        name: 'Undecillion fingers',
+        desc: 'Whatever you touch turns to dough in your clutch.',
+        cost: 1e31,
+        effectText: 'Multiplies the gain from Thousand fingers by 20',
+        svg: SVG_FINGER_DOUGHNIUM,
+        clickMult: 20,
+        buildingMult: { autoclicker: 20 },
+        requires: () => (state.buildings.autoclicker || 0) >= 550,
       },
       {
         id: 'wheelchair_reinforcements',
