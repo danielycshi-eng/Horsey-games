@@ -724,9 +724,9 @@
     const SVG_FINGER_GLUCOSMIUM = withExtra(
       handCursorSvg('#b3dcf2', '#d8eff8', '#5a8aa8', '#8a0000'),
       HAND_METALLIC + sparklesAt(ICON_SPARKLE_POSITIONS, '#5fb8e8'));
-    const SVG_FINGER_DOUGHNIUM = withExtra(
-      handCursorSvg('#d4a574', '#ecc88a', '#7a4520', '#d4af37'),
-      HAND_METALLIC + sparklesAt(ICON_SPARKLE_POSITIONS, '#fff2c0'));
+    const SVG_FINGER_GLIMMERINGUE = withExtra(
+      handCursorSvg('#fff5d6', '#ffffff', '#d4a868', '#ff80b0'),
+      HAND_METALLIC + sparklesAt(ICON_SPARKLE_POSITIONS, '#fff8e0'));
 
     // Rolling pin — body, handle caps, connector pegs, and highlight/shadow
     // all driven by color so we can mint pink / blue variants for the
@@ -1196,7 +1196,7 @@
         desc: 'Whatever you touch turns to dough in your clutch.',
         cost: 1e31,
         effectText: 'Multiplies the gain from Thousand fingers by 20',
-        svg: SVG_FINGER_DOUGHNIUM,
+        svg: SVG_FINGER_GLIMMERINGUE,
         clickMult: 20,
         buildingMult: { autoclicker: 20 },
         requires: () => (state.buildings.autoclicker || 0) >= 550,
@@ -1636,8 +1636,51 @@
     const storeEl        = document.getElementById('store-buildings');
     const buildingStatsEl = document.getElementById('building-stats');
 
-    function fmt(n)   { return Math.floor(n).toLocaleString(); }
-    function fmt1(n)  { return Number(n).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 }); }
+    // Number tiers used by fmt(). Anything ≥ 1,000,000 gets abbreviated
+    // ("4,000,000,000" → "4 Billion") so it fits inside store cost slots
+    // and the counter on the left column.
+    const NUM_TIERS = [
+      [1e45, 'Quattuordecillion'],
+      [1e42, 'Tredecillion'],
+      [1e39, 'Duodecillion'],
+      [1e36, 'Undecillion'],
+      [1e33, 'Decillion'],
+      [1e30, 'Nonillion'],
+      [1e27, 'Octillion'],
+      [1e24, 'Septillion'],
+      [1e21, 'Sextillion'],
+      [1e18, 'Quintillion'],
+      [1e15, 'Quadrillion'],
+      [1e12, 'Trillion'],
+      [1e9,  'Billion'],
+      [1e6,  'Million'],
+    ];
+    function abbreviate(n) {
+      for (const t of NUM_TIERS) {
+        if (n >= t[0]) {
+          const scaled = n / t[0];
+          let s;
+          if (scaled >= 100)     s = scaled.toFixed(0);
+          else if (scaled >= 10) s = scaled.toFixed(1);
+          else                   s = scaled.toFixed(2);
+          s = s.replace(/\.?0+$/, '');   // strip trailing zeros / lonely "."
+          return s + ' ' + t[1];
+        }
+      }
+      return null;
+    }
+    function fmt(n) {
+      n = Math.floor(n);
+      if (n < 1000000) return n.toLocaleString();
+      return abbreviate(n) || n.toLocaleString();
+    }
+    function fmt1(n) {
+      if (Math.abs(n) >= 1000000) {
+        const abb = abbreviate(n);
+        if (abb) return abb;
+      }
+      return Number(n).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    }
 
     function buildingCost(b, owned) {
       return Math.ceil(b.baseCost * Math.pow(1.15, owned));
