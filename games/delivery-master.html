@@ -324,6 +324,48 @@
       padding: 0.4rem 0.2rem;
     }
 
+    /* "Pick up" / "Drop off" prompt — only visible when within range of an
+       active order's current target. Clickable, or press E. */
+    .interact-btn {
+      position: fixed;
+      bottom: 5rem;
+      left: calc(50% - 160px);   /* center over the canvas, not the sidebar */
+      transform: translateX(-50%);
+      padding: 0.85rem 1.8rem;
+      font-size: 1.15rem;
+      font-weight: 800;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #fff;
+      background: linear-gradient(135deg, #22c55e, #15803d);
+      border: 3px solid #15803d;
+      border-radius: 14px;
+      cursor: pointer;
+      box-shadow: 0 6px 22px rgba(34, 197, 94, 0.55);
+      z-index: 28;
+      font-family: inherit;
+      animation: interactPulse 1.4s ease-in-out infinite;
+    }
+    .interact-btn:hover { transform: translateX(-50%) translateY(-2px); }
+    .interact-btn.dropoff {
+      background: linear-gradient(135deg, #4e7fff, #2e5dc7);
+      border-color: #2e5dc7;
+      box-shadow: 0 6px 22px rgba(78, 127, 255, 0.55);
+    }
+    .interact-btn .key-hint {
+      display: inline-block;
+      background: rgba(0,0,0,0.25);
+      padding: 1px 7px;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      margin-left: 0.5rem;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+    }
+    @keyframes interactPulse {
+      0%, 100% { box-shadow: 0 6px 22px rgba(34, 197, 94, 0.55); }
+      50%      { box-shadow: 0 6px 32px rgba(34, 197, 94, 0.85); }
+    }
+
     /* Toast for delivery success / fail */
     #toast {
       position: fixed;
@@ -423,6 +465,7 @@
        ============================================================ -->
   <div id="play" class="hidden">
     <canvas id="game-canvas"></canvas>
+    <button class="interact-btn hidden" id="interact-btn">Pick up</button>
     <div id="sidebar">
       <div class="hud-row">
         <span class="lbl">Cash</span>
@@ -442,7 +485,8 @@
 
       <div class="controls-hint">
         <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drive ·
-        <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> accept
+        <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> accept ·
+        <kbd>E</kbd> pick&nbsp;up / drop&nbsp;off
       </div>
     </div>
   </div>
@@ -463,10 +507,12 @@
     const BASE_TURN_RATE = 3.0;   // rad/sec
     const FRICTION = 0.55;        // per-second decay — coasts to a stop noticeably
     const SPEED_TUNE = 55;        // for time-limit math (slower car needs more time)
-    const PICKUP_RADIUS = 60;     // px proximity to pickup/dropoff
+    const PICKUP_RADIUS = 80;     // px proximity to pickup/dropoff
     const MAX_AVAILABLE = 3;      // pool size
     const NEW_ORDER_INTERVAL = 6; // seconds between new orders
     const SHELF_LIFE = 30;        // seconds an available order sits before vanishing
+    const OFFROAD_SPEED_MULT = 0.25;       // off-road = 25% of normal top speed
+    const INTERSECTION_HALF = 40;          // red-light stop-box half size (px)
 
     const UPGRADE_DEFS = [
       {
@@ -607,25 +653,25 @@
     // spacing. The varied spacing keeps it from reading as a grid.
     function generateRoads() {
       roads = { horiz: [], vert: [], intersections: [] };
-      const MIN_SPACE = 360;
-      // horizontal roads
+      const MIN_SPACE = 260;   // tighter — more side streets between blocks
+      // horizontal roads (6-8)
       let attempts = 0;
-      const targetH = 4 + Math.floor(Math.random() * 2);
-      while (roads.horiz.length < targetH && attempts < 80) {
+      const targetH = 6 + Math.floor(Math.random() * 3);
+      while (roads.horiz.length < targetH && attempts < 200) {
         attempts++;
-        const y = 300 + Math.random() * (WORLD_H - 600);
+        const y = 240 + Math.random() * (WORLD_H - 480);
         if (roads.horiz.every(r => Math.abs(r.y - y) >= MIN_SPACE)) {
-          roads.horiz.push({ y, w: 70 + Math.random() * 25 });
+          roads.horiz.push({ y, w: 60 + Math.random() * 25 });
         }
       }
-      // vertical roads
+      // vertical roads (6-8)
       attempts = 0;
-      const targetV = 4 + Math.floor(Math.random() * 2);
-      while (roads.vert.length < targetV && attempts < 80) {
+      const targetV = 6 + Math.floor(Math.random() * 3);
+      while (roads.vert.length < targetV && attempts < 200) {
         attempts++;
-        const x = 300 + Math.random() * (WORLD_W - 600);
+        const x = 240 + Math.random() * (WORLD_W - 480);
         if (roads.vert.every(r => Math.abs(r.x - x) >= MIN_SPACE)) {
-          roads.vert.push({ x, w: 70 + Math.random() * 25 });
+          roads.vert.push({ x, w: 60 + Math.random() * 25 });
         }
       }
       // intersections (one traffic light per node)
@@ -638,6 +684,17 @@
           });
         }
       }
+    }
+
+    // True if a world position is currently on (any) road band.
+    function isOnRoad(x, y) {
+      for (const r of roads.horiz) {
+        if (y >= r.y - r.w / 2 && y <= r.y + r.w / 2) return true;
+      }
+      for (const r of roads.vert) {
+        if (x >= r.x - r.w / 2 && x <= r.x + r.w / 2) return true;
+      }
+      return false;
     }
 
     // A building can't sit on top of a road.
@@ -837,6 +894,17 @@
           return true;
         }
       }
+      // Red traffic lights — block entry to the intersection box. If the
+      // car is already inside (light just turned red on top of it), let it
+      // keep moving so it can clear the box.
+      const ib = INTERSECTION_HALF;
+      for (const it of roads.intersections) {
+        if (!it.isRed) continue;
+        const inNew = (x > it.x - ib && x < it.x + ib && y > it.y - ib && y < it.y + ib);
+        if (!inNew) continue;
+        const inOld = (car.x > it.x - ib && car.x < it.x + ib && car.y > it.y - ib && car.y < it.y + ib);
+        if (!inOld) return true;
+      }
       return false;
     }
 
@@ -859,7 +927,10 @@
         if (Math.abs(car.speed) < 4) car.speed = 0;
       }
 
-      const ms = maxSpeed();
+      // Off-road = 75% top-speed cut. Realised as a hard clamp so the
+      // moment the car leaves pavement it visibly slows.
+      const onRoad = isOnRoad(car.x, car.y);
+      const ms = maxSpeed() * (onRoad ? 1 : OFFROAD_SPEED_MULT);
       if (car.speed > ms) car.speed = ms;
       if (car.speed < -ms * 0.5) car.speed = -ms * 0.5;
 
@@ -895,11 +966,12 @@
       else if (k === 's') input.s = true;
       else if (k === 'd') input.d = true;
       else if (k === '1' || k === '2' || k === '3') acceptByIndex(parseInt(k, 10) - 1);
+      else if (k === 'e') doInteract();
       else if (k === 'arrowup') input.w = true;
       else if (k === 'arrowleft') input.a = true;
       else if (k === 'arrowdown') input.s = true;
       else if (k === 'arrowright') input.d = true;
-      if (['w','a','s','d','1','2','3'].includes(k) || k.startsWith('arrow')) e.preventDefault();
+      if (['w','a','s','d','e','1','2','3'].includes(k) || k.startsWith('arrow')) e.preventDefault();
     });
     window.addEventListener('keyup', (e) => {
       const k = e.key.toLowerCase();
@@ -928,7 +1000,9 @@
       const b = buildingCenter(buildings[dropoffIdx]);
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
       const basePay = Math.round(dist * 0.05) + 5;
-      const timeLimit = dist / SPEED_TUNE + 20;
+      // Generous time budget: travel time at slow on-road speed plus a
+      // big pickup / navigation buffer. Player asked for longer windows.
+      const timeLimit = dist / SPEED_TUNE + 60;
       return {
         id: nextOrderId++,
         pickupIdx, dropoffIdx,
@@ -956,7 +1030,9 @@
         }
       }
 
-      // tick active timers + check proximity
+      // tick active timers + find the closest in-range target (if any)
+      interactOrder = null;
+      let bestInteractDist = Infinity;
       for (let i = activeOrders.length - 1; i >= 0; i--) {
         const o = activeOrders[i];
         o.timeRemaining -= dt;
@@ -971,27 +1047,47 @@
           ? buildingCenter(buildings[o.pickupIdx])
           : buildingCenter(buildings[o.dropoffIdx]);
         const d = Math.hypot(car.x - target.x, car.y - target.y);
-        if (d <= PICKUP_RADIUS) {
-          if (o.state === 'picking-up') {
-            o.state = 'delivering';
-            showToast('Picked up!');
-            playBell();
-            renderActive();
-          } else if (o.state === 'delivering') {
-            const tip = Math.round(o.basePay * tipMultiplier() * (o.timeRemaining / o.timeLimit));
-            const total = o.basePay + tip;
-            state.cash += total;
-            state.lifetimeDeliveries++;
-            if (tip > state.bestTip) state.bestTip = tip;
-            showToast('Delivered! +$' + total + ' (tip $' + tip + ')');
-            playChime();
-            saveStateDebounced();
-            activeOrders.splice(i, 1);
-            renderActive();
-            renderHud();
-          }
+        if (d <= PICKUP_RADIUS && d < bestInteractDist) {
+          interactOrder = o;
+          bestInteractDist = d;
         }
       }
+      // Show / hide the interact button
+      if (interactOrder) {
+        const label = interactOrder.state === 'picking-up' ? '📦 Pick up' : '🏠 Drop off';
+        interactBtn.innerHTML = label + '<span class="key-hint">E</span>';
+        interactBtn.classList.toggle('dropoff', interactOrder.state === 'delivering');
+        interactBtn.classList.remove('hidden');
+      } else {
+        interactBtn.classList.add('hidden');
+      }
+    }
+
+    let interactOrder = null;
+    function doInteract() {
+      const o = interactOrder;
+      if (!o) return;
+      if (o.state === 'picking-up') {
+        o.state = 'delivering';
+        showToast('Picked up!');
+        playBell();
+        renderActive();
+      } else if (o.state === 'delivering') {
+        const tip = Math.round(o.basePay * tipMultiplier() * (o.timeRemaining / o.timeLimit));
+        const total = o.basePay + tip;
+        state.cash += total;
+        state.lifetimeDeliveries++;
+        if (tip > state.bestTip) state.bestTip = tip;
+        showToast('Delivered! +$' + total + ' (tip $' + tip + ')');
+        playChime();
+        saveStateDebounced();
+        const idx = activeOrders.indexOf(o);
+        if (idx >= 0) activeOrders.splice(idx, 1);
+        renderActive();
+        renderHud();
+      }
+      interactOrder = null;
+      interactBtn.classList.add('hidden');
     }
 
     function acceptByIndex(idx) {
@@ -1190,6 +1286,8 @@
     const activeListEl    = document.getElementById('active-list');
     const playCashEl      = document.getElementById('play-cash');
     const playActiveCountEl = document.getElementById('play-active-count');
+    const interactBtn      = document.getElementById('interact-btn');
+    interactBtn.addEventListener('click', doInteract);
 
     function dollar(n) { return '$' + Math.floor(n).toLocaleString(); }
 
@@ -1381,6 +1479,8 @@
       resetCar();
       availableOrders = [];
       activeOrders = [];
+      interactOrder = null;
+      interactBtn.classList.add('hidden');
       nextOrderId = 1;
       elapsedTime = 0;
       timeSinceLastSpawn = NEW_ORDER_INTERVAL - 1; // first order spawns ~1s in
@@ -1398,6 +1498,8 @@
       gameState = 'menu';
       playEl.classList.add('hidden');
       menuEl.classList.remove('hidden');
+      interactBtn.classList.add('hidden');
+      interactOrder = null;
       input.w = input.a = input.s = input.d = false;
       saveStateDebounced();
       renderMenu();
