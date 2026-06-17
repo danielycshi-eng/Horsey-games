@@ -457,12 +457,12 @@
     // =====================================================================
     const STORAGE_KEY = 'horsey:deliverymaster:v1';
     const WORLD_W = 2500, WORLD_H = 2500;
-    const BASE_SPEED = 240;       // px/sec
-    const BASE_ACCEL = 600;       // px/sec^2
-    const BASE_BRAKE = 800;
-    const BASE_TURN_RATE = 3.4;   // rad/sec at low speed
-    const FRICTION = 0.92;        // per-second decay
-    const SPEED_TUNE = 90;        // for time-limit math: dist / SPEED_TUNE + 20
+    const BASE_SPEED = 130;       // px/sec — slower so the car is controllable
+    const BASE_ACCEL = 240;       // px/sec^2 — gentler ramp to top speed
+    const BASE_BRAKE = 360;
+    const BASE_TURN_RATE = 3.0;   // rad/sec
+    const FRICTION = 0.55;        // per-second decay — coasts to a stop noticeably
+    const SPEED_TUNE = 55;        // for time-limit math (slower car needs more time)
     const PICKUP_RADIUS = 60;     // px proximity to pickup/dropoff
     const MAX_AVAILABLE = 3;      // pool size
     const NEW_ORDER_INTERVAL = 6; // seconds between new orders
@@ -600,13 +600,71 @@
 
     let buildings = [];   // [{x, y, w, h, roof, windows}]
     let cityCanvas = null;
+    let roads = { horiz: [], vert: [], intersections: [] };
+    let elapsedTime = 0;  // for light cycling
+
+    // Lay out a few wide horizontal + vertical road bands at irregular
+    // spacing. The varied spacing keeps it from reading as a grid.
+    function generateRoads() {
+      roads = { horiz: [], vert: [], intersections: [] };
+      const MIN_SPACE = 360;
+      // horizontal roads
+      let attempts = 0;
+      const targetH = 4 + Math.floor(Math.random() * 2);
+      while (roads.horiz.length < targetH && attempts < 80) {
+        attempts++;
+        const y = 300 + Math.random() * (WORLD_H - 600);
+        if (roads.horiz.every(r => Math.abs(r.y - y) >= MIN_SPACE)) {
+          roads.horiz.push({ y, w: 70 + Math.random() * 25 });
+        }
+      }
+      // vertical roads
+      attempts = 0;
+      const targetV = 4 + Math.floor(Math.random() * 2);
+      while (roads.vert.length < targetV && attempts < 80) {
+        attempts++;
+        const x = 300 + Math.random() * (WORLD_W - 600);
+        if (roads.vert.every(r => Math.abs(r.x - x) >= MIN_SPACE)) {
+          roads.vert.push({ x, w: 70 + Math.random() * 25 });
+        }
+      }
+      // intersections (one traffic light per node)
+      for (const v of roads.vert) {
+        for (const h of roads.horiz) {
+          roads.intersections.push({
+            x: v.x, y: h.y,
+            cycleOffset: Math.random() * 8,
+            isRed: false,
+          });
+        }
+      }
+    }
+
+    // A building can't sit on top of a road.
+    function buildingOverlapsRoad(x, y, w, h) {
+      for (const r of roads.horiz) {
+        if (y < r.y + r.w / 2 + 6 && y + h > r.y - r.w / 2 - 6) return true;
+      }
+      for (const r of roads.vert) {
+        if (x < r.x + r.w / 2 + 6 && x + w > r.x - r.w / 2 - 6) return true;
+      }
+      return false;
+    }
+
+    function updateTrafficLights(now) {
+      for (const it of roads.intersections) {
+        const t = (now + it.cycleOffset) % 12;
+        it.isRed = t < 6;
+      }
+    }
 
     function generateCity() {
+      generateRoads();
       buildings = [];
       const minDist = 110;
       const targetCount = 150;
       let attempts = 0;
-      const maxAttempts = 6000;
+      const maxAttempts = 8000;
 
       while (buildings.length < targetCount && attempts < maxAttempts) {
         attempts++;
@@ -615,6 +673,8 @@
         const x = 150 + Math.random() * (WORLD_W - 300 - w);
         const y = 150 + Math.random() * (WORLD_H - 300 - h);
         const cx = x + w / 2, cy = y + h / 2;
+
+        if (buildingOverlapsRoad(x, y, w, h)) continue;
 
         let ok = true;
         for (const b of buildings) {
@@ -637,16 +697,43 @@
       cityCanvas.height = WORLD_H;
       const c = cityCanvas.getContext('2d');
 
-      // road/ground base
+      // ground / pavement base
       c.fillStyle = '#2f3445';
       c.fillRect(0, 0, WORLD_W, WORLD_H);
 
-      // subtle road texture stripes (mild diagonal hatching)
+      // subtle ground texture
       c.strokeStyle = 'rgba(255,255,255,0.02)';
       c.lineWidth = 1;
       for (let i = -WORLD_H; i < WORLD_W; i += 30) {
         c.beginPath(); c.moveTo(i, 0); c.lineTo(i + WORLD_H, WORLD_H); c.stroke();
       }
+
+      // road surfaces (darker grey)
+      c.fillStyle = '#4a5066';
+      for (const r of roads.horiz) c.fillRect(0, r.y - r.w / 2, WORLD_W, r.w);
+      for (const r of roads.vert)  c.fillRect(r.x - r.w / 2, 0, r.w, WORLD_H);
+      // dark road edge lines
+      c.strokeStyle = 'rgba(0,0,0,0.55)';
+      c.lineWidth = 2;
+      for (const r of roads.horiz) {
+        c.beginPath(); c.moveTo(0, r.y - r.w / 2); c.lineTo(WORLD_W, r.y - r.w / 2); c.stroke();
+        c.beginPath(); c.moveTo(0, r.y + r.w / 2); c.lineTo(WORLD_W, r.y + r.w / 2); c.stroke();
+      }
+      for (const r of roads.vert) {
+        c.beginPath(); c.moveTo(r.x - r.w / 2, 0); c.lineTo(r.x - r.w / 2, WORLD_H); c.stroke();
+        c.beginPath(); c.moveTo(r.x + r.w / 2, 0); c.lineTo(r.x + r.w / 2, WORLD_H); c.stroke();
+      }
+      // yellow dashed center lines
+      c.strokeStyle = '#fbbf24';
+      c.lineWidth = 2;
+      c.setLineDash([24, 16]);
+      for (const r of roads.horiz) {
+        c.beginPath(); c.moveTo(0, r.y); c.lineTo(WORLD_W, r.y); c.stroke();
+      }
+      for (const r of roads.vert) {
+        c.beginPath(); c.moveTo(r.x, 0); c.lineTo(r.x, WORLD_H); c.stroke();
+      }
+      c.setLineDash([]);
 
       // world border (so the car can't escape visually)
       c.strokeStyle = '#4e7fff';
@@ -959,6 +1046,30 @@
       // city
       if (cityCanvas) ctx.drawImage(cityCanvas, 0, 0);
 
+      // traffic lights at intersections (small post with red/green head)
+      for (const it of roads.intersections) {
+        // post
+        ctx.fillStyle = '#1f2233';
+        ctx.fillRect(it.x - 1.5, it.y - 22, 3, 16);
+        // light head
+        const headColor = it.isRed ? '#ef4444' : '#22c55e';
+        // halo
+        ctx.fillStyle = it.isRed ? 'rgba(239,68,68,0.32)' : 'rgba(34,197,94,0.28)';
+        ctx.beginPath();
+        ctx.arc(it.x, it.y - 22, 10, 0, Math.PI * 2);
+        ctx.fill();
+        // bulb
+        ctx.fillStyle = headColor;
+        ctx.beginPath();
+        ctx.arc(it.x, it.y - 22, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+        // bulb highlight
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.beginPath();
+        ctx.arc(it.x - 1.3, it.y - 23.3, 1.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
       // markers for active orders (pickup or dropoff depending on state)
       const pulse = 1 + Math.sin(renderTick * 0.12) * 0.08;
       for (const o of activeOrders) {
@@ -981,6 +1092,65 @@
       ctx.restore();
 
       ctx.restore();
+
+      // === screen-space overlays ===
+      // direction arrow at the screen edge for each active order, pointing
+      // toward the pickup / dropoff so the player always knows where to go.
+      for (const o of activeOrders) {
+        const b = o.state === 'picking-up' ? buildings[o.pickupIdx] : buildings[o.dropoffIdx];
+        const center = buildingCenter(b);
+        const color = o.state === 'picking-up' ? '#22c55e' : '#4e7fff';
+        drawDirectionArrow(center.x, center.y, color);
+      }
+    }
+
+    // Edge-clamped indicator arrow. Hides itself when the target is already
+    // visible inside the viewport (the building marker is enough then).
+    function drawDirectionArrow(targetX, targetY, color) {
+      const ctx = gameCtx;
+      const screenX = targetX - cameraX, screenY = targetY - cameraY;
+      const visMargin = 60;
+      if (screenX > visMargin && screenX < viewportW - visMargin &&
+          screenY > visMargin && screenY < viewportH - visMargin) {
+        return; // marker is already on-screen
+      }
+      const cx = viewportW / 2, cy = viewportH / 2;
+      const dx = screenX - cx, dy = screenY - cy;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 1) return;
+      // clamp to a rounded-rect-ish inset border
+      const margin = 60;
+      const halfW = viewportW / 2 - margin;
+      const halfH = viewportH / 2 - margin;
+      const scale = Math.min(halfW / Math.abs(dx || 0.0001), halfH / Math.abs(dy || 0.0001));
+      const ax = cx + dx * scale;
+      const ay = cy + dy * scale;
+      const angle = Math.atan2(dy, dx);
+
+      ctx.save();
+      ctx.translate(ax, ay);
+      // background coin
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.beginPath();
+      ctx.arc(0, 0, 22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      // arrow head
+      ctx.rotate(angle);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(13, 0);
+      ctx.lineTo(-7, -9);
+      ctx.lineTo(-3, 0);
+      ctx.lineTo(-7, 9);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
     }
 
     // =====================================================================
@@ -995,6 +1165,8 @@
       lastFrame = now;
 
       if (gameState === 'playing') {
+        elapsedTime += dt;
+        updateTrafficLights(elapsedTime);
         updateCar(dt);
         updateOrders(dt);
         updateCamera(dt);
@@ -1210,6 +1382,7 @@
       availableOrders = [];
       activeOrders = [];
       nextOrderId = 1;
+      elapsedTime = 0;
       timeSinceLastSpawn = NEW_ORDER_INTERVAL - 1; // first order spawns ~1s in
       cameraX = car.x - viewportW / 2;
       cameraY = car.y - viewportH / 2;
