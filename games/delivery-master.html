@@ -258,7 +258,45 @@
       transition: background 0.12s, border-color 0.12s, transform 0.1s;
       position: relative;
     }
-    .order-card.available:hover { background: rgba(34, 197, 94, 0.12); border-color: #22c55e; transform: translateX(-3px); }
+    .order-card.available { background: rgba(34, 197, 94, 0.08); border-color: rgba(34, 197, 94, 0.55); }
+    .order-card .order-available {
+      color: #4ade80;
+      font-size: 0.7rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      font-weight: 700;
+      margin-top: 0.35rem;
+      text-align: center;
+    }
+    .order-actions {
+      display: flex;
+      gap: 0.4rem;
+      margin-top: 0.5rem;
+    }
+    .order-actions button {
+      flex: 1;
+      padding: 0.45rem 0.4rem;
+      border: none;
+      border-radius: 7px;
+      font-weight: 800;
+      font-size: 0.78rem;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      cursor: pointer;
+      font-family: inherit;
+      transition: transform 0.1s, box-shadow 0.15s;
+    }
+    .order-actions button:hover { transform: translateY(-1px); }
+    .accept-btn {
+      background: linear-gradient(135deg, #22c55e, #15803d);
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(34, 197, 94, 0.35);
+    }
+    .decline-btn {
+      background: rgba(80, 100, 140, 0.55);
+      color: #cbd2e0;
+      border: 1px solid #444b60 !important;
+    }
     .order-card .hotkey {
       position: absolute;
       top: 0.4rem;
@@ -472,8 +510,12 @@
         <span class="val" id="play-cash">$0</span>
       </div>
       <div class="hud-row">
+        <span class="lbl">Carrying</span>
+        <span class="val" id="play-carry">0 / 2</span>
+      </div>
+      <div class="hud-row">
         <span class="lbl">Active orders</span>
-        <span class="val" id="play-active-count">0 / 2</span>
+        <span class="val" id="play-active-count">0</span>
       </div>
       <button class="end-shift-btn" id="end-shift">End Shift</button>
 
@@ -485,7 +527,6 @@
 
       <div class="controls-hint">
         <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drive ·
-        <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> accept ·
         <kbd>E</kbd> pick&nbsp;up / drop&nbsp;off
       </div>
     </div>
@@ -508,9 +549,14 @@
     const FRICTION = 0.55;        // per-second decay — coasts to a stop noticeably
     const SPEED_TUNE = 55;        // for time-limit math (slower car needs more time)
     const PICKUP_RADIUS = 80;     // px proximity to pickup/dropoff
-    const MAX_AVAILABLE = 3;      // pool size
-    const NEW_ORDER_INTERVAL = 6; // seconds between new orders
-    const SHELF_LIFE = 30;        // seconds an available order sits before vanishing
+    // Per-second order spawn — 1-in-35 each tick of the wall clock. If
+    // you decline an order you just wait for the next roll, no
+    // auto-refill. Player asked for it scarce.
+    const ORDER_SPAWN_DENOM = 35;
+    const TIP_CHANCE_BASE   = 0.40;        // 40% chance of any tip at all
+    const TIP_CHANCE_PER_CHARISMA = 0.15;  // each Charisma level adds 15 pp
+    const TIP_PCT_MIN = 0.05;              // 5%
+    const TIP_PCT_MAX = 0.10;              // 10%
     const OFFROAD_SPEED_MULT = 0.25;       // off-road = 25% of normal top speed
     const INTERSECTION_HALF = 40;          // red-light stop-box half size (px)
 
@@ -522,12 +568,12 @@
       },
       {
         id: 'bag', name: 'Bigger bag',
-        desc: 'Carry capacity +1 per level',
+        desc: 'Carry +1 food at a time (start: 2)',
         costs: [800, 3000, 10000],
       },
       {
         id: 'charisma', name: 'Charisma',
-        desc: 'Tip multiplier +0.2 per level',
+        desc: 'Tip chance +15 pp per level (start: 40%)',
         costs: [1000, 4000, 12000],
       },
       {
@@ -569,9 +615,10 @@
 
     // Computed stats from upgrades
     function maxSpeed()      { return BASE_SPEED * (1 + 0.2 * state.upgrades.wheels); }
-    function capacity()      { return Math.min(5, 2 + state.upgrades.bag); }
-    function tipMultiplier() { return 1.0 + 0.2 * state.upgrades.charisma; }
+    function carryCap()      { return Math.min(8, 2 + state.upgrades.bag); }  // max food on you at once
+    function tipChance()     { return Math.min(1, TIP_CHANCE_BASE + TIP_CHANCE_PER_CHARISMA * state.upgrades.charisma); }
     function turnRate()      { return BASE_TURN_RATE * (1 + 0.3 * state.upgrades.steering); }
+    function carriedCount()  { return activeOrders.filter(o => o.state === 'delivering').length; }
 
     // =====================================================================
     // SVG SPRITES (pre-rendered to offscreen canvases)
@@ -1038,7 +1085,21 @@
     let nextOrderId = 1;
     let availableOrders = [];
     let activeOrders = [];
-    let timeSinceLastSpawn = 0;
+    let spawnAccumulator = 0;   // ticks one full second at a time
+
+    // Difficulty multiplier — counts how many main-road traffic-light
+    // intersections fall inside the bounding box between pickup and
+    // dropoff. Every potential red light makes the trip a bit longer,
+    // so both pay AND time get scaled by the same factor.
+    function routeDifficulty(a, b) {
+      const xMin = Math.min(a.x, b.x), xMax = Math.max(a.x, b.x);
+      const yMin = Math.min(a.y, b.y), yMax = Math.max(a.y, b.y);
+      let lights = 0;
+      for (const it of roads.intersections) {
+        if (it.x >= xMin && it.x <= xMax && it.y >= yMin && it.y <= yMax) lights++;
+      }
+      return 1 + lights * 0.15;       // up to ~+15 % per crossing
+    }
 
     function makeOrder() {
       if (buildings.length < 2) return null;
@@ -1048,34 +1109,32 @@
       const a = buildingCenter(buildings[pickupIdx]);
       const b = buildingCenter(buildings[dropoffIdx]);
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
-      const basePay = Math.round(dist * 0.05) + 5;
-      // Generous time budget: travel time at slow on-road speed plus a
-      // big pickup / navigation buffer. Player asked for longer windows.
-      const timeLimit = dist / SPEED_TUNE + 60;
+      const diff = routeDifficulty(a, b);
+      const basePay   = Math.max(8, Math.round((dist * 0.05 + 5) * diff));
+      const timeLimit = (dist / SPEED_TUNE + 45) * diff;
       return {
         id: nextOrderId++,
         pickupIdx, dropoffIdx,
         basePay, timeLimit,
         timeRemaining: timeLimit,
+        difficulty: diff,
+        lightsOnRoute: Math.round((diff - 1) / 0.15),
         state: 'available',
-        shelf: SHELF_LIFE,
       };
     }
 
     function updateOrders(dt) {
-      timeSinceLastSpawn += dt;
-      if (timeSinceLastSpawn >= NEW_ORDER_INTERVAL && availableOrders.length < MAX_AVAILABLE) {
-        const o = makeOrder();
-        if (o) availableOrders.push(o);
-        timeSinceLastSpawn = 0;
-      }
-
-      // tick shelf life on available
-      for (let i = availableOrders.length - 1; i >= 0; i--) {
-        availableOrders[i].shelf -= dt;
-        if (availableOrders[i].shelf <= 0) {
-          availableOrders.splice(i, 1);
-          renderAvailable();
+      // One coin-flip per real second — 1 in ORDER_SPAWN_DENOM odds.
+      // No cap on available; decline = back to waiting.
+      spawnAccumulator += dt;
+      while (spawnAccumulator >= 1) {
+        spawnAccumulator -= 1;
+        if (Math.random() < 1 / ORDER_SPAWN_DENOM) {
+          const o = makeOrder();
+          if (o) {
+            availableOrders.push(o);
+            renderAvailable();
+          }
         }
       }
 
@@ -1117,17 +1176,31 @@
       const o = interactOrder;
       if (!o) return;
       if (o.state === 'picking-up') {
+        if (carriedCount() >= carryCap()) {
+          showToast('Bag full! (' + carryCap() + ')', true);
+          return;
+        }
         o.state = 'delivering';
         showToast('Picked up!');
         playBell();
         renderActive();
+        renderHud();
       } else if (o.state === 'delivering') {
-        const tip = Math.round(o.basePay * tipMultiplier() * (o.timeRemaining / o.timeLimit));
+        // 40% (+15 pp per Charisma) chance of any tip at all. Tip itself
+        // is a flat 5–10 % of base pay.
+        let tip = 0;
+        if (Math.random() < tipChance()) {
+          const pct = TIP_PCT_MIN + Math.random() * (TIP_PCT_MAX - TIP_PCT_MIN);
+          tip = Math.max(1, Math.round(o.basePay * pct));
+        }
         const total = o.basePay + tip;
         state.cash += total;
         state.lifetimeDeliveries++;
         if (tip > state.bestTip) state.bestTip = tip;
-        showToast('Delivered! +$' + total + ' (tip $' + tip + ')');
+        showToast(tip > 0
+          ? 'Delivered! +$' + total + ' (tip $' + tip + ')'
+          : 'Delivered! +$' + total + ' (no tip)'
+        );
         playChime();
         saveStateDebounced();
         const idx = activeOrders.indexOf(o);
@@ -1141,10 +1214,6 @@
 
     function acceptByIndex(idx) {
       if (idx < 0 || idx >= availableOrders.length) return;
-      if (activeOrders.length >= capacity()) {
-        showToast('At capacity (' + capacity() + ')', true);
-        return;
-      }
       const o = availableOrders.splice(idx, 1)[0];
       o.state = 'picking-up';
       o.timeRemaining = o.timeLimit;
@@ -1153,6 +1222,12 @@
       renderAvailable();
       renderActive();
       renderHud();
+    }
+    function declineByIndex(idx) {
+      if (idx < 0 || idx >= availableOrders.length) return;
+      availableOrders.splice(idx, 1);
+      renderAvailable();
+      // No auto-refill — wait for the next per-second 1/35 roll.
     }
 
     // =====================================================================
@@ -1334,6 +1409,7 @@
     const availableListEl = document.getElementById('available-list');
     const activeListEl    = document.getElementById('active-list');
     const playCashEl      = document.getElementById('play-cash');
+    const playCarryEl     = document.getElementById('play-carry');
     const playActiveCountEl = document.getElementById('play-active-count');
     const interactBtn      = document.getElementById('interact-btn');
     interactBtn.addEventListener('click', doInteract);
@@ -1342,7 +1418,8 @@
 
     function renderHud() {
       playCashEl.textContent = dollar(state.cash);
-      playActiveCountEl.textContent = activeOrders.length + ' / ' + capacity();
+      playCarryEl.textContent = carriedCount() + ' / ' + carryCap();
+      playActiveCountEl.textContent = activeOrders.length;
     }
 
     function renderAvailable() {
@@ -1350,7 +1427,7 @@
       if (availableOrders.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'empty-state';
-        empty.textContent = 'Scanning for orders…';
+        empty.textContent = 'Watching the radio…';
         availableListEl.appendChild(empty);
         return;
       }
@@ -1362,16 +1439,24 @@
         const card = document.createElement('div');
         card.className = 'order-card available';
         card.innerHTML =
-          '<div class="hotkey">' + (i + 1) + '</div>' +
           '<div class="pay">$' + o.basePay + '</div>' +
           '<div class="meta">' +
             '<span>📍 ' + dist + ' px</span>' +
             '<span>⏱ ' + Math.round(o.timeLimit) + 's</span>' +
           '</div>' +
-          '<div class="shelf-bar"><div class="shelf-bar-fill" style="width: ' + Math.max(0, o.shelf / SHELF_LIFE * 100) + '%"></div></div>';
-        card.addEventListener('click', () => acceptByIndex(i));
+          '<div class="order-available">Order available</div>' +
+          '<div class="order-actions">' +
+            '<button class="accept-btn" data-idx="' + i + '">Accept</button>' +
+            '<button class="decline-btn" data-idx="' + i + '">Decline</button>' +
+          '</div>';
         availableListEl.appendChild(card);
       }
+      availableListEl.querySelectorAll('.accept-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => { e.stopPropagation(); acceptByIndex(parseInt(btn.dataset.idx, 10)); });
+      });
+      availableListEl.querySelectorAll('.decline-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => { e.stopPropagation(); declineByIndex(parseInt(btn.dataset.idx, 10)); });
+      });
     }
 
     function renderActive() {
@@ -1406,12 +1491,6 @@
         const timer = card.querySelector('.timer');
         if (timer) timer.textContent = '⏱ ' + Math.ceil(o.timeRemaining) + 's';
         if (o.timeRemaining < 10 && !card.classList.contains('urgent')) card.classList.add('urgent');
-      }
-      // also refresh shelf bars on available
-      const cards = availableListEl.querySelectorAll('.order-card.available');
-      for (let i = 0; i < cards.length && i < availableOrders.length; i++) {
-        const fill = cards[i].querySelector('.shelf-bar-fill');
-        if (fill) fill.style.width = Math.max(0, availableOrders[i].shelf / SHELF_LIFE * 100) + '%';
       }
     }
 
@@ -1532,7 +1611,10 @@
       interactBtn.classList.add('hidden');
       nextOrderId = 1;
       elapsedTime = 0;
-      timeSinceLastSpawn = NEW_ORDER_INTERVAL - 1; // first order spawns ~1s in
+      spawnAccumulator = 0;
+      // Give the player one order to start so they aren't waiting on RNG.
+      const starter = makeOrder();
+      if (starter) availableOrders.push(starter);
       cameraX = car.x - viewportW / 2;
       cameraY = car.y - viewportH / 2;
       gameState = 'playing';
