@@ -362,6 +362,38 @@
       padding: 0.4rem 0.2rem;
     }
 
+    /* En-route card: shows the upcoming restaurant + item */
+    .order-card .restaurant-line {
+      font-size: 0.8rem;
+      color: #b0b8ce;
+      margin-top: 0.35rem;
+      font-style: italic;
+    }
+    .order-card .restaurant-line strong { color: #e6ebf5; font-style: normal; font-weight: 700; }
+
+    /* Food card: "Restaurant: item — $price" */
+    .order-card.delivering .food-line {
+      margin-bottom: 0.25rem;
+      font-size: 0.92rem;
+      line-height: 1.25;
+    }
+    .order-card.delivering .food-restaurant { color: #fff; font-weight: 800; }
+    .order-card.delivering .food-item       { color: #cbd2e0; }
+    .order-card.delivering .food-price {
+      margin-top: 0.35rem;
+      text-align: right;
+      color: #f5d77a;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-weight: 700;
+      font-size: 1.05rem;
+    }
+    .order-card.delivering .food-breakdown {
+      font-size: 0.68rem;
+      color: #8ea7d6;
+      text-align: right;
+      letter-spacing: 0.4px;
+    }
+
     /* "Pick up" / "Drop off" prompt — only visible when within range of an
        active order's current target. Clickable, or press E. */
     .interact-btn {
@@ -522,8 +554,11 @@
       <div class="section-title">Available</div>
       <div id="available-list"></div>
 
-      <div class="section-title">Active</div>
-      <div id="active-list"></div>
+      <div class="section-title">En route</div>
+      <div id="enroute-list"></div>
+
+      <div class="section-title">Food</div>
+      <div id="food-list"></div>
 
       <div class="controls-hint">
         <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drive ·
@@ -1082,6 +1117,100 @@
     // =====================================================================
     // ORDERS
     // =====================================================================
+    // Restaurants with hand-picked menu items + plausible base prices.
+    // Order pay later adds the delivery fee + tip on top.
+    const RESTAURANTS = [
+      { name: "McDonald's", items: [
+        { name: '10 chicken nuggets', price: 5 },
+        { name: 'Big Mac meal', price: 11 },
+        { name: '20pc McNuggets', price: 9 },
+        { name: 'Quarter Pounder', price: 8 },
+      ]},
+      { name: 'Taco Bell', items: [
+        { name: 'Crunchwrap Supreme', price: 6 },
+        { name: '5-pack tacos', price: 8 },
+        { name: 'Burrito Supreme', price: 5 },
+        { name: 'Mexican Pizza', price: 7 },
+      ]},
+      { name: 'Sweetgreen', items: [
+        { name: 'Harvest bowl', price: 14 },
+        { name: 'Kale Caesar', price: 13 },
+        { name: 'Fish taco bowl', price: 16 },
+        { name: 'Buffalo chicken bowl', price: 15 },
+      ]},
+      { name: 'Chipotle', items: [
+        { name: 'Burrito bowl', price: 11 },
+        { name: 'Chicken burrito', price: 11 },
+        { name: 'Carnitas tacos', price: 12 },
+        { name: 'Steak quesadilla', price: 14 },
+      ]},
+      { name: 'Five Guys', items: [
+        { name: 'Cheeseburger + fries', price: 16 },
+        { name: 'Bacon burger', price: 13 },
+        { name: 'Little hamburger', price: 9 },
+        { name: 'Hotdog + fries', price: 12 },
+      ]},
+      { name: 'Shake Shack', items: [
+        { name: 'ShackBurger + fries', price: 14 },
+        { name: 'Chicken Shack', price: 11 },
+        { name: 'Crinkle fries + shake', price: 9 },
+        { name: 'Smokestack', price: 13 },
+      ]},
+      { name: 'Red Robin', items: [
+        { name: 'Royal Red Robin Burger', price: 17 },
+        { name: 'Bottomless fries combo', price: 14 },
+        { name: 'Crispy chicken sandwich', price: 15 },
+        { name: 'Chicken tenders basket', price: 13 },
+      ]},
+      { name: "Dunkin' Donuts", items: [
+        { name: 'Dozen donuts', price: 12 },
+        { name: 'Coffee + croissant', price: 7 },
+        { name: 'Iced latte', price: 5 },
+        { name: '6 munchkins', price: 4 },
+      ]},
+      { name: 'Burger King', items: [
+        { name: 'Whopper meal', price: 10 },
+        { name: 'Chicken Royale', price: 8 },
+        { name: '9pc chicken fries', price: 5 },
+        { name: 'Bacon King', price: 11 },
+      ]},
+      { name: 'Chick-fil-A', items: [
+        { name: 'Chicken sandwich', price: 6 },
+        { name: '8pc nuggets', price: 5 },
+        { name: 'Cobb salad', price: 12 },
+        { name: 'Spicy deluxe combo', price: 11 },
+      ]},
+      { name: 'KFC', items: [
+        { name: '8-piece bucket', price: 22 },
+        { name: '3pc tenders combo', price: 10 },
+        { name: 'Famous bowl', price: 7 },
+        { name: '12pc popcorn chicken', price: 6 },
+      ]},
+      { name: "Papa John's", items: [
+        { name: 'Large pepperoni', price: 14 },
+        { name: '2-topping medium', price: 12 },
+        { name: 'Garlic knots', price: 5 },
+        { name: 'Pizza + wings combo', price: 19 },
+      ]},
+      { name: "Domino's", items: [
+        { name: 'Large cheese pizza', price: 12 },
+        { name: '2 medium pizzas', price: 22 },
+        { name: 'Wings & pasta', price: 16 },
+        { name: 'Pasta bowl', price: 7 },
+      ]},
+      { name: 'Subway', items: [
+        { name: 'Footlong meatball', price: 10 },
+        { name: '6-inch turkey', price: 6 },
+        { name: 'Italian BMT footlong', price: 12 },
+        { name: 'Veggie delite', price: 5 },
+      ]},
+    ];
+    function pickMenuItem() {
+      const r = RESTAURANTS[Math.floor(Math.random() * RESTAURANTS.length)];
+      const i = r.items[Math.floor(Math.random() * r.items.length)];
+      return { restaurant: r.name, item: i.name, foodPrice: i.price };
+    }
+
     let nextOrderId = 1;
     let availableOrders = [];
     let activeOrders = [];
@@ -1110,12 +1239,24 @@
       const b = buildingCenter(buildings[dropoffIdx]);
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
       const diff = routeDifficulty(a, b);
-      const basePay   = Math.max(8, Math.round((dist * 0.05 + 5) * diff));
-      const timeLimit = (dist / SPEED_TUNE + 45) * diff;
+      const basePay   = Math.max(3, Math.round((dist * 0.025 + 3) * diff));
+      const timeLimit = (dist / SPEED_TUNE + 25) * diff;
+      // Pre-roll the tip at order creation so the displayed food price
+      // is exact (and so Charisma upgrades affect future orders).
+      let tip = 0;
+      if (Math.random() < tipChance()) {
+        const pct = TIP_PCT_MIN + Math.random() * (TIP_PCT_MAX - TIP_PCT_MIN);
+        tip = Math.max(1, Math.round(basePay * pct));
+      }
+      const menu = pickMenuItem();
       return {
         id: nextOrderId++,
         pickupIdx, dropoffIdx,
-        basePay, timeLimit,
+        basePay, tip,
+        restaurant: menu.restaurant,
+        item: menu.item,
+        foodPrice: menu.foodPrice,
+        timeLimit,
         timeRemaining: timeLimit,
         difficulty: diff,
         lightsOnRoute: Math.round((diff - 1) / 0.15),
@@ -1186,13 +1327,8 @@
         renderActive();
         renderHud();
       } else if (o.state === 'delivering') {
-        // 40% (+15 pp per Charisma) chance of any tip at all. Tip itself
-        // is a flat 5–10 % of base pay.
-        let tip = 0;
-        if (Math.random() < tipChance()) {
-          const pct = TIP_PCT_MIN + Math.random() * (TIP_PCT_MAX - TIP_PCT_MIN);
-          tip = Math.max(1, Math.round(o.basePay * pct));
-        }
+        // Tip was pre-rolled at order creation; just pay it out now.
+        const tip = o.tip || 0;
         const total = o.basePay + tip;
         state.cash += total;
         state.lifetimeDeliveries++;
@@ -1407,7 +1543,8 @@
     // SIDEBAR / HUD RENDERING
     // =====================================================================
     const availableListEl = document.getElementById('available-list');
-    const activeListEl    = document.getElementById('active-list');
+    const enrouteListEl   = document.getElementById('enroute-list');
+    const foodListEl      = document.getElementById('food-list');
     const playCashEl      = document.getElementById('play-cash');
     const playCarryEl     = document.getElementById('play-carry');
     const playActiveCountEl = document.getElementById('play-active-count');
@@ -1460,33 +1597,66 @@
     }
 
     function renderActive() {
-      activeListEl.innerHTML = '';
-      if (activeOrders.length === 0) {
+      // === En route (picking-up) ===
+      enrouteListEl.innerHTML = '';
+      const enroute = activeOrders.filter(o => o.state === 'picking-up');
+      if (enroute.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'empty-state';
-        empty.textContent = 'No active orders';
-        activeListEl.appendChild(empty);
-        return;
+        empty.textContent = 'No orders en route';
+        enrouteListEl.appendChild(empty);
+      } else {
+        for (const o of enroute) {
+          const card = document.createElement('div');
+          card.className = 'order-card active pickup';
+          if (o.timeRemaining < 10) card.classList.add('urgent');
+          card.dataset.orderId = o.id;
+          card.innerHTML =
+            '<div class="pay">$' + o.basePay + (o.tip ? '+$' + o.tip : '') + '</div>' +
+            '<div class="meta">' +
+              '<span><span class="state-badge">📦 Pickup</span></span>' +
+              '<span class="timer">⏱ ' + Math.ceil(o.timeRemaining) + 's</span>' +
+            '</div>' +
+            '<div class="restaurant-line"><strong>' + o.restaurant + '</strong> — ' + o.item + '</div>';
+          enrouteListEl.appendChild(card);
+        }
       }
-      for (const o of activeOrders) {
-        const card = document.createElement('div');
-        card.className = 'order-card active ' + (o.state === 'picking-up' ? 'pickup' : 'delivering');
-        if (o.timeRemaining < 10) card.classList.add('urgent');
-        card.dataset.orderId = o.id;
-        card.innerHTML =
-          '<div class="pay">$' + o.basePay + '</div>' +
-          '<div class="meta">' +
-            '<span><span class="state-badge">' + (o.state === 'picking-up' ? '📦 Pickup' : '🏠 Dropoff') + '</span></span>' +
-            '<span class="timer">⏱ ' + Math.ceil(o.timeRemaining) + 's</span>' +
-          '</div>';
-        activeListEl.appendChild(card);
+      // === Food (delivering) ===
+      foodListEl.innerHTML = '';
+      const food = activeOrders.filter(o => o.state === 'delivering');
+      if (food.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'empty-state';
+        empty.textContent = 'Nothing on your back';
+        foodListEl.appendChild(empty);
+      } else {
+        for (const o of food) {
+          const card = document.createElement('div');
+          card.className = 'order-card active delivering';
+          if (o.timeRemaining < 10) card.classList.add('urgent');
+          card.dataset.orderId = o.id;
+          const total = o.foodPrice + o.basePay + (o.tip || 0);
+          const tipText = o.tip > 0 ? (' + $' + o.tip + ' tip') : '';
+          card.innerHTML =
+            '<div class="food-line">' +
+              '<span class="food-restaurant">' + o.restaurant + ':</span> ' +
+              '<span class="food-item">' + o.item + '</span>' +
+            '</div>' +
+            '<div class="meta">' +
+              '<span><span class="state-badge">🏠 Drop off</span></span>' +
+              '<span class="timer">⏱ ' + Math.ceil(o.timeRemaining) + 's</span>' +
+            '</div>' +
+            '<div class="food-price">$' + total + '</div>' +
+            '<div class="food-breakdown">$' + o.foodPrice + ' food + $' + o.basePay + ' delivery' + tipText + '</div>';
+          foodListEl.appendChild(card);
+        }
       }
     }
 
     // Cheap in-place update of just the timer text + urgent class (no full re-render).
     function renderTimers() {
       for (const o of activeOrders) {
-        const card = activeListEl.querySelector('[data-order-id="' + o.id + '"]');
+        const card = document.querySelector('[data-order-id="' + o.id + '"]');
         if (!card) continue;
         const timer = card.querySelector('.timer');
         if (timer) timer.textContent = '⏱ ' + Math.ceil(o.timeRemaining) + 's';
