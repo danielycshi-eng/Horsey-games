@@ -594,6 +594,9 @@
     const TIP_PCT_MAX = 0.10;              // 10%
     const OFFROAD_SPEED_MULT = 0.25;       // off-road = 25% of normal top speed
     const INTERSECTION_HALF = 40;          // red-light stop-box half size (px)
+    const STOP_SIGN_HALF    = 28;          // stop-sign zone half size (px)
+    const STOP_SIGN_WAIT    = 6;           // seconds you have to sit in the zone
+    const STOP_SIGN_CHANCE  = 0.10;        // probability per side-road junction
 
     const UPGRADE_DEFS = [
       {
@@ -739,8 +742,16 @@
     //  - Side streets: 1-2 narrow (~30 px) one-laners slotted between each
     //    pair of adjacent main roads. No lights, no center line. They give
     //    you a short hop off the main grid to reach any building.
+    // Two-tier road network:
+    //  - Main roads span the whole world. Traffic lights at every main↔main
+    //    crossing.
+    //  - Side streets are PER-CELL segments (a side road only spans the cell
+    //    it lives in, from one bounding main to the next), with a random
+    //    chance of a stop sign at each side-road junction. Because the
+    //    segments don't continue across cells the network reads less like a
+    //    pure grid.
     function generateRoads() {
-      roads = { horiz: [], vert: [], sideHoriz: [], sideVert: [], intersections: [] };
+      roads = { horiz: [], vert: [], sideHoriz: [], sideVert: [], intersections: [], stopSigns: [] };
 
       // --- Main roads ---
       const MAIN_MIN = 400;
@@ -763,34 +774,42 @@
         }
       }
 
-      // --- Side streets between adjacent mains ---
+      // --- Per-cell side streets ---
       const SIDE_W = 30;
       const sortedH = [...roads.horiz].sort((a, b) => a.y - b.y);
       const sortedV = [...roads.vert].sort((a, b) => a.x - b.x);
-      // boundaries for splitting gaps (include world edge as a virtual main)
+      // virtual edges = world border, so the cells at the map boundary still
+      // get side streets.
       const hEdges = [80, ...sortedH.map(r => r.y), WORLD_H - 80];
       const vEdges = [80, ...sortedV.map(r => r.x), WORLD_W - 80];
-      // helper that drops one or two side streets into a gap
-      function fillSidesH(lo, hi) {
-        const gap = hi - lo;
-        if (gap < 180) return;
-        const slots = gap > 340 ? 2 : 1;
-        for (let i = 1; i <= slots; i++) {
-          roads.sideHoriz.push({ y: lo + (gap * i) / (slots + 1), w: SIDE_W });
+      for (let i = 0; i < hEdges.length - 1; i++) {
+        for (let j = 0; j < vEdges.length - 1; j++) {
+          const top = hEdges[i], bot = hEdges[i + 1];
+          const left = vEdges[j], right = vEdges[j + 1];
+          const cellH = bot - top, cellW = right - left;
+          // horizontal side streets bisecting the cell vertically
+          if (cellH > 180) {
+            const slots = cellH > 340 ? 2 : 1;
+            // perturb the slot positions slightly so adjacent cells don't
+            // line up exactly — adds a bit of organic offset.
+            for (let k = 1; k <= slots; k++) {
+              const t = k / (slots + 1) + (Math.random() - 0.5) * 0.12;
+              const y = top + cellH * Math.max(0.15, Math.min(0.85, t));
+              roads.sideHoriz.push({ y, w: SIDE_W, xStart: left, xEnd: right });
+            }
+          }
+          if (cellW > 180) {
+            const slots = cellW > 340 ? 2 : 1;
+            for (let k = 1; k <= slots; k++) {
+              const t = k / (slots + 1) + (Math.random() - 0.5) * 0.12;
+              const x = left + cellW * Math.max(0.15, Math.min(0.85, t));
+              roads.sideVert.push({ x, w: SIDE_W, yStart: top, yEnd: bot });
+            }
+          }
         }
       }
-      function fillSidesV(lo, hi) {
-        const gap = hi - lo;
-        if (gap < 180) return;
-        const slots = gap > 340 ? 2 : 1;
-        for (let i = 1; i <= slots; i++) {
-          roads.sideVert.push({ x: lo + (gap * i) / (slots + 1), w: SIDE_W });
-        }
-      }
-      for (let i = 0; i < hEdges.length - 1; i++) fillSidesH(hEdges[i], hEdges[i + 1]);
-      for (let i = 0; i < vEdges.length - 1; i++) fillSidesV(vEdges[i], vEdges[i + 1]);
 
-      // Traffic lights only at main↔main intersections.
+      // --- Traffic lights at every main ↔ main crossing ---
       for (const v of roads.vert) {
         for (const h of roads.horiz) {
           roads.intersections.push({
@@ -800,14 +819,71 @@
           });
         }
       }
+
+      // --- Stop signs at side-road junctions (10% chance each) ---
+      // side ↔ main
+      for (const sh of roads.sideHoriz) {
+        for (const v of roads.vert) {
+          if (v.x >= sh.xStart && v.x <= sh.xEnd && Math.random() < STOP_SIGN_CHANCE) {
+            roads.stopSigns.push({ x: v.x, y: sh.y, wasInZone: false, entrySide: null, waitTime: 0 });
+          }
+        }
+      }
+      for (const sv of roads.sideVert) {
+        for (const h of roads.horiz) {
+          if (h.y >= sv.yStart && h.y <= sv.yEnd && Math.random() < STOP_SIGN_CHANCE) {
+            roads.stopSigns.push({ x: sv.x, y: h.y, wasInZone: false, entrySide: null, waitTime: 0 });
+          }
+        }
+      }
+      // side ↔ side
+      for (const sh of roads.sideHoriz) {
+        for (const sv of roads.sideVert) {
+          const x = sv.x, y = sh.y;
+          if (x >= sh.xStart && x <= sh.xEnd && y >= sv.yStart && y <= sv.yEnd && Math.random() < STOP_SIGN_CHANCE) {
+            roads.stopSigns.push({ x, y, wasInZone: false, entrySide: null, waitTime: 0 });
+          }
+        }
+      }
     }
 
-    // True if a world position is on any road (main or side).
+    // Which side of a stop-sign's center the point (x,y) sits on. Used to
+    // figure out which way the car entered / is trying to leave.
+    function sideOf(x, y, sx, sy) {
+      const dx = x - sx, dy = y - sy;
+      if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'E' : 'W';
+      return dy > 0 ? 'S' : 'N';
+    }
+
+    function updateStopSigns(dt) {
+      const h = STOP_SIGN_HALF;
+      for (const s of roads.stopSigns) {
+        const inZone = car.x > s.x - h && car.x < s.x + h && car.y > s.y - h && car.y < s.y + h;
+        if (inZone && !s.wasInZone) {
+          // just entered — capture the side we came in on
+          s.entrySide = sideOf(car.x, car.y, s.x, s.y);
+          s.waitTime = 0;
+        } else if (inZone) {
+          s.waitTime += dt;
+        } else if (s.wasInZone) {
+          // backed out before the timer expired: reset, no record kept
+          s.entrySide = null;
+          s.waitTime = 0;
+        }
+        s.wasInZone = inZone;
+      }
+    }
+
+    // True if a world position is on any road (main or per-cell side segment).
     function isOnRoad(x, y) {
-      for (const r of roads.horiz)     if (y >= r.y - r.w / 2 && y <= r.y + r.w / 2) return true;
-      for (const r of roads.vert)      if (x >= r.x - r.w / 2 && x <= r.x + r.w / 2) return true;
-      for (const r of roads.sideHoriz) if (y >= r.y - r.w / 2 && y <= r.y + r.w / 2) return true;
-      for (const r of roads.sideVert)  if (x >= r.x - r.w / 2 && x <= r.x + r.w / 2) return true;
+      for (const r of roads.horiz) if (y >= r.y - r.w / 2 && y <= r.y + r.w / 2) return true;
+      for (const r of roads.vert)  if (x >= r.x - r.w / 2 && x <= r.x + r.w / 2) return true;
+      for (const r of roads.sideHoriz) {
+        if (y >= r.y - r.w / 2 && y <= r.y + r.w / 2 && x >= r.xStart && x <= r.xEnd) return true;
+      }
+      for (const r of roads.sideVert) {
+        if (x >= r.x - r.w / 2 && x <= r.x + r.w / 2 && y >= r.yStart && y <= r.yEnd) return true;
+      }
       return false;
     }
 
@@ -815,10 +891,16 @@
     // safety margin than side streets so the buildings hug right up to the
     // narrow one-laners.
     function buildingOverlapsRoad(x, y, w, h) {
-      for (const r of roads.horiz)     { if (y < r.y + r.w / 2 + 6 && y + h > r.y - r.w / 2 - 6) return true; }
-      for (const r of roads.vert)      { if (x < r.x + r.w / 2 + 6 && x + w > r.x - r.w / 2 - 6) return true; }
-      for (const r of roads.sideHoriz) { if (y < r.y + r.w / 2 + 3 && y + h > r.y - r.w / 2 - 3) return true; }
-      for (const r of roads.sideVert)  { if (x < r.x + r.w / 2 + 3 && x + w > r.x - r.w / 2 - 3) return true; }
+      for (const r of roads.horiz) { if (y < r.y + r.w / 2 + 6 && y + h > r.y - r.w / 2 - 6) return true; }
+      for (const r of roads.vert)  { if (x < r.x + r.w / 2 + 6 && x + w > r.x - r.w / 2 - 6) return true; }
+      for (const r of roads.sideHoriz) {
+        if (y < r.y + r.w / 2 + 3 && y + h > r.y - r.w / 2 - 3 &&
+            x < r.xEnd + 3 && x + w > r.xStart - 3) return true;
+      }
+      for (const r of roads.sideVert) {
+        if (x < r.x + r.w / 2 + 3 && x + w > r.x - r.w / 2 - 3 &&
+            y < r.yEnd + 3 && y + h > r.yStart - 3) return true;
+      }
       return false;
     }
 
@@ -879,19 +961,19 @@
         c.beginPath(); c.moveTo(i, 0); c.lineTo(i + WORLD_H, WORLD_H); c.stroke();
       }
 
-      // === side streets (drawn first so mains cover at crossings) ===
+      // === side streets — only span their cell, not the whole world ===
       c.fillStyle = '#525870';
-      for (const r of roads.sideHoriz) c.fillRect(0, r.y - r.w / 2, WORLD_W, r.w);
-      for (const r of roads.sideVert)  c.fillRect(r.x - r.w / 2, 0, r.w, WORLD_H);
+      for (const r of roads.sideHoriz) c.fillRect(r.xStart, r.y - r.w / 2, r.xEnd - r.xStart, r.w);
+      for (const r of roads.sideVert)  c.fillRect(r.x - r.w / 2, r.yStart, r.w, r.yEnd - r.yStart);
       c.strokeStyle = 'rgba(0,0,0,0.45)';
       c.lineWidth = 1;
       for (const r of roads.sideHoriz) {
-        c.beginPath(); c.moveTo(0, r.y - r.w / 2); c.lineTo(WORLD_W, r.y - r.w / 2); c.stroke();
-        c.beginPath(); c.moveTo(0, r.y + r.w / 2); c.lineTo(WORLD_W, r.y + r.w / 2); c.stroke();
+        c.beginPath(); c.moveTo(r.xStart, r.y - r.w / 2); c.lineTo(r.xEnd, r.y - r.w / 2); c.stroke();
+        c.beginPath(); c.moveTo(r.xStart, r.y + r.w / 2); c.lineTo(r.xEnd, r.y + r.w / 2); c.stroke();
       }
       for (const r of roads.sideVert) {
-        c.beginPath(); c.moveTo(r.x - r.w / 2, 0); c.lineTo(r.x - r.w / 2, WORLD_H); c.stroke();
-        c.beginPath(); c.moveTo(r.x + r.w / 2, 0); c.lineTo(r.x + r.w / 2, WORLD_H); c.stroke();
+        c.beginPath(); c.moveTo(r.x - r.w / 2, r.yStart); c.lineTo(r.x - r.w / 2, r.yEnd); c.stroke();
+        c.beginPath(); c.moveTo(r.x + r.w / 2, r.yStart); c.lineTo(r.x + r.w / 2, r.yEnd); c.stroke();
       }
 
       // === main roads (darker grey, on top of side streets) ===
@@ -1035,6 +1117,18 @@
         if (!inNew) continue;
         const inOld = (car.x > it.x - ib && car.x < it.x + ib && car.y > it.y - ib && car.y < it.y + ib);
         if (!inOld) return true;
+      }
+      // Stop signs: while inside the zone and timer hasn't hit 6s, the only
+      // allowed exit is the side you came in on. So passing through is
+      // blocked until you wait, but you can always back out.
+      const sh = STOP_SIGN_HALF;
+      for (const s of roads.stopSigns) {
+        if (!s.wasInZone) continue;                // not active for us yet
+        if (s.waitTime >= STOP_SIGN_WAIT) continue;// already passed, free to leave
+        const wouldBeIn = x > s.x - sh && x < s.x + sh && y > s.y - sh && y < s.y + sh;
+        if (wouldBeIn) continue;                    // staying inside is fine
+        // We'd be exiting the zone — only allow on the entry side.
+        if (sideOf(x, y, s.x, s.y) !== s.entrySide) return true;
       }
       return false;
     }
@@ -1426,6 +1520,48 @@
         ctx.fill();
       }
 
+      // stop signs at side-road junctions
+      for (const s of roads.stopSigns) {
+        ctx.save();
+        ctx.translate(s.x, s.y);
+        // pole
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(-1.5, -8, 3, 18);
+        // octagon
+        ctx.save();
+        ctx.translate(0, -16);
+        ctx.fillStyle = '#dc2626';
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        const r = 10;
+        for (let i = 0; i < 8; i++) {
+          const a = Math.PI / 4 * i + Math.PI / 8;
+          const px = r * Math.cos(a), py = r * Math.sin(a);
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // STOP text
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 5px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('STOP', 0, 0);
+        ctx.restore();
+        // active waiting countdown
+        if (s.wasInZone && s.waitTime < STOP_SIGN_WAIT) {
+          const remaining = Math.max(0, STOP_SIGN_WAIT - s.waitTime).toFixed(1);
+          ctx.fillStyle = 'rgba(0,0,0,0.7)';
+          ctx.fillRect(-14, 12, 28, 14);
+          ctx.fillStyle = '#fbbf24';
+          ctx.font = 'bold 10px ui-monospace, monospace';
+          ctx.fillText(remaining + 's', 0, 22);
+        }
+        ctx.restore();
+      }
+
       // markers for active orders (pickup or dropoff depending on state)
       const pulse = 1 + Math.sin(renderTick * 0.12) * 0.08;
       for (const o of activeOrders) {
@@ -1523,6 +1659,7 @@
       if (gameState === 'playing') {
         elapsedTime += dt;
         updateTrafficLights(elapsedTime);
+        updateStopSigns(dt);
         updateCar(dt);
         updateOrders(dt);
         updateCamera(dt);
