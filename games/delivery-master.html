@@ -596,6 +596,14 @@
     const INTERSECTION_HALF = 40;          // red-light stop-box half size (px)
     const STOP_SIGN_HALF    = 14;          // stop-sign solid-block half size (px)
     const STOP_SIGN_CHANCE  = 0.25;        // probability per narrow ↔ narrow junction
+    const STOP_SIGN_MIN_DIST = 320;        // signs at least this far apart (px)
+    const SHELF_MIN = 15;                  // seconds before a competing deliverer steals the order
+    const SHELF_MAX = 30;
+    const DELIVERER_NAMES = [
+      'Bob', 'Fred', 'Joe', 'James',
+      'Hedge', 'Bobbyjoefred', 'Horsecat',
+      'Jayden', 'Xuwusnfksufnskjbdhbgayes',
+    ];
 
     const UPGRADE_DEFS = [
       {
@@ -820,15 +828,28 @@
       }
 
       // --- Stop signs at narrow ↔ narrow junctions ONLY ---
-      // 10% per side-x-side crossing. Wide-road intersections never get one
-      // (those carry traffic lights instead).
+      // 25% per side-x-side crossing, with a min-distance spread so two
+      // signs can't pile up in the same little cell. Wide-road
+      // intersections never get one (they carry traffic lights instead).
+      const candidates = [];
       for (const sh of roads.sideHoriz) {
         for (const sv of roads.sideVert) {
           const x = sv.x, y = sh.y;
-          if (x >= sh.xStart && x <= sh.xEnd && y >= sv.yStart && y <= sv.yEnd && Math.random() < STOP_SIGN_CHANCE) {
-            roads.stopSigns.push({ x, y });
+          if (x >= sh.xStart && x <= sh.xEnd && y >= sv.yStart && y <= sv.yEnd) {
+            candidates.push({ x, y });
           }
         }
+      }
+      // shuffle so the first eligible candidates aren't always top-left
+      for (let i = candidates.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+      }
+      for (const c of candidates) {
+        if (Math.random() >= STOP_SIGN_CHANCE) continue;
+        const tooClose = roads.stopSigns.some(s =>
+          Math.hypot(s.x - c.x, s.y - c.y) < STOP_SIGN_MIN_DIST);
+        if (!tooClose) roads.stopSigns.push({ x: c.x, y: c.y });
       }
     }
 
@@ -1304,6 +1325,7 @@
         foodPrice: menu.foodPrice,
         timeLimit,
         timeRemaining: timeLimit,
+        shelfLife: SHELF_MIN + Math.random() * (SHELF_MAX - SHELF_MIN),
         difficulty: diff,
         lightsOnRoute: Math.round((diff - 1) / 0.15),
         state: 'available',
@@ -1324,6 +1346,20 @@
           }
         }
       }
+
+      // Tick shelf life on available orders. If you don't accept fast
+      // enough, a competing deliverer scoops it.
+      let availableChanged = false;
+      for (let i = availableOrders.length - 1; i >= 0; i--) {
+        availableOrders[i].shelfLife -= dt;
+        if (availableOrders[i].shelfLife <= 0) {
+          const stealer = DELIVERER_NAMES[Math.floor(Math.random() * DELIVERER_NAMES.length)];
+          showToast('Order has been taken by ' + stealer, true);
+          availableOrders.splice(i, 1);
+          availableChanged = true;
+        }
+      }
+      if (availableChanged) renderAvailable();
 
       // tick active timers + find the closest in-range target (if any)
       interactOrder = null;
