@@ -37,6 +37,7 @@
       position: relative;
       z-index: 5;
       padding-top: 3rem;
+      padding-bottom: 2rem;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -44,6 +45,8 @@
       max-width: 720px;
       gap: 1.5rem;
       margin: 0 auto;
+      max-height: 100vh;
+      overflow-y: auto;
       animation: fadeIn 0.9s cubic-bezier(.2,.7,.2,1) both;
     }
     @keyframes fadeIn {
@@ -2051,6 +2054,7 @@
     const menuBestTipEl = document.getElementById('menu-best-tip');
     const upgradesListEl = document.getElementById('upgrades-list');
     const shopTitleEl = document.getElementById('shop-title');
+    const vehiclePanelEl = document.getElementById('vehicle-panel');
     const vehicleSelectEl = document.getElementById('vehicle-select');
 
     function upgradeCost(def) {
@@ -2065,18 +2069,24 @@
       return state.upgrades[def.id] >= def.costs.length;
     }
 
-    // The vehicle picker: walk is always available, moto/car once unlocked.
+    // The vehicle picker: only shows vehicles you actually own. Until you
+    // unlock a second one there's nothing to switch between, so the whole
+    // panel stays hidden.
     function renderVehicleSelect() {
+      const owned = VEHICLES.filter(v => v.id === 'walk' || state.unlocked[v.id]);
+      if (owned.length <= 1) {
+        vehiclePanelEl.style.display = 'none';
+        return;
+      }
+      vehiclePanelEl.style.display = '';
       vehicleSelectEl.innerHTML = '';
       const grid = document.createElement('div');
       grid.className = 'veh-grid';
-      for (const v of VEHICLES) {
-        const owned = v.id === 'walk' || state.unlocked[v.id];
+      for (const v of owned) {
         const btn = document.createElement('button');
         btn.className = 'veh-btn' + (state.vehicle === v.id ? ' current' : '');
-        btn.disabled = !owned;
-        btn.innerHTML = v.label + (owned ? '' : '<span class="veh-lock">🔒 locked</span>');
-        if (owned) btn.addEventListener('click', () => switchVehicle(v.id));
+        btn.textContent = v.label;
+        btn.addEventListener('click', () => switchVehicle(v.id));
         grid.appendChild(btn);
       }
       vehicleSelectEl.appendChild(grid);
