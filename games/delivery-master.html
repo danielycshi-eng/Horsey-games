@@ -529,6 +529,16 @@
     }
     .crash-banner.hidden { display: none !important; }
 
+    /* Sidebar locked while crash-frozen */
+    #sidebar.stuck #available-list,
+    #sidebar.stuck #enroute-list,
+    #sidebar.stuck #food-list,
+    #sidebar.stuck .end-shift-btn {
+      opacity: 0.4;
+      pointer-events: none;
+      filter: grayscale(0.5);
+    }
+
     /* Toast for delivery success / fail */
     #toast {
       position: fixed;
@@ -704,6 +714,7 @@
     const CRASH_DIST = 22;            // px between centres that counts as hitting a traffic car
     const CRASH_FREEZE = 10;          // seconds you're stuck after crashing on a vehicle
     const CRASH_FEE_PCT = { moto: 0.10, car: 0.20 };  // share of cash lost per crash
+    const RED_LIGHT_FEE_PCT = 0.05;   // share of cash lost for running a red light (moto/car)
     // Per-second order spawn — 1-in-35 each tick of the wall clock. If
     // you decline an order you just wait for the next roll, no
     // auto-refill. Player asked for it scarce.
@@ -1306,6 +1317,7 @@
     // =====================================================================
     let trafficCars = [];
     let crashTimer = 0;   // seconds of freeze remaining after a crash
+    let occupiedLight = -1;   // intersection box the player is currently inside (-1 = none)
 
     // Heading so the car sprite (faces up) points the way it drives.
     function dirHeading(axis, dir) {
@@ -1316,6 +1328,7 @@
     function generateTraffic() {
       trafficCars = [];
       crashTimer = 0;
+      occupiedLight = -1;
       const haveH = roads.horiz.length, haveV = roads.vert.length;
       if (!haveH && !haveV) return;
       let guard = 0;
@@ -1385,6 +1398,29 @@
       }
     }
 
+    // Red lights don't stop moto/car anymore — but entering an intersection
+    // box while it's red counts as running the light and costs 5% of cash.
+    // Charged once on entry; if it turns red after you're already inside, no
+    // charge (you entered legally).
+    function checkRedLightRun() {
+      const ib = INTERSECTION_HALF;
+      let idx = -1;
+      for (let i = 0; i < roads.intersections.length; i++) {
+        const it = roads.intersections[i];
+        if (car.x > it.x - ib && car.x < it.x + ib && car.y > it.y - ib && car.y < it.y + ib) { idx = i; break; }
+      }
+      if (idx === occupiedLight) return;   // same box (or still none) — nothing new
+      occupiedLight = idx;
+      if (idx >= 0 && roads.intersections[idx].isRed) {
+        const fee = Math.max(0, Math.round(state.cash * RED_LIGHT_FEE_PCT));
+        state.cash -= fee;
+        saveStateDebounced();
+        renderHud();
+        playFail();
+        showToast('🚦 Ran a red! −$' + fee + ' (' + Math.round(RED_LIGHT_FEE_PCT * 100) + '%)', true);
+      }
+    }
+
     // =====================================================================
     // CAR
     // =====================================================================
@@ -1430,19 +1466,10 @@
         const dx = x - cx, dy = y - cy;
         if (dx * dx + dy * dy < r * r) return true;
       }
-      // Red traffic lights — block entry to the intersection box. If the
-      // car is already inside (light just turned red on top of it), let it
-      // keep moving so it can clear the box.
-      const ib = INTERSECTION_HALF;
-      for (const it of roads.intersections) {
-        if (!it.isRed) continue;
-        const inNew = (x > it.x - ib && x < it.x + ib && y > it.y - ib && y < it.y + ib);
-        if (!inNew) continue;
-        const inOld = (car.x > it.x - ib && car.x < it.x + ib && car.y > it.y - ib && car.y < it.y + ib);
-        if (!inOld) return true;
-      }
-      // Stop signs — impassable, unless this vehicle ignores them (any moto,
-      // or a car with Slickness).
+      // Red traffic lights no longer physically block you — running one just
+      // costs a cash penalty (see checkRedLightRun). Stop signs are still
+      // impassable, unless this vehicle ignores them (any moto, or a car with
+      // Slickness).
       if (!ignoresStopSigns()) {
         const sh = STOP_SIGN_HALF;
         for (const s of roads.stopSigns) {
@@ -1503,6 +1530,7 @@
       } else {
         updateCar(dt);              // moto + car share the driving physics
         checkTrafficCrash();        // ...and can crash into traffic
+        checkRedLightRun();         // ...and get fined for running reds
       }
     }
 
@@ -1815,6 +1843,7 @@
 
     let interactOrder = null;
     function doInteract() {
+      if (crashTimer > 0) return;   // can't pick up / drop off while stuck
       const o = interactOrder;
       if (!o) return;
       if (o.state === 'picking-up') {
@@ -1850,6 +1879,7 @@
     }
 
     function acceptByIndex(idx) {
+      if (crashTimer > 0) return;   // can't take orders while stuck
       if (idx < 0 || idx >= availableOrders.length) return;
       const o = availableOrders.splice(idx, 1)[0];
       o.state = 'picking-up';
@@ -1861,6 +1891,7 @@
       renderHud();
     }
     function declineByIndex(idx) {
+      if (crashTimer > 0) return;   // can't touch orders while stuck
       if (idx < 0 || idx >= availableOrders.length) return;
       availableOrders.splice(idx, 1);
       renderAvailable();
@@ -2102,14 +2133,24 @@
     const playEnergyEl     = document.getElementById('play-energy');
     const interactBtn      = document.getElementById('interact-btn');
     const crashBannerEl    = document.getElementById('crash-banner');
+    const sidebarEl        = document.getElementById('sidebar');
     interactBtn.addEventListener('click', doInteract);
 
+    let stuckShown = false;
     function updateCrashBanner() {
-      if (crashTimer > 0) {
+      const stuck = crashTimer > 0;
+      if (stuck) {
         crashBannerEl.textContent = '💥 Crashed! ' + Math.ceil(crashTimer) + 's';
         crashBannerEl.classList.remove('hidden');
       } else {
         crashBannerEl.classList.add('hidden');
+      }
+      // While stuck, grey out the sidebar so it's clear orders / End Shift are
+      // locked (the click handlers also refuse — this is just the visual).
+      if (stuck !== stuckShown) {
+        stuckShown = stuck;
+        sidebarEl.classList.toggle('stuck', stuck);
+        if (stuck) interactBtn.classList.add('hidden');
       }
     }
 
@@ -2464,6 +2505,7 @@
       updateEnergyHud();
     }
     function endShift() {
+      if (crashTimer > 0) { showToast('Stuck! Can’t end shift yet', true); return; }
       // Bailing on accepted orders isn't free: you forfeit the full value
       // (delivery pay + tip) of everything you haven't dropped off yet.
       const owed = activeOrders.reduce((s, o) => s + o.basePay + (o.tip || 0), 0);
