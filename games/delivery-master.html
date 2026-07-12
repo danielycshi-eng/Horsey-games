@@ -36,14 +36,14 @@
     #menu {
       position: relative;
       z-index: 5;
-      padding-top: 3rem;
-      padding-bottom: 2rem;
+      padding-top: 1.2rem;
+      padding-bottom: 1.2rem;
       display: flex;
       flex-direction: column;
       align-items: center;
       width: 100%;
       max-width: 720px;
-      gap: 1.5rem;
+      gap: 0.7rem;
       margin: 0 auto;
       max-height: 100vh;
       overflow-y: auto;
@@ -55,8 +55,8 @@
     }
 
     #menu h1 {
-      font-size: 3rem;
-      letter-spacing: 4px;
+      font-size: 1.9rem;
+      letter-spacing: 3px;
       background: linear-gradient(135deg, #a0c4ff 0%, #4e7fff 35%, #c7a0ff 70%, #a0c4ff 100%);
       background-size: 300% 300%;
       -webkit-background-clip: text;
@@ -71,7 +71,7 @@
 
     .menu-stats {
       display: flex;
-      gap: 2rem;
+      gap: 1rem;
       justify-content: center;
       flex-wrap: wrap;
     }
@@ -80,19 +80,19 @@
       backdrop-filter: blur(8px);
       border: 1px solid rgba(78, 127, 255, 0.2);
       border-radius: 14px;
-      padding: 0.9rem 1.4rem;
-      min-width: 140px;
+      padding: 0.5rem 1rem;
+      min-width: 110px;
       text-align: center;
     }
     .stat-card .label {
-      font-size: 0.72rem;
+      font-size: 0.68rem;
       letter-spacing: 2px;
       text-transform: uppercase;
       color: #8ea7d6;
-      margin-bottom: 0.35rem;
+      margin-bottom: 0.2rem;
     }
     .stat-card .val {
-      font-size: 1.6rem;
+      font-size: 1.2rem;
       font-weight: 700;
       font-family: ui-monospace, Menlo, Consolas, monospace;
       color: #f5d77a;
@@ -103,17 +103,17 @@
       backdrop-filter: blur(8px);
       border: 1px solid rgba(78, 127, 255, 0.18);
       border-radius: 16px;
-      padding: 1.2rem 1.4rem;
+      padding: 0.7rem 0.9rem;
       width: 100%;
     }
     .panel-title {
       color: #a0c4ff;
-      font-size: 0.85rem;
+      font-size: 0.8rem;
       letter-spacing: 3px;
       text-transform: uppercase;
-      margin-bottom: 0.8rem;
+      margin-bottom: 0.5rem;
       border-bottom: 1px solid rgba(78, 127, 255, 0.25);
-      padding-bottom: 0.4rem;
+      padding-bottom: 0.3rem;
       font-weight: 700;
     }
 
@@ -122,11 +122,11 @@
       display: flex;
       align-items: center;
       gap: 1rem;
-      padding: 0.6rem 0.7rem;
+      padding: 0.4rem 0.6rem;
       background: rgba(22, 33, 62, 0.5);
       border: 1.5px solid #0f3460;
       border-radius: 10px;
-      margin-bottom: 0.5rem;
+      margin-bottom: 0.3rem;
       transition: background 0.15s, border-color 0.15s;
     }
     .upgrade:hover { background: rgba(15, 52, 96, 0.6); }
@@ -229,12 +229,12 @@
     .admin-fixed button:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(233, 69, 96, 0.4); }
 
     .start-btn {
-      padding: 1rem 3rem;
+      padding: 0.65rem 2.5rem;
       background: linear-gradient(135deg, #22c55e, #15803d);
       color: #fff;
       border: 2px solid #15803d;
       border-radius: 14px;
-      font-size: 1.4rem;
+      font-size: 1.1rem;
       font-weight: 800;
       letter-spacing: 3px;
       text-transform: uppercase;
@@ -242,7 +242,7 @@
       font-family: inherit;
       transition: transform 0.15s, box-shadow 0.2s, background 0.2s;
       box-shadow: 0 8px 24px rgba(34, 197, 94, 0.4);
-      margin-top: 0.5rem;
+      margin-top: 0.2rem;
     }
     .start-btn:hover {
       transform: translateY(-2px);
@@ -729,7 +729,19 @@
           desc: 'Unlock the car — top speed, obeys all signs', cost: 12000 },
       ],
       car: [
-        // TODO: car upgrades (spec pending)
+        { id: 'engine', name: 'Better Engines',
+          desc: 'Top speed +20% per level', costs: [9000, 14000, 19000] },
+        { id: 'caroil', name: 'Oil Change', type: 'consumable',
+          desc: '+70% speed for 100 seconds', cost: 10000,
+          boostField: 'carOilUntil', durationMs: OIL_MS },
+        { id: 'space', name: 'More Space',
+          desc: 'Carry +1 food at a time (start: 2)',
+          costs: [14000, 19000, 24000, 29000, 34000, 39000, 44000, 50000] },
+        { id: 'shine', name: 'Shinier Car',
+          desc: 'Tip chance +10 pp per level (start: 40%)',
+          costs: [50000, 75000, 100000, 150000, 300000] },
+        { id: 'slick', name: 'Slickness',
+          desc: 'Stop signs no longer stop you', costs: [600000] },
       ],
     };
     function shopDefs() { return SHOP_DEFS[state.vehicle] || []; }
@@ -749,7 +761,9 @@
         unlocked: { moto: false, car: false }, // walk is always available
         energyUntil: 0,                        // ms timestamp — energy drink (walk)
         oilUntil: 0,                           // ms timestamp — oil burst (moto)
-        upgrades: { shoes: 0, backpack: 0, motor: 0, basket: 0 },
+        carOilUntil: 0,                        // ms timestamp — oil change (car)
+        upgrades: { shoes: 0, backpack: 0, motor: 0, basket: 0,
+                    engine: 0, space: 0, shine: 0, slick: 0 },
       };
     }
     function loadState() {
@@ -783,9 +797,10 @@
     // Computed stats from upgrades — everything keys off the active vehicle.
     function energyActive()  { return Date.now() < (state.energyUntil || 0); }
     function oilActive()     { return Date.now() < (state.oilUntil || 0); }
+    function carOilActive()  { return Date.now() < (state.carOilUntil || 0); }
     function speedMult() {
-      if (state.vehicle === 'moto') return (1 + 0.10 * state.upgrades.motor) * (oilActive() ? 1.5 : 1);
-      if (state.vehicle === 'car')  return 1;   // car upgrades TBD
+      if (state.vehicle === 'moto') return (1 + 0.10 * state.upgrades.motor)  * (oilActive() ? 1.5 : 1);
+      if (state.vehicle === 'car')  return (1 + 0.20 * state.upgrades.engine) * (carOilActive() ? 1.7 : 1);
       return (1 + 0.10 * state.upgrades.shoes) * (energyActive() ? 1.4 : 1);   // walk
     }
     function baseSpeed() {
@@ -795,12 +810,22 @@
     }
     function maxSpeed()      { return baseSpeed() * speedMult(); }
     function carryCap() {
-      if (state.vehicle === 'car')  return 2;                       // car base (upgrades TBD)
+      if (state.vehicle === 'car')  return 2 + state.upgrades.space;
       if (state.vehicle === 'moto') return 1 + state.upgrades.basket;
       return 1 + state.upgrades.backpack;                          // walk
     }
-    function tipChance()     { return TIP_CHANCE_BASE; }
+    // Shinier Car adds +10 pp tip chance per level while you're driving it.
+    function tipChance() {
+      const shine = state.vehicle === 'car' ? 0.10 * state.upgrades.shine : 0;
+      return Math.min(1, TIP_CHANCE_BASE + shine);
+    }
     function turnRate()      { return BASE_TURN_RATE; }
+    // Motorcycles always ignore stop signs; a car ignores them once it has Slickness.
+    function ignoresStopSigns() {
+      if (state.vehicle === 'moto') return true;
+      if (state.vehicle === 'car')  return state.upgrades.slick > 0;
+      return true;   // walk never uses this path (pedestrians use personCollidesAt)
+    }
     function carriedCount()  { return activeOrders.filter(o => o.state === 'delivering').length; }
 
     // =====================================================================
@@ -1280,9 +1305,9 @@
         const inOld = (car.x > it.x - ib && car.x < it.x + ib && car.y > it.y - ib && car.y < it.y + ib);
         if (!inOld) return true;
       }
-      // Stop signs — flat-out impassable for the car. Motorcycles weave past
-      // them (they only obey the lights), so skip this block on a moto.
-      if (state.vehicle !== 'moto') {
+      // Stop signs — impassable, unless this vehicle ignores them (any moto,
+      // or a car with Slickness).
+      if (!ignoresStopSigns()) {
         const sh = STOP_SIGN_HALF;
         for (const s of roads.stopSigns) {
           if (x > s.x - sh && x < s.x + sh && y > s.y - sh && y < s.y + sh) return true;
@@ -1923,6 +1948,7 @@
     function activeBoost() {
       if (state.vehicle === 'walk' && energyActive()) return { label: '⚡ Energy', until: state.energyUntil };
       if (state.vehicle === 'moto' && oilActive())    return { label: '🔥 Oil', until: state.oilUntil };
+      if (state.vehicle === 'car'  && carOilActive()) return { label: '🔥 Oil', until: state.carOilUntil };
       return null;
     }
     function updateEnergyHud() {
