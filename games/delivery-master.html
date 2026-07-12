@@ -179,34 +179,54 @@
     .veh-btn:disabled { opacity: 0.4; cursor: not-allowed; }
     .veh-btn .veh-lock { display: block; font-size: 0.62rem; letter-spacing: 1px; color: #7f8db0; margin-top: 2px; }
 
-    /* Admin / testing box */
-    .admin-box { border-color: rgba(233, 69, 96, 0.35); }
-    .admin-box .panel-title { color: #e9a0ad; border-bottom-color: rgba(233, 69, 96, 0.25); }
-    .admin-row { display: flex; gap: 0.5rem; }
-    .admin-row input {
-      flex: 1;
-      padding: 0.55rem 0.7rem;
-      background: rgba(11, 15, 36, 0.7);
+    /* Admin / testing box — fixed to the bottom-left so it's always on screen */
+    .admin-fixed {
+      position: fixed;
+      bottom: 0.8rem;
+      left: 1.2rem;
+      z-index: 40;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 0.7rem;
+      background: rgba(11, 15, 36, 0.92);
+      border: 1.5px solid rgba(233, 69, 96, 0.5);
+      border-radius: 10px;
+      backdrop-filter: blur(6px);
+      box-shadow: 0 4px 18px rgba(0,0,0,0.45);
+    }
+    .admin-fixed.hidden { display: none !important; }
+    .admin-tag {
+      color: #e9a0ad;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .admin-fixed input {
+      width: 90px;
+      padding: 0.4rem 0.55rem;
+      background: rgba(0, 0, 0, 0.4);
       border: 1.5px solid #0f3460;
-      border-radius: 8px;
+      border-radius: 7px;
       color: #fff;
       font-family: ui-monospace, Menlo, Consolas, monospace;
-      font-size: 0.95rem;
+      font-size: 0.9rem;
     }
-    .admin-row input:focus { outline: none; border-color: #4e7fff; }
-    .admin-row button {
-      padding: 0.55rem 1.4rem;
+    .admin-fixed input:focus { outline: none; border-color: #4e7fff; }
+    .admin-fixed button {
+      padding: 0.42rem 0.9rem;
       background: linear-gradient(135deg, #e94560, #b73247);
       color: #fff;
       border: none;
-      border-radius: 8px;
+      border-radius: 7px;
       cursor: pointer;
       font-family: inherit;
       font-weight: 700;
-      letter-spacing: 1px;
+      letter-spacing: 0.5px;
       transition: transform 0.1s, box-shadow 0.15s;
     }
-    .admin-row button:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(233, 69, 96, 0.4); }
+    .admin-fixed button:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(233, 69, 96, 0.4); }
 
     .start-btn {
       padding: 1rem 3rem;
@@ -585,16 +605,6 @@
     </div>
 
     <button class="start-btn" id="start-shift">Start Shift</button>
-
-    <!-- Admin / testing only: instantly grant cash so you don't have to
-         grind deliveries while testing. -->
-    <div class="panel admin-box">
-      <div class="panel-title">🛠 Admin (testing only)</div>
-      <div class="admin-row">
-        <input type="number" id="admin-amount" placeholder="Amount" value="1000" min="0">
-        <button id="admin-give">Give</button>
-      </div>
-    </div>
   </div>
 
   <!-- ============================================================
@@ -641,6 +651,13 @@
   <div id="toast"></div>
 
   <button class="reset-link" id="reset" title="Wipe save and start over">reset</button>
+
+  <!-- Admin / testing only: fixed on-screen so it's always reachable. -->
+  <div class="admin-fixed" id="admin-box">
+    <span class="admin-tag">🛠 Admin</span>
+    <input type="number" id="admin-amount" placeholder="Amount" value="1000">
+    <button id="admin-give">Give $</button>
+  </div>
 
   <script>
     // =====================================================================
@@ -2221,6 +2238,7 @@
     // =====================================================================
     const menuEl = document.getElementById('menu');
     const playEl = document.getElementById('play');
+    const adminBoxEl = document.getElementById('admin-box');
 
     function startShift() {
       ensureAudio();
@@ -2241,6 +2259,7 @@
       gameState = 'playing';
       menuEl.classList.add('hidden');
       playEl.classList.remove('hidden');
+      adminBoxEl.classList.add('hidden');
       resizeGameCanvas();
       renderHud();
       renderAvailable();
@@ -2261,6 +2280,7 @@
       gameState = 'menu';
       playEl.classList.add('hidden');
       menuEl.classList.remove('hidden');
+      adminBoxEl.classList.remove('hidden');
       interactBtn.classList.add('hidden');
       interactOrder = null;
       input.w = input.a = input.s = input.d = false;
