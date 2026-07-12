@@ -591,6 +591,7 @@
     const SPEED_TUNE = 55;        // for time-limit math (kept fixed so easy orders stay easy)
     const PICKUP_RADIUS = 80;     // px proximity to pickup/dropoff
     const LATE_PENALTY_PER_SEC = 1;   // $ drained from your account for each second an order is late
+    const LATE_CANCEL_MULT = 3;       // once lateness has cost 3× the order value, it cancels for $0
     // Per-second order spawn — 1-in-35 each tick of the wall clock. If
     // you decline an order you just wait for the next roll, no
     // auto-refill. Player asked for it scarce.
@@ -1455,8 +1456,19 @@
             playFail();
             renderActive();
           }
-          state.cash -= LATE_PENALTY_PER_SEC * dt;
+          const drain = LATE_PENALTY_PER_SEC * dt;
+          state.cash -= drain;
+          o.latePaid = (o.latePaid || 0) + drain;
           cashDirty = true;
+          // Once lateness has cost 3× the order's value, the customer gives
+          // up: the order is cancelled and you get nothing for it.
+          if (o.latePaid >= LATE_CANCEL_MULT * (o.basePay + (o.tip || 0))) {
+            showToast('Order cancelled — too late! No pay', true);
+            playFail();
+            activeOrders.splice(i, 1);
+            renderActive();
+            continue;
+          }
         }
         const target = o.state === 'picking-up'
           ? buildingCenter(buildings[o.pickupIdx])
