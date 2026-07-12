@@ -508,6 +508,27 @@
       50%      { box-shadow: 0 6px 32px rgba(34, 197, 94, 0.85); }
     }
 
+    /* Crash freeze banner — centered over the canvas while you're stuck */
+    .crash-banner {
+      position: fixed;
+      top: 40%;
+      left: calc(50% - 160px);
+      transform: translateX(-50%);
+      padding: 1rem 2rem;
+      font-size: 1.6rem;
+      font-weight: 800;
+      letter-spacing: 2px;
+      color: #fff;
+      background: rgba(183, 50, 71, 0.92);
+      border: 3px solid #e94560;
+      border-radius: 16px;
+      z-index: 29;
+      pointer-events: none;
+      text-align: center;
+      box-shadow: 0 8px 30px rgba(233, 69, 96, 0.6);
+    }
+    .crash-banner.hidden { display: none !important; }
+
     /* Toast for delivery success / fail */
     #toast {
       position: fixed;
@@ -613,6 +634,7 @@
   <div id="play" class="hidden">
     <canvas id="game-canvas"></canvas>
     <button class="interact-btn hidden" id="interact-btn">Pick up</button>
+    <div class="crash-banner hidden" id="crash-banner">💥 Crashed!</div>
     <div id="sidebar">
       <div class="hud-row">
         <span class="lbl">Cash</span>
@@ -678,6 +700,10 @@
     const PICKUP_RADIUS = 80;     // px proximity to pickup/dropoff
     const LATE_PENALTY_PER_SEC = 1;   // $ drained from your account for each second an order is late
     const LATE_CANCEL_MULT = 3;       // once lateness has cost 3× the order value, it cancels for $0
+    const TRAFFIC_COUNT = 14;         // slow AI cars cruising the main roads
+    const CRASH_DIST = 22;            // px between centres that counts as hitting a traffic car
+    const CRASH_FREEZE = 10;          // seconds you're stuck after crashing on a vehicle
+    const CRASH_FEE_PCT = { moto: 0.10, car: 0.20 };  // share of cash lost per crash
     // Per-second order spawn — 1-in-35 each tick of the wall clock. If
     // you decline an order you just wait for the next roll, no
     // auto-refill. Player asked for it scarce.
@@ -933,9 +959,35 @@
         '<circle cx="23" cy="5.5" r="1.4" fill="#fff" opacity="0.9"/>' +
       '</svg>';
 
+    // Traffic cars — same shape as the player car but recoloured so they read
+    // as "other" vehicles. Faces up (heading=0 == "up").
+    function trafficCarSVG(body, dark, roof) {
+      return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 48">' +
+        '<ellipse cx="16" cy="44" rx="13" ry="2.5" fill="#000" opacity="0.3"/>' +
+        '<rect x="1.5" y="9" width="4.5" height="10" rx="1.6" fill="#161616"/>' +
+        '<rect x="26" y="9" width="4.5" height="10" rx="1.6" fill="#161616"/>' +
+        '<rect x="1.5" y="29" width="4.5" height="10" rx="1.6" fill="#161616"/>' +
+        '<rect x="26" y="29" width="4.5" height="10" rx="1.6" fill="#161616"/>' +
+        '<rect x="4" y="3" width="24" height="42" rx="7" fill="' + body + '" stroke="' + dark + '" stroke-width="1"/>' +
+        '<rect x="8" y="16" width="16" height="7" rx="2.5" fill="#dfe8ff" opacity="0.85"/>' +
+        '<rect x="8" y="32" width="16" height="6" rx="2.5" fill="#cdd4ee" opacity="0.7"/>' +
+        '<rect x="9" y="23" width="14" height="9" rx="2" fill="' + roof + '"/>' +
+        '<circle cx="9" cy="42.5" r="1.3" fill="#ff5a4d"/>' +
+        '<circle cx="23" cy="42.5" r="1.3" fill="#ff5a4d"/>' +
+      '</svg>';
+    }
+    const TRAFFIC_COLORS = [
+      ['#b0b6c0', '#7d828c', '#8b909b'],  // silver
+      ['#e0554e', '#a83a34', '#b8433c'],  // red
+      ['#e0b84e', '#a8863a', '#b89742'],  // yellow
+      ['#5fae6b', '#3f7d4f', '#4a8c58'],  // green
+      ['#7d6fd6', '#54499e', '#6357b0'],  // purple
+    ];
+
     const scooterImg = svgToImage(SCOOTER_SVG);
     const personImg  = svgToImage(PERSON_SVG);
     const carImg     = svgToImage(CAR_SVG);
+    const trafficImgs = TRAFFIC_COLORS.map(c => svgToImage(trafficCarSVG(c[0], c[1], c[2])));
     const pickupImg  = svgToImage(PICKUP_SVG);
     const dropoffImg = svgToImage(DROPOFF_SVG);
 
@@ -1250,6 +1302,90 @@
     }
 
     // =====================================================================
+    // TRAFFIC (slow AI cars cruising the main roads, as moving obstacles)
+    // =====================================================================
+    let trafficCars = [];
+    let crashTimer = 0;   // seconds of freeze remaining after a crash
+
+    // Heading so the car sprite (faces up) points the way it drives.
+    function dirHeading(axis, dir) {
+      if (axis === 'h') return dir > 0 ? Math.PI / 2 : -Math.PI / 2;  // right / left
+      return dir > 0 ? Math.PI : 0;                                    // down / up
+    }
+
+    function generateTraffic() {
+      trafficCars = [];
+      crashTimer = 0;
+      const haveH = roads.horiz.length, haveV = roads.vert.length;
+      if (!haveH && !haveV) return;
+      let guard = 0;
+      while (trafficCars.length < TRAFFIC_COUNT && guard++ < TRAFFIC_COUNT * 20) {
+        const axis = (haveH && (!haveV || Math.random() < 0.5)) ? 'h' : 'v';
+        const road = axis === 'h'
+          ? roads.horiz[Math.floor(Math.random() * haveH)]
+          : roads.vert[Math.floor(Math.random() * haveV)];
+        const dir = Math.random() < 0.5 ? 1 : -1;
+        const center = axis === 'h' ? road.y : road.x;
+        const mag = road.w * 0.22;                 // lane offset from centre line
+        const along = 120 + Math.random() * ((axis === 'h' ? WORLD_W : WORLD_H) - 240);
+        const x = axis === 'h' ? along : center + dir * mag;
+        const y = axis === 'h' ? center + dir * mag : along;
+        // don't drop a car right on top of the player's spawn
+        if (Math.hypot(x - car.x, y - car.y) < 220) continue;
+        trafficCars.push({
+          axis, dir, center, mag, x, y,
+          speed: 32 + Math.random() * 26,
+          heading: dirHeading(axis, dir),
+          img: trafficImgs[Math.floor(Math.random() * trafficImgs.length)],
+        });
+      }
+    }
+
+    function updateTraffic(dt) {
+      for (const t of trafficCars) {
+        if (t.axis === 'h') {
+          t.x += t.dir * t.speed * dt;
+          if (t.x < 60 || t.x > WORLD_W - 60) {
+            t.dir *= -1;
+            t.x = Math.max(60, Math.min(WORLD_W - 60, t.x));
+            t.y = t.center + t.dir * t.mag;
+            t.heading = dirHeading('h', t.dir);
+          }
+        } else {
+          t.y += t.dir * t.speed * dt;
+          if (t.y < 60 || t.y > WORLD_H - 60) {
+            t.dir *= -1;
+            t.y = Math.max(60, Math.min(WORLD_H - 60, t.y));
+            t.x = t.center + t.dir * t.mag;
+            t.heading = dirHeading('v', t.dir);
+          }
+        }
+      }
+    }
+
+    // Moto/car crash: pay a % of your cash, the other car vanishes, and you're
+    // frozen for a few seconds. (Pedestrians never call this — a walker is just
+    // blocked by traffic, handled in personCollidesAt.)
+    function checkTrafficCrash() {
+      for (let i = trafficCars.length - 1; i >= 0; i--) {
+        const t = trafficCars[i];
+        if (Math.hypot(t.x - car.x, t.y - car.y) < CRASH_DIST) {
+          const pct = CRASH_FEE_PCT[state.vehicle] || 0;
+          const fee = Math.max(0, Math.round(state.cash * pct));
+          state.cash -= fee;
+          trafficCars.splice(i, 1);
+          car.speed = 0;
+          crashTimer = CRASH_FREEZE;
+          saveStateDebounced();
+          renderHud();
+          playFail();
+          showToast('💥 Crash! −$' + fee + ' (' + Math.round(pct * 100) + '%) · stuck ' + CRASH_FREEZE + 's', true);
+          return;
+        }
+      }
+    }
+
+    // =====================================================================
     // CAR
     // =====================================================================
     const CAR_W = 26, CAR_H = 36;
@@ -1316,8 +1452,8 @@
       return false;
     }
 
-    // Person collision: pedestrians only bump into buildings and the world
-    // border — they ignore traffic lights and stop signs entirely.
+    // Person collision: pedestrians bump into buildings, the world border, and
+    // traffic cars (no fee — just blocked). They ignore lights and stop signs.
     const PERSON_RADIUS = 9;
     function personCollidesAt(x, y) {
       const r = PERSON_RADIUS;
@@ -1326,6 +1462,9 @@
         const cy = Math.max(b.y, Math.min(y, b.y + b.h));
         const dx = x - cx, dy = y - cy;
         if (dx * dx + dy * dy < r * r) return true;
+      }
+      for (const t of trafficCars) {
+        if (Math.hypot(t.x - x, t.y - y) < CRASH_DIST) return true;
       }
       return false;
     }
@@ -1354,8 +1493,17 @@
     }
 
     function updatePlayer(dt) {
-      if (state.vehicle === 'walk') updateWalk(dt);
-      else updateCar(dt);   // moto + car share the driving physics
+      if (crashTimer > 0) {         // frozen after a crash — can't move
+        crashTimer -= dt;
+        car.speed = 0;
+        return;
+      }
+      if (state.vehicle === 'walk') {
+        updateWalk(dt);
+      } else {
+        updateCar(dt);              // moto + car share the driving physics
+        checkTrafficCrash();        // ...and can crash into traffic
+      }
     }
 
     function updateCar(dt) {
@@ -1823,6 +1971,15 @@
         }
       }
 
+      // traffic cars (drawn under the player)
+      for (const t of trafficCars) {
+        ctx.save();
+        ctx.translate(t.x, t.y);
+        ctx.rotate(t.heading);
+        if (t.img.complete) ctx.drawImage(t.img, -(CAR_W + 4) / 2, -(CAR_H + 8) / 2, CAR_W + 4, CAR_H + 8);
+        ctx.restore();
+      }
+
       // player sprite (rotated to heading): walker / scooter / car
       ctx.save();
       ctx.translate(car.x, car.y);
@@ -1912,10 +2069,12 @@
       if (gameState === 'playing') {
         elapsedTime += dt;
         updateTrafficLights(elapsedTime);
+        updateTraffic(dt);
         updatePlayer(dt);
         updateOrders(dt);
         updateCamera(dt);
         render();
+        updateCrashBanner();
         // tick the timer display in the sidebar (every ~250ms)
         sidebarTickAccumulator += dt;
         if (sidebarTickAccumulator >= 0.25) {
@@ -1942,7 +2101,17 @@
     const energyLabelEl    = document.getElementById('energy-label');
     const playEnergyEl     = document.getElementById('play-energy');
     const interactBtn      = document.getElementById('interact-btn');
+    const crashBannerEl    = document.getElementById('crash-banner');
     interactBtn.addEventListener('click', doInteract);
+
+    function updateCrashBanner() {
+      if (crashTimer > 0) {
+        crashBannerEl.textContent = '💥 Crashed! ' + Math.ceil(crashTimer) + 's';
+        crashBannerEl.classList.remove('hidden');
+      } else {
+        crashBannerEl.classList.add('hidden');
+      }
+    }
 
     // Whichever temp speed boost applies to the current vehicle, if active.
     function activeBoost() {
@@ -2270,10 +2439,12 @@
       ensureAudio();
       generateCity();
       resetCar();
+      generateTraffic();
       availableOrders = [];
       activeOrders = [];
       interactOrder = null;
       interactBtn.classList.add('hidden');
+      crashBannerEl.classList.add('hidden');
       nextOrderId = 1;
       elapsedTime = 0;
       spawnAccumulator = 0;
@@ -2303,11 +2474,13 @@
         state.cash -= owed;
       }
       activeOrders = [];
+      crashTimer = 0;
       gameState = 'menu';
       playEl.classList.add('hidden');
       menuEl.classList.remove('hidden');
       adminBoxEl.classList.remove('hidden');
       interactBtn.classList.add('hidden');
+      crashBannerEl.classList.add('hidden');
       interactOrder = null;
       input.w = input.a = input.s = input.d = false;
       saveStateDebounced();
