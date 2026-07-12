@@ -543,11 +543,15 @@
       </div>
       <div class="hud-row">
         <span class="lbl">Carrying</span>
-        <span class="val" id="play-carry">0 / 2</span>
+        <span class="val" id="play-carry">0 / 1</span>
       </div>
       <div class="hud-row">
         <span class="lbl">Active orders</span>
         <span class="val" id="play-active-count">0</span>
+      </div>
+      <div class="hud-row" id="energy-row" style="display:none;">
+        <span class="lbl">⚡ Energy</span>
+        <span class="val" id="play-energy">0s</span>
       </div>
       <button class="end-shift-btn" id="end-shift">End Shift</button>
 
@@ -561,7 +565,7 @@
       <div id="food-list"></div>
 
       <div class="controls-hint">
-        <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> drive ·
+        <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move ·
         <kbd>E</kbd> pick&nbsp;up / drop&nbsp;off
       </div>
     </div>
@@ -577,19 +581,19 @@
     // =====================================================================
     const STORAGE_KEY = 'horsey:deliverymaster:v1';
     const WORLD_W = 2500, WORLD_H = 2500;
-    const BASE_SPEED = 130;       // px/sec — slower so the car is controllable
+    const BASE_SPEED = 130;       // px/sec — car top speed (once you upgrade to a car)
+    const WALK_SPEED = 39;        // px/sec — on foot: ~70% slower than the car
+    const ENERGY_MS = 5 * 60 * 1000;   // energy drink boost lasts 5 real minutes
     const BASE_ACCEL = 240;       // px/sec^2 — gentler ramp to top speed
     const BASE_BRAKE = 360;
     const BASE_TURN_RATE = 3.0;   // rad/sec
     const FRICTION = 0.55;        // per-second decay — coasts to a stop noticeably
-    const SPEED_TUNE = 55;        // for time-limit math (slower car needs more time)
     const PICKUP_RADIUS = 80;     // px proximity to pickup/dropoff
     // Per-second order spawn — 1-in-35 each tick of the wall clock. If
     // you decline an order you just wait for the next roll, no
     // auto-refill. Player asked for it scarce.
     const ORDER_SPAWN_DENOM = 35;
     const TIP_CHANCE_BASE   = 0.40;        // 40% chance of any tip at all
-    const TIP_CHANCE_PER_CHARISMA = 0.15;  // each Charisma level adds 15 pp
     const TIP_PCT_MIN = 0.05;              // 5%
     const TIP_PCT_MAX = 0.10;              // 10%
     const OFFROAD_SPEED_MULT = 0.25;       // off-road = 25% of normal top speed
@@ -605,26 +609,30 @@
       'Jayden', 'Xuwusnfksufnskjbdhbgayes',
     ];
 
+    // Garage shop. Two kinds of items:
+    //  - leveled (has `costs[]`): buy repeatedly until the array runs out.
+    //  - special (`type`): the energy drink is a repeatable consumable, and
+    //    the motorcycle is a one-time unlock that turns you into a car.
     const UPGRADE_DEFS = [
       {
-        id: 'wheels', name: 'Faster wheels',
-        desc: 'Top speed +20% per level',
-        costs: [500, 2000, 8000],
+        id: 'shoes', name: 'Running shoes',
+        desc: 'Top speed +10% per level, permanent',
+        costs: [200, 400, 600],
       },
       {
-        id: 'bag', name: 'Bigger bag',
-        desc: 'Carry +1 food at a time (start: 2)',
-        costs: [800, 3000, 10000],
+        id: 'energy', name: 'Energy drink', type: 'consumable',
+        desc: '+40% speed for 5 minutes',
+        cost: 300,
       },
       {
-        id: 'charisma', name: 'Charisma',
-        desc: 'Tip chance +15 pp per level (start: 40%)',
-        costs: [1000, 4000, 12000],
+        id: 'backpack', name: 'Bigger backpack',
+        desc: 'Carry +1 food at a time (start: 1)',
+        costs: [300, 600, 900, 1200],
       },
       {
-        id: 'steering', name: 'Snappy steering',
-        desc: 'Turn rate +30% per level',
-        costs: [600, 2500],
+        id: 'motorcycle', name: 'Motorcycle', type: 'unlock',
+        desc: 'Upgrade to a car — faster, carries more',
+        cost: 6000,
       },
     ];
 
@@ -633,7 +641,9 @@
         cash: 0,
         lifetimeDeliveries: 0,
         bestTip: 0,
-        upgrades: { wheels: 0, bag: 0, charisma: 0, steering: 0 },
+        vehicle: 'walk',           // 'walk' | 'car' — the motorcycle unlocks 'car'
+        energyUntil: 0,            // ms timestamp; energy boost active while now < this
+        upgrades: { shoes: 0, backpack: 0 },
       };
     }
     function loadState() {
@@ -659,10 +669,13 @@
     }
 
     // Computed stats from upgrades
-    function maxSpeed()      { return BASE_SPEED * (1 + 0.2 * state.upgrades.wheels); }
-    function carryCap()      { return Math.min(8, 2 + state.upgrades.bag); }  // max food on you at once
-    function tipChance()     { return Math.min(1, TIP_CHANCE_BASE + TIP_CHANCE_PER_CHARISMA * state.upgrades.charisma); }
-    function turnRate()      { return BASE_TURN_RATE * (1 + 0.3 * state.upgrades.steering); }
+    function energyActive()  { return Date.now() < (state.energyUntil || 0); }
+    function speedMult()     { return (1 + 0.10 * state.upgrades.shoes) * (energyActive() ? 1.4 : 1); }
+    function baseSpeed()     { return state.vehicle === 'car' ? BASE_SPEED : WALK_SPEED; }
+    function maxSpeed()      { return baseSpeed() * speedMult(); }
+    function carryCap()      { return (state.vehicle === 'car' ? 2 : 1) + state.upgrades.backpack; }  // food on you at once
+    function tipChance()     { return TIP_CHANCE_BASE; }
+    function turnRate()      { return BASE_TURN_RATE; }
     function carriedCount()  { return activeOrders.filter(o => o.state === 'delivering').length; }
 
     // =====================================================================
@@ -727,7 +740,27 @@
         '<circle cx="21" cy="31" r="0.4" fill="#fbbf24"/>' +
       '</svg>';
 
+    // Top-down walker (faces up in SVG, so heading=0 == "up"). Head + shoulders
+    // seen from above, with a delivery backpack on the back.
+    const PERSON_SVG =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 30">' +
+        '<ellipse cx="12" cy="25" rx="8" ry="2.2" fill="#000" opacity="0.3"/>' +
+        // backpack on the back
+        '<rect x="6.5" y="11" width="11" height="12" rx="3" fill="#3f7d4f" stroke="#255436" stroke-width="0.8"/>' +
+        '<rect x="9" y="13.5" width="6" height="5" rx="1" fill="#2b5c39"/>' +
+        // shoulders / torso
+        '<ellipse cx="12" cy="14" rx="7" ry="6" fill="#4e7fff"/>' +
+        // arms
+        '<circle cx="5.5" cy="13" r="2.2" fill="#f0c39b"/>' +
+        '<circle cx="18.5" cy="13" r="2.2" fill="#f0c39b"/>' +
+        // head
+        '<circle cx="12" cy="9" r="4.5" fill="#f0c39b" stroke="#c98f63" stroke-width="0.6"/>' +
+        // hair toward the crown
+        '<path d="M7.6 8.6 a4.5 4.5 0 0 1 8.8 0 a4.5 3.2 0 0 0 -8.8 0 z" fill="#5a3a22"/>' +
+      '</svg>';
+
     const scooterImg = svgToImage(SCOOTER_SVG);
+    const personImg  = svgToImage(PERSON_SVG);
     const pickupImg  = svgToImage(PICKUP_SVG);
     const dropoffImg = svgToImage(DROPOFF_SVG);
 
@@ -1106,6 +1139,48 @@
       return false;
     }
 
+    // Person collision: pedestrians only bump into buildings and the world
+    // border — they ignore traffic lights and stop signs entirely.
+    const PERSON_RADIUS = 9;
+    function personCollidesAt(x, y) {
+      const r = PERSON_RADIUS;
+      for (const b of buildings) {
+        const cx = Math.max(b.x, Math.min(x, b.x + b.w));
+        const cy = Math.max(b.y, Math.min(y, b.y + b.h));
+        const dx = x - cx, dy = y - cy;
+        if (dx * dx + dy * dy < r * r) return true;
+      }
+      return false;
+    }
+
+    // On-foot movement: direct 8-way, no inertia. Walks full speed anywhere
+    // (no off-road penalty) and phases past lights/stop signs. Heading tracks
+    // the walk direction so the sprite faces where you're going.
+    function updateWalk(dt) {
+      let vx = 0, vy = 0;
+      if (input.w) vy -= 1;
+      if (input.s) vy += 1;
+      if (input.a) vx -= 1;
+      if (input.d) vx += 1;
+      const moving = vx !== 0 || vy !== 0;
+      if (moving) {
+        const len = Math.hypot(vx, vy);
+        vx /= len; vy /= len;
+        car.heading = Math.atan2(vx, -vy);   // heading 0 == facing up
+      }
+      const spd = maxSpeed();
+      car.speed = moving ? spd : 0;
+      const nextX = car.x + vx * spd * dt;
+      const nextY = car.y + vy * spd * dt;
+      if (!personCollidesAt(nextX, car.y) && nextX > 80 && nextX < WORLD_W - 80) car.x = nextX;
+      if (!personCollidesAt(car.x, nextY) && nextY > 80 && nextY < WORLD_H - 80) car.y = nextY;
+    }
+
+    function updatePlayer(dt) {
+      if (state.vehicle === 'car') updateCar(dt);
+      else updateWalk(dt);
+    }
+
     function updateCar(dt) {
       const keys = input;
       // steering
@@ -1307,7 +1382,9 @@
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
       const diff = routeDifficulty(a, b);
       const basePay   = Math.max(3, Math.round((dist * 0.025 + 3) * diff));
-      const timeLimit = (dist / SPEED_TUNE + 25) * diff;
+      // Time limits assume the base on-foot pace, so speed upgrades buy you
+      // slack rather than shrinking the clock.
+      const timeLimit = ((dist / WALK_SPEED) * 2.5 + 25) * diff;
       // Pre-roll the tip at order creation so the displayed food price
       // is exact (and so Charisma upgrades affect future orders).
       let tip = 0;
@@ -1552,12 +1629,16 @@
         }
       }
 
-      // car (rotated)
+      // player sprite (rotated to heading) — walker on foot, scooter in a car
       ctx.save();
       ctx.translate(car.x, car.y);
       ctx.rotate(car.heading);
-      if (scooterImg.complete) {
-        ctx.drawImage(scooterImg, -CAR_W / 2, -CAR_H / 2, CAR_W, CAR_H);
+      const onFoot = state.vehicle !== 'car';
+      const sprite = onFoot ? personImg : scooterImg;
+      const sw = onFoot ? 20 : CAR_W;
+      const sh = onFoot ? 26 : CAR_H;
+      if (sprite.complete) {
+        ctx.drawImage(sprite, -sw / 2, -sh / 2, sw, sh);
       }
       ctx.restore();
 
@@ -1637,7 +1718,7 @@
       if (gameState === 'playing') {
         elapsedTime += dt;
         updateTrafficLights(elapsedTime);
-        updateCar(dt);
+        updatePlayer(dt);
         updateOrders(dt);
         updateCamera(dt);
         render();
@@ -1646,6 +1727,7 @@
         if (sidebarTickAccumulator >= 0.25) {
           sidebarTickAccumulator = 0;
           renderTimers();
+          updateEnergyHud();
         }
       }
 
@@ -1662,8 +1744,19 @@
     const playCashEl      = document.getElementById('play-cash');
     const playCarryEl     = document.getElementById('play-carry');
     const playActiveCountEl = document.getElementById('play-active-count');
+    const energyRowEl      = document.getElementById('energy-row');
+    const playEnergyEl     = document.getElementById('play-energy');
     const interactBtn      = document.getElementById('interact-btn');
     interactBtn.addEventListener('click', doInteract);
+
+    function updateEnergyHud() {
+      if (energyActive()) {
+        energyRowEl.style.display = '';
+        playEnergyEl.textContent = Math.ceil((state.energyUntil - Date.now()) / 1000) + 's';
+      } else {
+        energyRowEl.style.display = 'none';
+      }
+    }
 
     function dollar(n) { return '$' + Math.floor(n).toLocaleString(); }
 
@@ -1831,11 +1924,16 @@
     const upgradesListEl = document.getElementById('upgrades-list');
 
     function upgradeCost(def) {
+      if (def.type === 'consumable' || def.type === 'unlock') return def.cost;
       const lvl = state.upgrades[def.id];
       if (lvl >= def.costs.length) return null;
       return def.costs[lvl];
     }
-    function isMaxed(def) { return state.upgrades[def.id] >= def.costs.length; }
+    function isMaxed(def) {
+      if (def.type === 'consumable') return false;               // always buyable
+      if (def.type === 'unlock') return state.vehicle === 'car'; // one-time
+      return state.upgrades[def.id] >= def.costs.length;
+    }
 
     function renderMenu() {
       menuCashEl.textContent = dollar(state.cash);
@@ -1843,22 +1941,37 @@
       menuBestTipEl.textContent = dollar(state.bestTip);
       upgradesListEl.innerHTML = '';
       for (const def of UPGRADE_DEFS) {
-        const lvl = state.upgrades[def.id];
-        const maxLvl = def.costs.length;
         const cost = upgradeCost(def);
+        const maxed = isMaxed(def);
         const row = document.createElement('div');
         row.className = 'upgrade';
-        if (isMaxed(def)) row.classList.add('maxed');
-        else if (state.cash >= cost) row.classList.add('affordable');
+        if (maxed) row.classList.add('maxed');
+        else if (cost != null && state.cash >= cost) row.classList.add('affordable');
+
+        // status line under the description depends on the item kind
+        let statusLine;
+        if (def.type === 'consumable') {
+          statusLine = energyActive()
+            ? 'Active — ' + Math.ceil((state.energyUntil - Date.now()) / 1000) + 's left'
+            : 'Buy anytime';
+        } else if (def.type === 'unlock') {
+          statusLine = state.vehicle === 'car' ? 'Owned' : 'Not owned';
+        } else {
+          statusLine = 'Level ' + state.upgrades[def.id] + ' / ' + def.costs.length;
+        }
+
+        const btnLabel = (def.type === 'unlock' && maxed) ? 'OWNED'
+                       : maxed ? 'MAX'
+                       : '$' + cost.toLocaleString();
         row.innerHTML =
           '<div class="info">' +
             '<div class="name">' + def.name + '</div>' +
             '<div class="desc">' + def.desc + '</div>' +
-            '<div class="level">Level ' + lvl + ' / ' + maxLvl + '</div>' +
+            '<div class="level">' + statusLine + '</div>' +
           '</div>' +
-          (isMaxed(def)
-            ? '<button disabled>MAX</button>'
-            : '<button data-id="' + def.id + '">$' + cost.toLocaleString() + '</button>');
+          (maxed
+            ? '<button disabled>' + btnLabel + '</button>'
+            : '<button data-id="' + def.id + '">' + btnLabel + '</button>');
         upgradesListEl.appendChild(row);
       }
       // wire purchase buttons
@@ -1871,9 +1984,17 @@
       const def = UPGRADE_DEFS.find(d => d.id === id);
       if (!def || isMaxed(def)) return;
       const cost = upgradeCost(def);
-      if (state.cash < cost) return;
+      if (cost == null || state.cash < cost) return;
       state.cash -= cost;
-      state.upgrades[id]++;
+      if (def.type === 'consumable') {
+        // stacks if you buy more than one — extends from whenever it runs out
+        const base = Math.max(Date.now(), state.energyUntil || 0);
+        state.energyUntil = base + ENERGY_MS;
+      } else if (def.type === 'unlock') {
+        state.vehicle = 'car';
+      } else {
+        state.upgrades[id]++;
+      }
       saveStateDebounced();
       renderMenu();
       playPurchase();
@@ -1908,6 +2029,7 @@
       renderHud();
       renderAvailable();
       renderActive();
+      updateEnergyHud();
     }
     function endShift() {
       gameState = 'menu';
