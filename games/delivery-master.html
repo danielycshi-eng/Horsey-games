@@ -156,6 +156,26 @@
     .upgrade button:disabled { opacity: 0.45; cursor: not-allowed; background: #2a3550; }
     .upgrade.maxed button { background: #444; }
 
+    /* Vehicle switcher */
+    .veh-grid { display: flex; gap: 0.5rem; }
+    .veh-btn {
+      flex: 1;
+      padding: 0.6rem 0.4rem;
+      background: rgba(22, 33, 62, 0.5);
+      border: 1.5px solid #0f3460;
+      border-radius: 10px;
+      color: #cbd2e0;
+      font-family: inherit;
+      font-weight: 700;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, transform 0.1s;
+    }
+    .veh-btn:hover:not(:disabled) { background: rgba(15, 52, 96, 0.6); transform: translateY(-1px); }
+    .veh-btn.current { border-color: #22c55e; color: #fff; box-shadow: 0 0 10px rgba(34,197,94,0.25); }
+    .veh-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .veh-btn .veh-lock { display: block; font-size: 0.62rem; letter-spacing: 1px; color: #7f8db0; margin-top: 2px; }
+
     .start-btn {
       padding: 1rem 3rem;
       background: linear-gradient(135deg, #22c55e, #15803d);
@@ -522,8 +542,13 @@
       </div>
     </div>
 
+    <div class="panel" id="vehicle-panel">
+      <div class="panel-title">Vehicle</div>
+      <div id="vehicle-select"></div>
+    </div>
+
     <div class="panel">
-      <div class="panel-title">Garage</div>
+      <div class="panel-title" id="shop-title">Shop</div>
       <div id="upgrades-list"></div>
     </div>
 
@@ -550,7 +575,7 @@
         <span class="val" id="play-active-count">0</span>
       </div>
       <div class="hud-row" id="energy-row" style="display:none;">
-        <span class="lbl">⚡ Energy</span>
+        <span class="lbl" id="energy-label">⚡ Boost</span>
         <span class="val" id="play-energy">0s</span>
       </div>
       <button class="end-shift-btn" id="end-shift">End Shift</button>
@@ -581,9 +606,11 @@
     // =====================================================================
     const STORAGE_KEY = 'horsey:deliverymaster:v1';
     const WORLD_W = 2500, WORLD_H = 2500;
-    const BASE_SPEED = 130;       // px/sec — car top speed (once you upgrade to a car)
+    const BASE_SPEED = 130;       // px/sec — car top speed
+    const MOTO_SPEED = Math.round(BASE_SPEED * 0.6);  // motorcycle: 40% slower than the car
     const WALK_SPEED = 39;        // px/sec — on foot: ~70% slower than the car
     const ENERGY_MS = 5 * 60 * 1000;   // energy drink boost lasts 5 real minutes
+    const OIL_MS    = 100 * 1000;      // oil burst lasts 100 seconds
     const BASE_ACCEL = 240;       // px/sec^2 — gentler ramp to top speed
     const BASE_BRAKE = 360;
     const BASE_TURN_RATE = 3.0;   // rad/sec
@@ -612,31 +639,46 @@
       'Jayden', 'Xuwusnfksufnskjbdhbgayes',
     ];
 
-    // Garage shop. Two kinds of items:
-    //  - leveled (has `costs[]`): buy repeatedly until the array runs out.
-    //  - special (`type`): the energy drink is a repeatable consumable, and
-    //    the motorcycle is a one-time unlock that turns you into a car.
-    const UPGRADE_DEFS = [
-      {
-        id: 'shoes', name: 'Running shoes',
-        desc: 'Top speed +10% per level, permanent',
-        costs: [200, 400, 600],
-      },
-      {
-        id: 'energy', name: 'Energy drink', type: 'consumable',
-        desc: '+40% speed for 5 minutes',
-        cost: 300,
-      },
-      {
-        id: 'backpack', name: 'Bigger backpack',
-        desc: 'Carry +1 food at a time (start: 1)',
-        costs: [300, 600, 900, 1200],
-      },
-      {
-        id: 'motorcycle', name: 'Motorcycle', type: 'unlock',
-        desc: 'Upgrade to a car — faster, carries more',
-        cost: 6000,
-      },
+    // Per-vehicle shops. The active vehicle decides which list the garage
+    // shows, so switching vehicles switches the whole upgrade set. Item kinds:
+    //  - leveled    (has `costs[]`): buy repeatedly until the array runs out.
+    //  - consumable (`type:'consumable'`): repeatable temp speed boost; sets
+    //    the `boostField` timestamp `durationMs` into the future.
+    //  - unlock     (`type:'unlock'`): one-time; unlocks + switches to `unlocks`.
+    const SHOP_DEFS = {
+      walk: [
+        { id: 'shoes', name: 'Running shoes',
+          desc: 'Top speed +10% per level, permanent', costs: [200, 400, 600] },
+        { id: 'energy', name: 'Energy drink', type: 'consumable',
+          desc: '+40% speed for 5 minutes', cost: 300,
+          boostField: 'energyUntil', durationMs: ENERGY_MS },
+        { id: 'backpack', name: 'Bigger backpack',
+          desc: 'Carry +1 food at a time (start: 1)', costs: [300, 600, 900, 1200] },
+        { id: 'moto', name: 'Motorcycle', type: 'unlock', unlocks: 'moto',
+          desc: 'Unlock the motorcycle — faster, obeys lights only', cost: 6000 },
+      ],
+      moto: [
+        { id: 'motor', name: 'Better Motor',
+          desc: 'Top speed +10% per level', costs: [600, 1200, 1900] },
+        { id: 'oil', name: 'Oil Burst', type: 'consumable',
+          desc: '+50% speed for 100 seconds', cost: 700,
+          boostField: 'oilUntil', durationMs: OIL_MS },
+        { id: 'basket', name: 'Better Basket',
+          desc: 'Carry +1 food at a time (start: 1)',
+          costs: [700, 1300, 1700, 2300, 2900, 3900, 5000] },
+        { id: 'car', name: 'Car', type: 'unlock', unlocks: 'car',
+          desc: 'Unlock the car — top speed, obeys all signs', cost: 12000 },
+      ],
+      car: [
+        // TODO: car upgrades (spec pending)
+      ],
+    };
+    function shopDefs() { return SHOP_DEFS[state.vehicle] || []; }
+
+    const VEHICLES = [
+      { id: 'walk', label: '🚶 Walk' },
+      { id: 'moto', label: '🏍️ Motorcycle' },
+      { id: 'car',  label: '🚗 Car' },
     ];
 
     function defaultState() {
@@ -644,9 +686,11 @@
         cash: 0,
         lifetimeDeliveries: 0,
         bestTip: 0,
-        vehicle: 'walk',           // 'walk' | 'car' — the motorcycle unlocks 'car'
-        energyUntil: 0,            // ms timestamp; energy boost active while now < this
-        upgrades: { shoes: 0, backpack: 0 },
+        vehicle: 'walk',                       // 'walk' | 'moto' | 'car' — currently active
+        unlocked: { moto: false, car: false }, // walk is always available
+        energyUntil: 0,                        // ms timestamp — energy drink (walk)
+        oilUntil: 0,                           // ms timestamp — oil burst (moto)
+        upgrades: { shoes: 0, backpack: 0, motor: 0, basket: 0 },
       };
     }
     function loadState() {
@@ -655,7 +699,13 @@
         if (raw) {
           const parsed = JSON.parse(raw);
           const merged = Object.assign(defaultState(), parsed);
+          merged.unlocked = Object.assign(defaultState().unlocked, parsed.unlocked || {});
           merged.upgrades = Object.assign(defaultState().upgrades, parsed.upgrades || {});
+          // Keep vehicle + unlocked consistent (also migrates old saves where
+          // the $6000 motorcycle set vehicle straight to 'car').
+          if (merged.vehicle === 'car') { merged.unlocked.moto = true; merged.unlocked.car = true; }
+          else if (merged.vehicle === 'moto') { merged.unlocked.moto = true; }
+          if (!merged.unlocked[merged.vehicle] && merged.vehicle !== 'walk') merged.vehicle = 'walk';
           return merged;
         }
       } catch (_) {}
@@ -671,12 +721,25 @@
       }, 250);
     }
 
-    // Computed stats from upgrades
+    // Computed stats from upgrades — everything keys off the active vehicle.
     function energyActive()  { return Date.now() < (state.energyUntil || 0); }
-    function speedMult()     { return (1 + 0.10 * state.upgrades.shoes) * (energyActive() ? 1.4 : 1); }
-    function baseSpeed()     { return state.vehicle === 'car' ? BASE_SPEED : WALK_SPEED; }
+    function oilActive()     { return Date.now() < (state.oilUntil || 0); }
+    function speedMult() {
+      if (state.vehicle === 'moto') return (1 + 0.10 * state.upgrades.motor) * (oilActive() ? 1.5 : 1);
+      if (state.vehicle === 'car')  return 1;   // car upgrades TBD
+      return (1 + 0.10 * state.upgrades.shoes) * (energyActive() ? 1.4 : 1);   // walk
+    }
+    function baseSpeed() {
+      if (state.vehicle === 'car')  return BASE_SPEED;
+      if (state.vehicle === 'moto') return MOTO_SPEED;
+      return WALK_SPEED;
+    }
     function maxSpeed()      { return baseSpeed() * speedMult(); }
-    function carryCap()      { return (state.vehicle === 'car' ? 2 : 1) + state.upgrades.backpack; }  // food on you at once
+    function carryCap() {
+      if (state.vehicle === 'car')  return 2;                       // car base (upgrades TBD)
+      if (state.vehicle === 'moto') return 1 + state.upgrades.basket;
+      return 1 + state.upgrades.backpack;                          // walk
+    }
     function tipChance()     { return TIP_CHANCE_BASE; }
     function turnRate()      { return BASE_TURN_RATE; }
     function carriedCount()  { return activeOrders.filter(o => o.state === 'delivering').length; }
@@ -762,8 +825,33 @@
         '<path d="M7.6 8.6 a4.5 4.5 0 0 1 8.8 0 a4.5 3.2 0 0 0 -8.8 0 z" fill="#5a3a22"/>' +
       '</svg>';
 
+    // Top-down car (faces up in SVG, heading=0 == "up")
+    const CAR_SVG =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 48">' +
+        '<ellipse cx="16" cy="44" rx="13" ry="2.5" fill="#000" opacity="0.3"/>' +   // shadow
+        // wheels
+        '<rect x="1.5" y="9" width="4.5" height="10" rx="1.6" fill="#161616"/>' +
+        '<rect x="26" y="9" width="4.5" height="10" rx="1.6" fill="#161616"/>' +
+        '<rect x="1.5" y="29" width="4.5" height="10" rx="1.6" fill="#161616"/>' +
+        '<rect x="26" y="29" width="4.5" height="10" rx="1.6" fill="#161616"/>' +
+        // body
+        '<rect x="4" y="3" width="24" height="42" rx="7" fill="#4e7fff" stroke="#26407a" stroke-width="1"/>' +
+        // hood + roof shading
+        '<rect x="7" y="7" width="18" height="12" rx="4" fill="#6f97ff"/>' +
+        '<rect x="7" y="26" width="18" height="10" rx="3" fill="#3f68d8"/>' +
+        // windshield + rear window
+        '<rect x="8" y="16" width="16" height="7" rx="2.5" fill="#bcd4ff" opacity="0.85"/>' +
+        '<rect x="8" y="32" width="16" height="6" rx="2.5" fill="#9fc0ff" opacity="0.7"/>' +
+        // roof
+        '<rect x="9" y="23" width="14" height="9" rx="2" fill="#2f56c2"/>' +
+        // headlights
+        '<circle cx="9" cy="5.5" r="1.4" fill="#fff" opacity="0.9"/>' +
+        '<circle cx="23" cy="5.5" r="1.4" fill="#fff" opacity="0.9"/>' +
+      '</svg>';
+
     const scooterImg = svgToImage(SCOOTER_SVG);
     const personImg  = svgToImage(PERSON_SVG);
+    const carImg     = svgToImage(CAR_SVG);
     const pickupImg  = svgToImage(PICKUP_SVG);
     const dropoffImg = svgToImage(DROPOFF_SVG);
 
@@ -1133,11 +1221,13 @@
         const inOld = (car.x > it.x - ib && car.x < it.x + ib && car.y > it.y - ib && car.y < it.y + ib);
         if (!inOld) return true;
       }
-      // Stop signs — flat-out impassable. The block is sized so the car
-      // can't squeeze through the narrow road around it.
-      const sh = STOP_SIGN_HALF;
-      for (const s of roads.stopSigns) {
-        if (x > s.x - sh && x < s.x + sh && y > s.y - sh && y < s.y + sh) return true;
+      // Stop signs — flat-out impassable for the car. Motorcycles weave past
+      // them (they only obey the lights), so skip this block on a moto.
+      if (state.vehicle !== 'moto') {
+        const sh = STOP_SIGN_HALF;
+        for (const s of roads.stopSigns) {
+          if (x > s.x - sh && x < s.x + sh && y > s.y - sh && y < s.y + sh) return true;
+        }
       }
       return false;
     }
@@ -1180,8 +1270,8 @@
     }
 
     function updatePlayer(dt) {
-      if (state.vehicle === 'car') updateCar(dt);
-      else updateWalk(dt);
+      if (state.vehicle === 'walk') updateWalk(dt);
+      else updateCar(dt);   // moto + car share the driving physics
     }
 
     function updateCar(dt) {
@@ -1649,14 +1739,14 @@
         }
       }
 
-      // player sprite (rotated to heading) — walker on foot, scooter in a car
+      // player sprite (rotated to heading): walker / scooter / car
       ctx.save();
       ctx.translate(car.x, car.y);
       ctx.rotate(car.heading);
-      const onFoot = state.vehicle !== 'car';
-      const sprite = onFoot ? personImg : scooterImg;
-      const sw = onFoot ? 20 : CAR_W;
-      const sh = onFoot ? 26 : CAR_H;
+      let sprite, sw, sh;
+      if (state.vehicle === 'walk')      { sprite = personImg;  sw = 20;      sh = 26; }
+      else if (state.vehicle === 'moto') { sprite = scooterImg; sw = CAR_W;    sh = CAR_H; }
+      else                               { sprite = carImg;     sw = CAR_W + 4; sh = CAR_H + 8; }
       if (sprite.complete) {
         ctx.drawImage(sprite, -sw / 2, -sh / 2, sw, sh);
       }
@@ -1765,14 +1855,23 @@
     const playCarryEl     = document.getElementById('play-carry');
     const playActiveCountEl = document.getElementById('play-active-count');
     const energyRowEl      = document.getElementById('energy-row');
+    const energyLabelEl    = document.getElementById('energy-label');
     const playEnergyEl     = document.getElementById('play-energy');
     const interactBtn      = document.getElementById('interact-btn');
     interactBtn.addEventListener('click', doInteract);
 
+    // Whichever temp speed boost applies to the current vehicle, if active.
+    function activeBoost() {
+      if (state.vehicle === 'walk' && energyActive()) return { label: '⚡ Energy', until: state.energyUntil };
+      if (state.vehicle === 'moto' && oilActive())    return { label: '🔥 Oil', until: state.oilUntil };
+      return null;
+    }
     function updateEnergyHud() {
-      if (energyActive()) {
+      const b = activeBoost();
+      if (b) {
         energyRowEl.style.display = '';
-        playEnergyEl.textContent = Math.ceil((state.energyUntil - Date.now()) / 1000) + 's';
+        energyLabelEl.textContent = b.label;
+        playEnergyEl.textContent = Math.ceil((b.until - Date.now()) / 1000) + 's';
       } else {
         energyRowEl.style.display = 'none';
       }
@@ -1951,6 +2050,8 @@
     const menuDeliveriesEl = document.getElementById('menu-deliveries');
     const menuBestTipEl = document.getElementById('menu-best-tip');
     const upgradesListEl = document.getElementById('upgrades-list');
+    const shopTitleEl = document.getElementById('shop-title');
+    const vehicleSelectEl = document.getElementById('vehicle-select');
 
     function upgradeCost(def) {
       if (def.type === 'consumable' || def.type === 'unlock') return def.cost;
@@ -1959,17 +2060,52 @@
       return def.costs[lvl];
     }
     function isMaxed(def) {
-      if (def.type === 'consumable') return false;               // always buyable
-      if (def.type === 'unlock') return state.vehicle === 'car'; // one-time
+      if (def.type === 'consumable') return false;                 // always buyable
+      if (def.type === 'unlock') return !!state.unlocked[def.unlocks]; // one-time
       return state.upgrades[def.id] >= def.costs.length;
+    }
+
+    // The vehicle picker: walk is always available, moto/car once unlocked.
+    function renderVehicleSelect() {
+      vehicleSelectEl.innerHTML = '';
+      const grid = document.createElement('div');
+      grid.className = 'veh-grid';
+      for (const v of VEHICLES) {
+        const owned = v.id === 'walk' || state.unlocked[v.id];
+        const btn = document.createElement('button');
+        btn.className = 'veh-btn' + (state.vehicle === v.id ? ' current' : '');
+        btn.disabled = !owned;
+        btn.innerHTML = v.label + (owned ? '' : '<span class="veh-lock">🔒 locked</span>');
+        if (owned) btn.addEventListener('click', () => switchVehicle(v.id));
+        grid.appendChild(btn);
+      }
+      vehicleSelectEl.appendChild(grid);
+    }
+
+    function switchVehicle(id) {
+      if (id !== 'walk' && !state.unlocked[id]) return;
+      if (state.vehicle === id) return;
+      state.vehicle = id;
+      saveStateDebounced();
+      renderMenu();
+      playBlip();
     }
 
     function renderMenu() {
       menuCashEl.textContent = dollar(state.cash);
       menuDeliveriesEl.textContent = state.lifetimeDeliveries.toLocaleString();
       menuBestTipEl.textContent = dollar(state.bestTip);
+      // Panel title: on foot it's a "Shop", on a vehicle it's the "Garage".
+      shopTitleEl.textContent = state.vehicle === 'walk' ? 'Shop' : 'Garage';
+      renderVehicleSelect();
+
       upgradesListEl.innerHTML = '';
-      for (const def of UPGRADE_DEFS) {
+      const defs = shopDefs();
+      if (defs.length === 0) {
+        upgradesListEl.innerHTML = '<div class="empty-state">No upgrades for this vehicle yet.</div>';
+        return;
+      }
+      for (const def of defs) {
         const cost = upgradeCost(def);
         const maxed = isMaxed(def);
         const row = document.createElement('div');
@@ -1980,11 +2116,12 @@
         // status line under the description depends on the item kind
         let statusLine;
         if (def.type === 'consumable') {
-          statusLine = energyActive()
-            ? 'Active — ' + Math.ceil((state.energyUntil - Date.now()) / 1000) + 's left'
+          const until = state[def.boostField] || 0;
+          statusLine = Date.now() < until
+            ? 'Active — ' + Math.ceil((until - Date.now()) / 1000) + 's left'
             : 'Buy anytime';
         } else if (def.type === 'unlock') {
-          statusLine = state.vehicle === 'car' ? 'Owned' : 'Not owned';
+          statusLine = state.unlocked[def.unlocks] ? 'Owned' : 'Not owned';
         } else {
           statusLine = 'Level ' + state.upgrades[def.id] + ' / ' + def.costs.length;
         }
@@ -2010,17 +2147,18 @@
     }
 
     function buyUpgrade(id) {
-      const def = UPGRADE_DEFS.find(d => d.id === id);
+      const def = shopDefs().find(d => d.id === id);
       if (!def || isMaxed(def)) return;
       const cost = upgradeCost(def);
       if (cost == null || state.cash < cost) return;
       state.cash -= cost;
       if (def.type === 'consumable') {
-        // stacks if you buy more than one — extends from whenever it runs out
-        const base = Math.max(Date.now(), state.energyUntil || 0);
-        state.energyUntil = base + ENERGY_MS;
+        // stacks if bought again — extends from whenever it currently runs out
+        const base = Math.max(Date.now(), state[def.boostField] || 0);
+        state[def.boostField] = base + def.durationMs;
       } else if (def.type === 'unlock') {
-        state.vehicle = 'car';
+        state.unlocked[def.unlocks] = true;
+        state.vehicle = def.unlocks;   // hop straight into the new ride
       } else {
         state.upgrades[id]++;
       }
