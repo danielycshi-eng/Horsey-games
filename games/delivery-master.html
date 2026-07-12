@@ -179,6 +179,35 @@
     .veh-btn:disabled { opacity: 0.4; cursor: not-allowed; }
     .veh-btn .veh-lock { display: block; font-size: 0.62rem; letter-spacing: 1px; color: #7f8db0; margin-top: 2px; }
 
+    /* Admin / testing box */
+    .admin-box { border-color: rgba(233, 69, 96, 0.35); }
+    .admin-box .panel-title { color: #e9a0ad; border-bottom-color: rgba(233, 69, 96, 0.25); }
+    .admin-row { display: flex; gap: 0.5rem; }
+    .admin-row input {
+      flex: 1;
+      padding: 0.55rem 0.7rem;
+      background: rgba(11, 15, 36, 0.7);
+      border: 1.5px solid #0f3460;
+      border-radius: 8px;
+      color: #fff;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 0.95rem;
+    }
+    .admin-row input:focus { outline: none; border-color: #4e7fff; }
+    .admin-row button {
+      padding: 0.55rem 1.4rem;
+      background: linear-gradient(135deg, #e94560, #b73247);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 700;
+      letter-spacing: 1px;
+      transition: transform 0.1s, box-shadow 0.15s;
+    }
+    .admin-row button:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(233, 69, 96, 0.4); }
+
     .start-btn {
       padding: 1rem 3rem;
       background: linear-gradient(135deg, #22c55e, #15803d);
@@ -556,6 +585,16 @@
     </div>
 
     <button class="start-btn" id="start-shift">Start Shift</button>
+
+    <!-- Admin / testing only: instantly grant cash so you don't have to
+         grind deliveries while testing. -->
+    <div class="panel admin-box">
+      <div class="panel-title">🛠 Admin (testing only)</div>
+      <div class="admin-row">
+        <input type="number" id="admin-amount" placeholder="Amount" value="1000" min="0">
+        <button id="admin-give">Give</button>
+      </div>
+    </div>
   </div>
 
   <!-- ============================================================
@@ -2237,6 +2276,20 @@
       state = defaultState();
       renderMenu();
     });
+
+    // Admin / testing: grant the entered amount of cash instantly.
+    const adminAmountEl = document.getElementById('admin-amount');
+    function adminGive() {
+      const amount = Math.round(parseFloat(adminAmountEl.value));
+      if (!isFinite(amount) || amount === 0) return;
+      state.cash += amount;
+      saveStateDebounced();
+      renderMenu();
+      playPurchase();
+      showToast('Admin: +' + dollar(amount));
+    }
+    document.getElementById('admin-give').addEventListener('click', adminGive);
+    adminAmountEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') adminGive(); });
 
     window.addEventListener('resize', () => {
       if (gameState === 'playing') resizeGameCanvas();
