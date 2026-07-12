@@ -588,7 +588,9 @@
     const BASE_BRAKE = 360;
     const BASE_TURN_RATE = 3.0;   // rad/sec
     const FRICTION = 0.55;        // per-second decay — coasts to a stop noticeably
+    const SPEED_TUNE = 55;        // for time-limit math (kept fixed so easy orders stay easy)
     const PICKUP_RADIUS = 80;     // px proximity to pickup/dropoff
+    const LATE_PENALTY_PER_SEC = 1;   // $ drained from your account for each second an order is late
     // Per-second order spawn — 1-in-35 each tick of the wall clock. If
     // you decline an order you just wait for the next roll, no
     // auto-refill. Player asked for it scarce.
@@ -1382,9 +1384,7 @@
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
       const diff = routeDifficulty(a, b);
       const basePay   = Math.max(3, Math.round((dist * 0.025 + 3) * diff));
-      // Time limits assume the base on-foot pace, so speed upgrades buy you
-      // slack rather than shrinking the clock.
-      const timeLimit = ((dist / WALK_SPEED) * 2.5 + 25) * diff;
+      const timeLimit = (dist / SPEED_TUNE + 25) * diff;
       // Pre-roll the tip at order creation so the displayed food price
       // is exact (and so Charisma upgrades affect future orders).
       let tip = 0;
@@ -1441,15 +1441,22 @@
       // tick active timers + find the closest in-range target (if any)
       interactOrder = null;
       let bestInteractDist = Infinity;
+      let cashDirty = false;
       for (let i = activeOrders.length - 1; i >= 0; i--) {
         const o = activeOrders[i];
         o.timeRemaining -= dt;
         if (o.timeRemaining <= 0) {
-          showToast('Order failed!', true);
-          playFail();
-          activeOrders.splice(i, 1);
-          renderActive();
-          continue;
+          // Past the deadline the order does NOT auto-fail — you can still
+          // deliver it, but every second late drains $1 from your account
+          // until you do. No bailing out by ending the shift, either.
+          if (!o.late) {
+            o.late = true;
+            showToast('Order late! −$' + LATE_PENALTY_PER_SEC + '/s until delivered', true);
+            playFail();
+            renderActive();
+          }
+          state.cash -= LATE_PENALTY_PER_SEC * dt;
+          cashDirty = true;
         }
         const target = o.state === 'picking-up'
           ? buildingCenter(buildings[o.pickupIdx])
@@ -1460,6 +1467,7 @@
           bestInteractDist = d;
         }
       }
+      if (cashDirty) { renderHud(); saveStateDebounced(); }
       // Show / hide the interact button
       if (interactOrder) {
         const label = interactOrder.state === 'picking-up' ? '📦 Pick up' : '🏠 Drop off';
@@ -1759,6 +1767,12 @@
     }
 
     function dollar(n) { return '$' + Math.floor(n).toLocaleString(); }
+    // Timer label — flips to a red LATE counter once the deadline passes.
+    function timerText(o) {
+      return o.timeRemaining <= 0
+        ? '⚠ LATE ' + Math.ceil(-o.timeRemaining) + 's'
+        : '⏱ ' + Math.ceil(o.timeRemaining) + 's';
+    }
 
     function renderHud() {
       playCashEl.textContent = dollar(state.cash);
@@ -1822,7 +1836,7 @@
             '<div class="pay">$' + o.basePay + (o.tip ? '+$' + o.tip : '') + '</div>' +
             '<div class="meta">' +
               '<span><span class="state-badge">📦 Pickup</span></span>' +
-              '<span class="timer">⏱ ' + Math.ceil(o.timeRemaining) + 's</span>' +
+              '<span class="timer">' + timerText(o) + '</span>' +
             '</div>' +
             '<div class="restaurant-line"><strong>' + o.restaurant + '</strong> — ' + o.item + '</div>';
           enrouteListEl.appendChild(card);
@@ -1851,7 +1865,7 @@
             '</div>' +
             '<div class="meta">' +
               '<span><span class="state-badge">🏠 Drop off</span></span>' +
-              '<span class="timer">⏱ ' + Math.ceil(o.timeRemaining) + 's</span>' +
+              '<span class="timer">' + timerText(o) + '</span>' +
             '</div>' +
             '<div class="food-price">$' + total + '</div>' +
             '<div class="food-breakdown">$' + o.foodPrice + ' food + $' + o.basePay + ' delivery' + tipText + '</div>';
@@ -1866,7 +1880,10 @@
         const card = document.querySelector('[data-order-id="' + o.id + '"]');
         if (!card) continue;
         const timer = card.querySelector('.timer');
-        if (timer) timer.textContent = '⏱ ' + Math.ceil(o.timeRemaining) + 's';
+        if (timer) {
+          timer.textContent = timerText(o);
+          timer.style.color = o.timeRemaining <= 0 ? '#ff6b6b' : '';
+        }
         if (o.timeRemaining < 10 && !card.classList.contains('urgent')) card.classList.add('urgent');
       }
     }
@@ -2032,6 +2049,16 @@
       updateEnergyHud();
     }
     function endShift() {
+      // Bailing on accepted orders isn't free: you forfeit the full value
+      // (delivery pay + tip) of everything you haven't dropped off yet.
+      const owed = activeOrders.reduce((s, o) => s + o.basePay + (o.tip || 0), 0);
+      if (owed > 0) {
+        const n = activeOrders.length;
+        if (!confirm('You still have ' + n + ' undelivered order' + (n > 1 ? 's' : '') +
+                     '. Ending now forfeits $' + owed + '. End shift anyway?')) return;
+        state.cash -= owed;
+      }
+      activeOrders = [];
       gameState = 'menu';
       playEl.classList.add('hidden');
       menuEl.classList.remove('hidden');
