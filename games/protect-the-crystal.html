@@ -107,6 +107,13 @@
       <p style="color:#b7a98f;font-size:0.82rem">Wrong tool = no effect: only the pickaxe mines, only the sword hurts monsters.</p>
     </div>
     <div class="panel">
+      <h3>Difficulty <span style="color:#8a8f9c;font-weight:400;text-transform:none;letter-spacing:0">— default Normal</span></h3>
+      <div id="diffs" class="boosts">
+        <button class="boost" data-diff="easy">Easy</button>
+        <button class="boost" data-diff="insane">Insane</button>
+      </div>
+    </div>
+    <div class="panel">
       <h3>Prep Boost <span style="color:#8a8f9c;font-weight:400;text-transform:none;letter-spacing:0">— pick any (25s head start)</span></h3>
       <div id="boosts" class="boosts">
         <button class="boost" data-boost="haste">Haste</button>
@@ -162,16 +169,25 @@
     const WORLD_PX = GRID * TILE;
     const PLAYER_SPEED = 3.6, PLAYER_R = 0.34, REACH = 1.7;
     const SWORD_RANGE = 1.15, SWORD_CD = 0.34, SWING_DUR = 0.28;
-    const MINE_TIME = { dirt: 5, stone: 10 };
     const BREAK_TIME = { dirt: 10, stone: 25 };
-    const PLAYER_HP = 100, CRYSTAL_HP = 220, PREP = 90, WAVE_INTERVAL = 22;
+    const PLAYER_HP = 100, CRYSTAL_HP = 220;
     // crack overlay segments, revealed progressively as a block takes damage
     const CRACKS = [[.5,.5,.22,.16],[.5,.5,.8,.24],[.5,.5,.72,.82],[.5,.5,.2,.76],[.22,.16,.08,.34],[.8,.24,.93,.5],[.72,.82,.88,.92],[.2,.76,.07,.6],[.5,.5,.5,.14],[.5,.5,.9,.6]];
 
     const MONSTER_DEFS = {
-      rode:     { hits: 3,  dmg: 5,  range: 1, speed: 2.2, r: 0.36, color: '#d64545', size: 0.42 },
-      superode: { hits: 10, dmg: 20, range: 2, speed: 1.4, r: 0.44, color: '#7d4fd6', size: 0.56 },
+      rode:     { dmg: 5,  range: 1, speed: 2.2, r: 0.36, color: '#d64545', size: 0.42 },
+      superode: { dmg: 20, range: 2, speed: 1.4, r: 0.44, color: '#7d4fd6', size: 0.56 },
     };
+
+    // Difficulty presets. Normal is the default (no mode selected on the menu).
+    const DIFFS = {
+      normal: { prep: 90, rodeHits: 3, superHits: 10, mineDirt: 5, mineStone: 10, waveBase: 2, wavePer: 1,   superBase: 0.03, superMax: 0.45, waveInterval: 22, hasteDirt: 1,   hasteStone: 3,  strRode: 1, strSuper: 3 },
+      easy:   { prep: 90, rodeHits: 2, superHits: 5,  mineDirt: 3, mineStone: 8,  waveBase: 1, wavePer: 0.6, superBase: 0.02, superMax: 0.30, waveInterval: 26, hasteDirt: 0.5, hasteStone: 3,  strRode: 1, strSuper: 3 },
+      insane: { prep: 60, rodeHits: 8, superHits: 15, mineDirt: 8, mineStone: 15, waveBase: 3, wavePer: 1.6, superBase: 0.06, superMax: 0.60, waveInterval: 16, hasteDirt: 5,   hasteStone: 10, strRode: 5, strSuper: 10 },
+    };
+    let diffMode = 'normal', D = DIFFS.normal;
+    function mineTime(type) { return hasEff('haste') ? (type === 'dirt' ? D.hasteDirt : D.hasteStone) : (type === 'dirt' ? D.mineDirt : D.mineStone); }
+    function hitsNeeded(m) { return hasEff('strength') ? (m.type === 'rode' ? D.strRode : D.strSuper) : (m.type === 'rode' ? D.rodeHits : D.superHits); }
 
     // =====================================================================
     // STATE (persistent best score)
@@ -225,7 +241,7 @@
     function drawParticles() { for (const p of particles) { const s = sx(p.x), t = sy(p.y); ctx.globalAlpha = Math.max(0, p.life / p.max); ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(s, t, p.size, 0, Math.PI * 2); ctx.fill(); } ctx.globalAlpha = 1; }
 
     let mode = 'menu';           // 'menu' | 'playing' | 'over'
-    let elapsed = 0, waveNum = 0, nextWaveAt = PREP;
+    let elapsed = 0, waveNum = 0, nextWaveAt = D.prep;
 
     function inBounds(cx, cy) { return cx >= 0 && cy >= 0 && cx < GRID && cy < GRID; }
     function isCrystal(cx, cy) { return cx === CC && cy === CC; }
@@ -328,16 +344,14 @@
         } else if (selSlot === 'pickaxe') {         // only the pickaxe mines blocks
           const c = cellGet(a.cx, a.cy);
           if (c && reachOK(a.cx, a.cy)) { c.mine += dt; player.mining = true;
-            const mt = hasEff('haste') ? (c.type === 'dirt' ? 1 : 3) : MINE_TIME[c.type];
-            if (c.mine >= mt) { const drops = hasEff('fortune') ? 2 : 1; for (let k = 0; k < drops; k++) spawnPickup(a.cx, a.cy, c.type); grid[a.cy][a.cx] = null; playPop(); } }
+            if (c.mine >= mineTime(c.type)) { const drops = hasEff('fortune') ? 2 : 1; for (let k = 0; k < drops; k++) spawnPickup(a.cx, a.cy, c.type); grid[a.cy][a.cx] = null; playPop(); } }
         }
       }
     }
     function hitMonster(m) {
-      const dmg = hasEff('strength') ? (m.type === 'rode' ? 3 : 4) : 1;   // rode 1 hit, superode 3 hits
-      m.hits -= dmg; m.flash = 0.12; playHit();
+      m.swings++; m.flash = 0.12; playHit();
       if (m.type !== 'superode') { const d = dist(player, m) || 1; m.x += (m.x - player.x) / d * 0.18; m.y += (m.y - player.y) / d * 0.18; }  // superodes are unmovable
-      if (m.hits <= 0) {
+      if (m.swings >= hitsNeeded(m)) {
         monsters.splice(monsters.indexOf(m), 1); playKill();
         if (Math.random() < EFFECT_DROP_CHANCE) { const ids = Object.keys(EFFECTS); grantEffect(ids[Math.floor(Math.random() * ids.length)]); }
       }
@@ -369,12 +383,12 @@
         else { x = randInt(1, GRID - 2) + 0.5; y = GRID - 0.5; }
         tries++;
       } while (solidCell(Math.floor(x), Math.floor(y)) && tries < 30);
-      monsters.push({ type, x, y, hits: def.hits, maxHits: def.hits, atkCd: 0, flash: 0 });
+      monsters.push({ type, x, y, swings: 0, atkCd: 0, flash: 0 });
     }
     function spawnWave() {
       waveNum++;
-      const count = 2 + waveNum;
-      const superChance = Math.min(0.45, 0.03 * waveNum);
+      const count = Math.max(1, Math.round(D.waveBase + D.wavePer * waveNum));
+      const superChance = Math.min(D.superMax, D.superBase * waveNum);
       for (let i = 0; i < count; i++) spawnMonster(Math.random() < superChance ? 'superode' : 'rode');
       toast('Wave ' + waveNum + '!', false);
     }
@@ -459,7 +473,7 @@
       ctx.fillStyle = 'rgba(255,255,255,0.14)'; ctx.fillRect(px, py, TILE, 4); ctx.fillRect(px, py, 4, TILE);
       ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.fillRect(px, py + TILE - 4, TILE, 4); ctx.fillRect(px + TILE - 4, py, 4, TILE);
       // damage: MORE cracks appear the more it's damaged (not just wider ones)
-      const prog = Math.max(c.mine / MINE_TIME[c.type], c.brk / BREAK_TIME[c.type]);
+      const prog = Math.max(c.mine / mineTime(c.type), c.brk / BREAK_TIME[c.type]);
       if (prog > 0.03) {
         const n = Math.min(CRACKS.length, Math.ceil(prog * CRACKS.length));
         ctx.strokeStyle = 'rgba(15,10,6,0.75)'; ctx.lineWidth = 1.5; ctx.lineCap = 'round'; ctx.beginPath();
@@ -498,7 +512,7 @@
       // eyes (angry)
       ctx.fillStyle = '#fff'; disc(px - R * 0.28, py - R * 0.2, R * 0.2); disc(px + R * 0.28, py - R * 0.2, R * 0.2);
       ctx.fillStyle = '#1a1020'; disc(px - R * 0.24, py - R * 0.16, R * 0.1); disc(px + R * 0.32, py - R * 0.16, R * 0.1);
-      healthBar(px, py - R - 8, R * 1.8, m.hits / m.maxHits, m.type === 'superode' ? '#c08bff' : '#ff6b6b');
+      const need = hitsNeeded(m); healthBar(px, py - R - 8, R * 1.8, (need - m.swings) / need, m.type === 'superode' ? '#c08bff' : '#ff6b6b');
     }
     function drawPlayer() {
       const px = sx(player.x), py = sy(player.y), R = TILE * 0.36, blink = player.invuln > 0 && frame % 8 < 4;
@@ -540,7 +554,7 @@
     function updateHud() {
       hpFill.style.width = (player.hp / PLAYER_HP * 100) + '%';
       countDirt.textContent = inv.dirt; countStone.textContent = inv.stone;
-      if (elapsed < PREP) waveLabel.textContent = 'Build! First wave in ' + Math.ceil(PREP - elapsed) + 's';
+      if (elapsed < D.prep) waveLabel.textContent = 'Build! First wave in ' + Math.ceil(D.prep - elapsed) + 's';
       else waveLabel.textContent = 'Wave ' + waveNum + ' · next in ' + Math.max(0, Math.ceil(nextWaveAt - elapsed)) + 's';
     }
 
@@ -552,7 +566,8 @@
       genTerrain(); crystalHP = CRYSTAL_HP; monsters = []; pickups = []; inv.dirt = 0; inv.stone = 0; respawn = null;
       player.x = CC + 0.5; player.y = CC + 2.5; player.hp = PLAYER_HP; player.invuln = 0; player.swing = 0; player.swingCd = 0;
       effects = { strength: 0, speed: 0, haste: 0, fortune: 0 }; particles = [];
-      elapsed = 0; waveNum = 0; nextWaveAt = PREP; mode = 'playing';
+      D = DIFFS[diffMode] || DIFFS.normal;
+      elapsed = 0; waveNum = 0; nextWaveAt = D.prep; mode = 'playing';
       selectSlot('pickaxe');
       for (const k in chosenBoosts) if (chosenBoosts[k]) grantEffect(k);
       menuEl.classList.add('hidden'); overEl.classList.add('hidden'); playEl.classList.remove('hidden');
@@ -560,20 +575,22 @@
     }
     function gameOver() {
       if (mode !== 'playing') return; mode = 'over';
-      const surv = Math.max(0, Math.floor(elapsed - PREP));
+      const surv = Math.max(0, Math.floor(elapsed - D.prep));
       store.bestWave = Math.max(store.bestWave, waveNum); store.bestTime = Math.max(store.bestTime, surv); save();
       document.getElementById('over-lines').innerHTML = 'You reached <b>Wave ' + waveNum + '</b><br>Survived <b>' + surv + 's</b><br><br>Best: Wave ' + store.bestWave + ' · ' + store.bestTime + 's';
       playEl.classList.add('hidden'); overEl.classList.remove('hidden'); playLose();
     }
     function giveUp() { mode = 'menu'; playEl.classList.add('hidden'); menuEl.classList.remove('hidden'); renderMenu(); }
     function renderMenu() { document.getElementById('best-line').textContent = 'Wave ' + store.bestWave + ' · ' + store.bestTime + 's';
-      document.querySelectorAll('#boosts .boost').forEach(b => b.classList.toggle('sel', chosenBoosts[b.dataset.boost])); }
+      document.querySelectorAll('#boosts .boost').forEach(b => b.classList.toggle('sel', chosenBoosts[b.dataset.boost]));
+      document.querySelectorAll('#diffs .boost').forEach(b => b.classList.toggle('sel', b.dataset.diff === diffMode)); }
 
     document.getElementById('start').addEventListener('click', startGame);
     document.getElementById('giveup').addEventListener('click', giveUp);
     document.getElementById('over-continue').addEventListener('click', () => { overEl.classList.add('hidden'); menuEl.classList.remove('hidden'); mode = 'menu'; renderMenu(); });
     document.querySelectorAll('.slot').forEach(s => s.addEventListener('click', () => selectSlot(s.dataset.slot)));
     document.querySelectorAll('#boosts .boost').forEach(b => b.addEventListener('click', () => { const id = b.dataset.boost; chosenBoosts[id] = !chosenBoosts[id]; b.classList.toggle('sel', chosenBoosts[id]); }));
+    document.querySelectorAll('#diffs .boost').forEach(b => b.addEventListener('click', () => { diffMode = (diffMode === b.dataset.diff) ? 'normal' : b.dataset.diff; document.querySelectorAll('#diffs .boost').forEach(x => x.classList.toggle('sel', x.dataset.diff === diffMode)); }));
 
     // =====================================================================
     // SOUND + TOAST
@@ -604,7 +621,7 @@
       const now = performance.now(); let dt = (now - last) / 1000; if (dt > 0.05) dt = 0.05; last = now;
       if (mode === 'playing') {
         elapsed += dt;
-        if (elapsed >= nextWaveAt) { spawnWave(); nextWaveAt += WAVE_INTERVAL; }
+        if (elapsed >= nextWaveAt) { spawnWave(); nextWaveAt += D.waveInterval; }
         updatePlayer(dt); updateMonsters(dt); updatePickups(dt); updateEffects(dt); updateParticles(dt);
         // camera
         let tx = player.x * TILE - viewW / 2, ty = player.y * TILE - viewH / 2;
