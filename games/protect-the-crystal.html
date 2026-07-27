@@ -107,13 +107,12 @@
       <p style="color:#b7a98f;font-size:0.82rem">Wrong tool = no effect: only the pickaxe mines, only the sword hurts monsters.</p>
     </div>
     <div class="panel">
-      <h3>Prep Boost <span style="color:#8a8f9c;font-weight:400;text-transform:none;letter-spacing:0">— a 25s head start</span></h3>
+      <h3>Prep Boost <span style="color:#8a8f9c;font-weight:400;text-transform:none;letter-spacing:0">— pick any (25s head start)</span></h3>
       <div id="boosts" class="boosts">
         <button class="boost" data-boost="haste">Haste</button>
         <button class="boost" data-boost="fortune">Fortune</button>
         <button class="boost" data-boost="speed">Speed</button>
         <button class="boost" data-boost="strength">Strength</button>
-        <button class="boost" data-boost="">None</button>
       </div>
     </div>
     <div class="panel" style="text-align:center">
@@ -211,7 +210,7 @@
     const EFFECT_DUR = 25, EFFECT_DROP_CHANCE = 0.10;
     let effects = { strength: 0, speed: 0, haste: 0, fortune: 0 };
     let particles = [];
-    let chosenBoost = 'haste';   // prep-time boost chosen on the menu ('' = none)
+    const chosenBoosts = { strength: false, speed: false, haste: false, fortune: false };   // prep-time boosts (any number, default none)
     function hasEff(id) { return effects[id] > 0; }
     function grantEffect(id) { effects[id] = EFFECT_DUR; toast(EFFECTS[id].name + '!'); burst(EFFECTS[id].color); playPing(); }
     function updateEffects(dt) { for (const k in effects) if (effects[k] > 0) { effects[k] -= dt; if (effects[k] < 0) effects[k] = 0; } }
@@ -337,7 +336,7 @@
     function hitMonster(m) {
       const dmg = hasEff('strength') ? (m.type === 'rode' ? 3 : 4) : 1;   // rode 1 hit, superode 3 hits
       m.hits -= dmg; m.flash = 0.12; playHit();
-      const d = dist(player, m) || 1; m.x += (m.x - player.x) / d * 0.18; m.y += (m.y - player.y) / d * 0.18;
+      if (m.type !== 'superode') { const d = dist(player, m) || 1; m.x += (m.x - player.x) / d * 0.18; m.y += (m.y - player.y) / d * 0.18; }  // superodes are unmovable
       if (m.hits <= 0) {
         monsters.splice(monsters.indexOf(m), 1); playKill();
         if (Math.random() < EFFECT_DROP_CHANCE) { const ids = Object.keys(EFFECTS); grantEffect(ids[Math.floor(Math.random() * ids.length)]); }
@@ -555,7 +554,7 @@
       effects = { strength: 0, speed: 0, haste: 0, fortune: 0 }; particles = [];
       elapsed = 0; waveNum = 0; nextWaveAt = PREP; mode = 'playing';
       selectSlot('pickaxe');
-      if (chosenBoost) grantEffect(chosenBoost);
+      for (const k in chosenBoosts) if (chosenBoosts[k]) grantEffect(k);
       menuEl.classList.add('hidden'); overEl.classList.add('hidden'); playEl.classList.remove('hidden');
       resize(); updateHud();
     }
@@ -568,13 +567,13 @@
     }
     function giveUp() { mode = 'menu'; playEl.classList.add('hidden'); menuEl.classList.remove('hidden'); renderMenu(); }
     function renderMenu() { document.getElementById('best-line').textContent = 'Wave ' + store.bestWave + ' · ' + store.bestTime + 's';
-      document.querySelectorAll('#boosts .boost').forEach(b => b.classList.toggle('sel', b.dataset.boost === chosenBoost)); }
+      document.querySelectorAll('#boosts .boost').forEach(b => b.classList.toggle('sel', chosenBoosts[b.dataset.boost])); }
 
     document.getElementById('start').addEventListener('click', startGame);
     document.getElementById('giveup').addEventListener('click', giveUp);
     document.getElementById('over-continue').addEventListener('click', () => { overEl.classList.add('hidden'); menuEl.classList.remove('hidden'); mode = 'menu'; renderMenu(); });
     document.querySelectorAll('.slot').forEach(s => s.addEventListener('click', () => selectSlot(s.dataset.slot)));
-    document.querySelectorAll('#boosts .boost').forEach(b => b.addEventListener('click', () => { chosenBoost = b.dataset.boost; document.querySelectorAll('#boosts .boost').forEach(x => x.classList.toggle('sel', x === b)); }));
+    document.querySelectorAll('#boosts .boost').forEach(b => b.addEventListener('click', () => { const id = b.dataset.boost; chosenBoosts[id] = !chosenBoosts[id]; b.classList.toggle('sel', chosenBoosts[id]); }));
 
     // =====================================================================
     // SOUND + TOAST
