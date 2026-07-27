@@ -46,6 +46,7 @@
     /* ===== PLAY ===== */
     #play { position: fixed; inset: 0; z-index: 10; }
     #game { display: block; width: 100%; height: 100%; background: #0e0b07; cursor: crosshair; }
+    #play.cinematic .hud, #play.cinematic .end-btn { display: none !important; }
     .hud { position: fixed; z-index: 15; font-family: sans-serif; color: #f0e8d8; user-select: none; }
 
     #hud-top { top: 0.7rem; left: 50%; transform: translateX(-50%); text-align: center; }
@@ -155,7 +156,10 @@
   <div id="over" class="hidden"><div class="card">
     <h2>The Crystal Fell</h2>
     <div class="lines" id="over-lines"></div>
-    <button id="over-continue">Continue</button>
+    <div style="display:flex;gap:0.6rem;justify-content:center">
+      <button id="over-retry">Try Again</button>
+      <button id="over-title" style="background:linear-gradient(135deg,#7d8595,#565b66)">Title Screen</button>
+    </div>
   </div></div>
 
   <div id="toast"></div>
@@ -175,19 +179,25 @@
     const CRACKS = [[.5,.5,.22,.16],[.5,.5,.8,.24],[.5,.5,.72,.82],[.5,.5,.2,.76],[.22,.16,.08,.34],[.8,.24,.93,.5],[.72,.82,.88,.92],[.2,.76,.07,.6],[.5,.5,.5,.14],[.5,.5,.9,.6]];
 
     const MONSTER_DEFS = {
-      rode:     { dmg: 5,  range: 1, speed: 2.2, r: 0.36, color: '#d64545', size: 0.42 },
-      superode: { dmg: 20, range: 2, speed: 1.4, r: 0.44, color: '#7d4fd6', size: 0.56 },
+      rode:     { dmg: 5,  range: 1, speed: 2.2, r: 0.36, color: '#d64545', size: 0.42, breakMult: 1 },
+      superode: { dmg: 20, range: 2, speed: 1.4, r: 0.44, color: '#7d4fd6', size: 0.56, breakMult: 1 },
+      // Twister: no damage to you, but tears through blocks 3x fast and has 2x a rode's health.
+      twister:  { dmg: 0,  range: 1, speed: 1.8, r: 0.40, color: '#c9d3e0', size: 0.5,  breakMult: 3 },
     };
 
     // Difficulty presets. Normal is the default (no mode selected on the menu).
     const DIFFS = {
-      normal: { prep: 90, rodeHits: 3, superHits: 10, mineDirt: 5, mineStone: 10, waveBase: 2, wavePer: 1,   superBase: 0.03, superMax: 0.45, waveInterval: 22, hasteDirt: 1,   hasteStone: 3,  strRode: 1, strSuper: 3 },
-      easy:   { prep: 90, rodeHits: 2, superHits: 5,  mineDirt: 3, mineStone: 8,  waveBase: 1, wavePer: 0.6, superBase: 0.02, superMax: 0.30, waveInterval: 26, hasteDirt: 0.5, hasteStone: 3,  strRode: 1, strSuper: 3 },
-      insane: { prep: 60, rodeHits: 8, superHits: 15, mineDirt: 8, mineStone: 15, waveBase: 3, wavePer: 1.6, superBase: 0.06, superMax: 0.60, waveInterval: 16, hasteDirt: 5,   hasteStone: 10, strRode: 5, strSuper: 10 },
+      normal: { prep: 90, rodeHits: 3, superHits: 10, mineDirt: 5, mineStone: 10, waveBase: 2, wavePer: 1,   superEarly: 0.10, superLate: 0.20, twister: 0.10, waveInterval: 22, hasteDirt: 1,   hasteStone: 3,  strRode: 1, strSuper: 3 },
+      easy:   { prep: 90, rodeHits: 2, superHits: 5,  mineDirt: 3, mineStone: 8,  waveBase: 1, wavePer: 0.6, superEarly: 0.05, superLate: 0.10, twister: 0.05, waveInterval: 26, hasteDirt: 0.5, hasteStone: 3,  strRode: 1, strSuper: 3 },
+      insane: { prep: 60, rodeHits: 8, superHits: 15, mineDirt: 8, mineStone: 15, waveBase: 3, wavePer: 1.6, superEarly: 0.20, superLate: 0.35, twister: 0.30, waveInterval: 16, hasteDirt: 5,   hasteStone: 10, strRode: 5, strSuper: 10 },
     };
     let diffMode = 'normal', D = DIFFS.normal;
     function mineTime(type) { return hasEff('haste') ? (type === 'dirt' ? D.hasteDirt : D.hasteStone) : (type === 'dirt' ? D.mineDirt : D.mineStone); }
-    function hitsNeeded(m) { return hasEff('strength') ? (m.type === 'rode' ? D.strRode : D.strSuper) : (m.type === 'rode' ? D.rodeHits : D.superHits); }
+    function hitsNeeded(m) {
+      const str = hasEff('strength');
+      if (m.type === 'twister') return 2 * (str ? D.strRode : D.rodeHits);   // twice a rode
+      return str ? (m.type === 'rode' ? D.strRode : D.strSuper) : (m.type === 'rode' ? D.rodeHits : D.superHits);
+    }
 
     // =====================================================================
     // STATE (persistent best score)
@@ -366,7 +376,7 @@
       player.hp = PLAYER_HP; player.invuln = 1.4;
       if (respawn) { player.x = respawn.cx + 0.5; player.y = respawn.cy + 0.5; }
       else { player.x = CC + 0.5; player.y = CC + 2.5; }
-      toast('You fell — respawned!', true);
+      toast('You died!', true);
     }
 
     // =====================================================================
@@ -388,13 +398,19 @@
     function spawnWave() {
       waveNum++;
       const count = Math.max(1, Math.round(D.waveBase + D.wavePer * waveNum));
-      const superChance = Math.min(D.superMax, D.superBase * waveNum);
-      for (let i = 0; i < count; i++) spawnMonster(Math.random() < superChance ? 'superode' : 'rode');
+      const superChance = waveNum >= 6 ? D.superLate : D.superEarly;
+      const twisterChance = waveNum >= 6 ? D.twister : 0;   // twisters start at wave 6
+      for (let i = 0; i < count; i++) {
+        let type = 'rode';
+        if (Math.random() < superChance) type = 'superode';
+        else if (Math.random() < twisterChance) type = 'twister';
+        spawnMonster(type);
+      }
       toast('Wave ' + waveNum + '!', false);
     }
     function breakAhead(m, sx, sy, dt) {
       const cx = Math.floor(m.x + sx * 0.5), cy = Math.floor(m.y + sy * 0.5), c = cellGet(cx, cy);
-      if (c) { c.brk += dt; if (c.brk >= BREAK_TIME[c.type]) grid[cy][cx] = null; }
+      if (c) { c.brk += dt * (MONSTER_DEFS[m.type].breakMult || 1); if (c.brk >= BREAK_TIME[c.type]) grid[cy][cx] = null; }
     }
     function updateMonsters(dt) {
       const cry = { x: CC + 0.5, y: CC + 0.5 };
@@ -402,10 +418,10 @@
         const def = MONSTER_DEFS[m.type]; if (m.flash > 0) m.flash -= dt; m.atkCd -= dt;
         // Crystal is one-shot, but only if a monster actually TOUCHES it (pressed
         // against the gem) with a clear line — walls it hasn't broken still block it.
-        if (Math.hypot(cry.x - m.x, cry.y - m.y) <= 0.55 + def.r && hasLOS(m.x, m.y, cry.x, cry.y)) { gameOver(); return; }
-        // Aggro onto the player only if close AND actually visible (no wall between).
+        if (Math.hypot(cry.x - m.x, cry.y - m.y) <= 0.55 + def.r && hasLOS(m.x, m.y, cry.x, cry.y)) { crystalFall(); return; }
+        // Aggro onto the player only if close AND visible — but harmless monsters (twisters) ignore you.
         const dpl = dist(player, m), see = hasLOS(m.x, m.y, player.x, player.y);
-        const target = (dpl <= 1.8 && see) ? player : cry;
+        const target = (def.dmg > 0 && dpl <= 1.8 && see) ? player : cry;
         const dtx = target.x - m.x, dty = target.y - m.y, dd = Math.hypot(dtx, dty) || 1;
         // Attack the player only within range AND with line of sight (no reaching through walls).
         if (target === player && dd <= def.range + 0.35 && see) {
@@ -496,6 +512,7 @@
     }
     function drawMonster(m) {
       const def = MONSTER_DEFS[m.type], px = sx(m.x), py = sy(m.y), R = def.size * TILE;
+      if (m.type === 'twister') { drawTwister(m, px, py, R); return; }
       ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.beginPath(); ctx.ellipse(px, py + R * 0.7, R * 0.9, R * 0.4, 0, 0, Math.PI * 2); ctx.fill();
       // feet
       ctx.fillStyle = '#2a2030'; ctx.fillRect(px - R * 0.5, py + R * 0.4, R * 0.35, R * 0.4); ctx.fillRect(px + R * 0.15, py + R * 0.4, R * 0.35, R * 0.4);
@@ -513,6 +530,24 @@
       ctx.fillStyle = '#fff'; disc(px - R * 0.28, py - R * 0.2, R * 0.2); disc(px + R * 0.28, py - R * 0.2, R * 0.2);
       ctx.fillStyle = '#1a1020'; disc(px - R * 0.24, py - R * 0.16, R * 0.1); disc(px + R * 0.32, py - R * 0.16, R * 0.1);
       const need = hitsNeeded(m); healthBar(px, py - R - 8, R * 1.8, (need - m.swings) / need, m.type === 'superode' ? '#c08bff' : '#ff6b6b');
+    }
+    function drawTwister(m, px, py, R) {
+      ctx.fillStyle = 'rgba(0,0,0,0.26)'; ctx.beginPath(); ctx.ellipse(px, py + R * 0.8, R * 0.5, R * 0.22, 0, 0, Math.PI * 2); ctx.fill();
+      const spin = frame * 0.35;
+      for (let i = 0; i < 7; i++) {
+        const yy = py + R * 0.8 - i * R * 0.32, w = R * (0.14 + i * 0.14), off = Math.sin(spin + i * 0.8) * w * 0.3;
+        ctx.globalAlpha = 0.45 + 0.07 * i;
+        ctx.fillStyle = i % 2 ? '#e3eaf4' : '#aab6c8';
+        ctx.beginPath(); ctx.ellipse(px + off, yy, w, w * 0.34, 0, 0, Math.PI * 2); ctx.fill();
+      }
+      // swirl streaks
+      ctx.globalAlpha = 0.5; ctx.strokeStyle = '#f2f6fb'; ctx.lineWidth = 1.5;
+      for (let i = 0; i < 3; i++) { const a = spin + i * 2.1; ctx.beginPath();
+        ctx.arc(px, py - R * 0.1, R * (0.4 + i * 0.2), a, a + 1.4); ctx.stroke(); }
+      ctx.globalAlpha = 1;
+      // eyes
+      ctx.fillStyle = '#1a2230'; disc(px - R * 0.18, py - R * 0.1, R * 0.12); disc(px + R * 0.18, py - R * 0.1, R * 0.12);
+      const need = hitsNeeded(m); healthBar(px, py - R * 1.9 - 6, R * 1.8, (need - m.swings) / need, '#cdd6e2');
     }
     function drawPlayer() {
       const px = sx(player.x), py = sy(player.y), R = TILE * 0.36, blink = player.invuln > 0 && frame % 8 < 4;
@@ -570,15 +605,45 @@
       elapsed = 0; waveNum = 0; nextWaveAt = D.prep; mode = 'playing';
       selectSlot('pickaxe');
       for (const k in chosenBoosts) if (chosenBoosts[k]) grantEffect(k);
-      menuEl.classList.add('hidden'); overEl.classList.add('hidden'); playEl.classList.remove('hidden');
+      menuEl.classList.add('hidden'); overEl.classList.add('hidden'); playEl.classList.remove('hidden'); playEl.classList.remove('cinematic');
       resize(); updateHud();
     }
-    function gameOver() {
-      if (mode !== 'playing') return; mode = 'over';
+    // The crystal is lost -> play the shatter cinematic, THEN show the over screen.
+    const SHATTER_GROW = 1.0, SHATTER_BLACK = 2.3, SHATTER_TOTAL = 2.9;
+    let shatter = null;
+    function crystalFall() { if (mode !== 'playing') return; mode = 'shatter'; shatter = { t: 0, shards: [], flashed: false }; playEl.classList.add('cinematic'); playLose(); }
+    function spawnShards() {
+      const cx = viewW / 2, cy = viewH / 2, cols = ['#eaffff', '#bff0ff', '#4ec3ff', '#9a7dff', '#6a5ad6'];
+      for (let i = 0; i < 170; i++) { const a = Math.random() * Math.PI * 2, sp = 120 + Math.random() * 600;
+        shatter.shards.push({ x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 130, size: 4 + Math.random() * 12, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 12, col: cols[i % cols.length], life: 1.5 }); }
+    }
+    function updateShatter(dt) {
+      shatter.t += dt;
+      if (!shatter.flashed && shatter.t >= SHATTER_GROW) { shatter.flashed = true; spawnShards(); }
+      for (const s of shatter.shards) { s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 650 * dt; s.rot += s.vr * dt; s.life -= dt; }
+      if (shatter.t >= SHATTER_TOTAL) finishGameOver();
+    }
+    function drawShatter() {
+      const cx = viewW / 2, cy = viewH / 2, t = shatter.t;
+      const dark = t < SHATTER_GROW ? t / SHATTER_GROW * 0.45 : Math.min(1, 0.45 + (t - SHATTER_GROW) / (SHATTER_BLACK - SHATTER_GROW) * 0.55);
+      ctx.fillStyle = 'rgba(3,4,10,' + dark + ')'; ctx.fillRect(0, 0, viewW, viewH);
+      if (t < SHATTER_GROW + 0.02) {
+        const g = t / SHATTER_GROW, R = 36 + g * g * Math.min(viewW, viewH) * 0.42;
+        ctx.save(); ctx.shadowColor = '#4ec3ff'; ctx.shadowBlur = 40 * g + 12;
+        const grd = ctx.createLinearGradient(cx, cy - R, cx, cy + R); grd.addColorStop(0, '#eaffff'); grd.addColorStop(0.5, '#4ec3ff'); grd.addColorStop(1, '#6a5ad6');
+        ctx.fillStyle = grd; ctx.beginPath(); ctx.moveTo(cx, cy - R); ctx.lineTo(cx + R * 0.72, cy); ctx.lineTo(cx, cy + R); ctx.lineTo(cx - R * 0.72, cy); ctx.closePath(); ctx.fill(); ctx.restore();
+      }
+      if (t >= SHATTER_GROW && t < SHATTER_GROW + 0.18) { ctx.fillStyle = 'rgba(255,255,255,' + (1 - (t - SHATTER_GROW) / 0.18) * 0.9 + ')'; ctx.fillRect(0, 0, viewW, viewH); }
+      for (const s of shatter.shards) { if (s.life <= 0) continue; ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(s.rot); ctx.globalAlpha = Math.max(0, Math.min(1, s.life)); ctx.fillStyle = s.col;
+        ctx.beginPath(); ctx.moveTo(0, -s.size); ctx.lineTo(s.size * 0.6, 0); ctx.lineTo(0, s.size); ctx.lineTo(-s.size * 0.6, 0); ctx.closePath(); ctx.fill(); ctx.restore(); }
+      ctx.globalAlpha = 1;
+    }
+    function finishGameOver() {
+      mode = 'over';
       const surv = Math.max(0, Math.floor(elapsed - D.prep));
       store.bestWave = Math.max(store.bestWave, waveNum); store.bestTime = Math.max(store.bestTime, surv); save();
       document.getElementById('over-lines').innerHTML = 'You reached <b>Wave ' + waveNum + '</b><br>Survived <b>' + surv + 's</b><br><br>Best: Wave ' + store.bestWave + ' · ' + store.bestTime + 's';
-      playEl.classList.add('hidden'); overEl.classList.remove('hidden'); playLose();
+      playEl.classList.add('hidden'); overEl.classList.remove('hidden');
     }
     function giveUp() { mode = 'menu'; playEl.classList.add('hidden'); menuEl.classList.remove('hidden'); renderMenu(); }
     function renderMenu() { document.getElementById('best-line').textContent = 'Wave ' + store.bestWave + ' · ' + store.bestTime + 's';
@@ -587,7 +652,8 @@
 
     document.getElementById('start').addEventListener('click', startGame);
     document.getElementById('giveup').addEventListener('click', giveUp);
-    document.getElementById('over-continue').addEventListener('click', () => { overEl.classList.add('hidden'); menuEl.classList.remove('hidden'); mode = 'menu'; renderMenu(); });
+    document.getElementById('over-retry').addEventListener('click', () => { overEl.classList.add('hidden'); startGame(); });
+    document.getElementById('over-title').addEventListener('click', () => { overEl.classList.add('hidden'); menuEl.classList.remove('hidden'); mode = 'menu'; renderMenu(); });
     document.querySelectorAll('.slot').forEach(s => s.addEventListener('click', () => selectSlot(s.dataset.slot)));
     document.querySelectorAll('#boosts .boost').forEach(b => b.addEventListener('click', () => { const id = b.dataset.boost; chosenBoosts[id] = !chosenBoosts[id]; b.classList.toggle('sel', chosenBoosts[id]); }));
     document.querySelectorAll('#diffs .boost').forEach(b => b.addEventListener('click', () => { diffMode = (diffMode === b.dataset.diff) ? 'normal' : b.dataset.diff; document.querySelectorAll('#diffs .boost').forEach(x => x.classList.toggle('sel', x.dataset.diff === diffMode)); }));
@@ -629,6 +695,8 @@
         ty = WORLD_PX <= viewH ? (WORLD_PX - viewH) / 2 : clamp(ty, 0, WORLD_PX - viewH);
         cam.x += (tx - cam.x) * Math.min(1, 10 * dt); cam.y += (ty - cam.y) * Math.min(1, 10 * dt);
         if (mode === 'playing') { render(); hudTick += dt; if (hudTick >= 0.1) { hudTick = 0; updateHud(); updateEffectsHud(); } }
+      } else if (mode === 'shatter') {
+        render(); drawShatter(); updateShatter(dt);
       }
       requestAnimationFrame(loop);
     }
