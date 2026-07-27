@@ -95,8 +95,8 @@
     <div class="panel">
       <h3>How to play</h3>
       <p>Mine <b style="color:#c08a5a">dirt</b> and <b style="color:#aab0ba">stone</b>, wall off your crystal, then hold back the waves. You have <b>90 seconds</b> before the first monsters arrive. If a monster so much as touches the crystal, it's over.</p>
-      <p><kbd>WASD</kbd> move &nbsp; <kbd>Left-click</kbd> use held item &nbsp; <kbd>R</kbd> set respawn point</p>
-      <p><kbd>1</kbd> pickaxe (mine) &nbsp; <kbd>2</kbd> sword (fight) &nbsp; <kbd>3</kbd>/<kbd>4</kbd> place dirt / stone</p>
+      <p><kbd>WASD</kbd> move &nbsp; <kbd>Left-click</kbd> use held item &nbsp; <kbd>Right-click</kbd> place block &nbsp; <kbd>R</kbd> respawn point</p>
+      <p><kbd>1</kbd> pickaxe (mine) &nbsp; <kbd>2</kbd> sword (fight) &nbsp; <kbd>3</kbd>/<kbd>4</kbd> dirt / stone</p>
       <p style="color:#b7a98f;font-size:0.82rem">Wrong tool = no effect: only the pickaxe mines, only the sword hurts monsters.</p>
     </div>
     <div class="panel" style="text-align:center">
@@ -116,7 +116,7 @@
       <div class="lbl">Health</div>
       <div class="barwrap"><div class="fill" id="hp-fill" style="width:100%"></div></div>
     </div>
-    <div class="hud" id="hud-hint"><kbd>1</kbd> pick · <kbd>2</kbd> sword · <kbd>3/4</kbd> dirt/stone · <kbd>LMB</kbd> use · <kbd>R</kbd> respawn</div>
+    <div class="hud" id="hud-hint"><kbd>1</kbd> pick · <kbd>2</kbd> sword · <kbd>3/4</kbd> dirt/stone · <kbd>LMB</kbd> use · <kbd>RMB</kbd> place · <kbd>R</kbd> respawn</div>
     <div class="hud" id="hotbar">
       <div class="slot sel" data-slot="pickaxe"><span class="key">1</span>
         <svg width="30" height="30" viewBox="0 0 28 28"><line x1="8" y1="22" x2="18" y2="10" stroke="#8a5a2b" stroke-width="3" stroke-linecap="round"/><path d="M8 7 Q15 9 21 13" fill="none" stroke="#c0c6d0" stroke-width="4" stroke-linecap="round"/></svg></div>
@@ -144,7 +144,7 @@
     const GRID = 27, TILE = 40, CC = Math.floor(GRID / 2);   // CC = crystal cell (center)
     const WORLD_PX = GRID * TILE;
     const PLAYER_SPEED = 3.6, PLAYER_R = 0.34, REACH = 1.7;
-    const SWORD_RANGE = 1.15, SWORD_CD = 0.34;
+    const SWORD_RANGE = 1.15, SWORD_CD = 0.34, SWING_DUR = 0.28;
     const MINE_TIME = { dirt: 5, stone: 10 };
     const BREAK_TIME = { dirt: 10, stone: 25 };
     const PLAYER_HP = 100, CRYSTAL_HP = 220, PREP = 90, WAVE_INTERVAL = 22;
@@ -179,8 +179,9 @@
     let monsters = [], pickups = [];
     const inv = { dirt: 0, stone: 0 };
     let selSlot = 'pickaxe';   // 'pickaxe' | 'sword' | 'dirt' | 'stone'
+    let lastBlock = 'dirt';    // most-recent block type, for right-click placing
     let respawn = null;          // {cx, cy}
-    const player = { x: CC + 0.5, y: CC + 2.5, hp: PLAYER_HP, invuln: 0, swingCd: 0, swing: 0, aim: 0 };
+    const player = { x: CC + 0.5, y: CC + 2.5, hp: PLAYER_HP, invuln: 0, swingCd: 0, swing: 0, aim: 0, mining: false };
 
     let mode = 'menu';           // 'menu' | 'playing' | 'over'
     let elapsed = 0, waveNum = 0, nextWaveAt = PREP;
@@ -229,7 +230,9 @@
     const keys = { w: false, a: false, s: false, d: false };
     const mouse = { x: 0, y: 0, left: false };
     canvas.addEventListener('mousemove', (e) => { const r = canvas.getBoundingClientRect(); mouse.x = e.clientX - r.left; mouse.y = e.clientY - r.top; });
-    canvas.addEventListener('mousedown', (e) => { if (mode !== 'playing') return; if (e.button === 0) { mouse.left = true; if (selSlot === 'dirt' || selSlot === 'stone') tryPlace(); } });
+    canvas.addEventListener('mousedown', (e) => { if (mode !== 'playing') return;
+      if (e.button === 0) { mouse.left = true; if (selSlot === 'dirt' || selSlot === 'stone') tryPlace(selSlot); }
+      else if (e.button === 2) tryPlace(lastBlock); });
     window.addEventListener('mouseup', (e) => { if (e.button === 0) mouse.left = false; });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('keydown', (e) => {
@@ -247,17 +250,19 @@
     window.addEventListener('blur', () => { keys.w = keys.a = keys.s = keys.d = false; mouse.left = false; });
     window.addEventListener('resize', () => { if (mode === 'playing') resize(); });
 
-    function selectSlot(name) { selSlot = name; document.querySelectorAll('.slot').forEach(s => s.classList.toggle('sel', s.dataset.slot === name)); }
+    function selectSlot(name) { selSlot = name; if (name === 'dirt' || name === 'stone') lastBlock = name; document.querySelectorAll('.slot').forEach(s => s.classList.toggle('sel', s.dataset.slot === name)); }
     function setRespawn() { respawn = { cx: Math.floor(player.x), cy: Math.floor(player.y) }; toast('Respawn point set'); playPop(); }
     function aimCell() { const tx = (mouse.x + cam.x) / TILE, ty = (mouse.y + cam.y) / TILE; return { cx: Math.floor(tx), cy: Math.floor(ty), tx, ty }; }
     function reachOK(cx, cy) { return Math.hypot(player.x - (cx + 0.5), player.y - (cy + 0.5)) <= REACH; }
-    function tryPlace() {
+    function tryPlace(type) {
+      if (type !== 'dirt' && type !== 'stone') return;
       const a = aimCell();
-      if (!inBounds(a.cx, a.cy) || isCrystal(a.cx, a.cy) || cellGet(a.cx, a.cy) || !reachOK(a.cx, a.cy)) return;
+      if (!inBounds(a.cx, a.cy) || isCrystal(a.cx, a.cy) || cellGet(a.cx, a.cy)) return;
+      if (!reachOK(a.cx, a.cy)) { toast('Too far to place', true); return; }
       if (Math.floor(player.x) === a.cx && Math.floor(player.y) === a.cy) return;
       for (const m of monsters) if (Math.floor(m.x) === a.cx && Math.floor(m.y) === a.cy) return;
-      if (inv[selSlot] <= 0) { toast('No ' + selSlot + ' left', true); return; }
-      grid[a.cy][a.cx] = { type: selSlot, mine: 0, brk: 0 }; inv[selSlot]--; playPop();
+      if (inv[type] <= 0) { toast('No ' + type + ' left', true); return; }
+      grid[a.cy][a.cx] = { type, mine: 0, brk: 0 }; inv[type]--; playPop();
     }
 
     // =====================================================================
@@ -266,6 +271,7 @@
     function updatePlayer(dt) {
       // aim angle toward mouse (world)
       const a = aimCell(); player.aim = Math.atan2((a.ty) - player.y, (a.tx) - player.x);
+      player.mining = false;
       if (player.invuln > 0) player.invuln -= dt;
       let dx = (keys.d ? 1 : 0) - (keys.a ? 1 : 0), dy = (keys.s ? 1 : 0) - (keys.w ? 1 : 0);
       if (dx || dy) { const l = Math.hypot(dx, dy); dx /= l; dy /= l; const sp = PLAYER_SPEED * dt;
@@ -277,10 +283,10 @@
         if (selSlot === 'sword') {                 // only the sword hurts monsters
           let target = null, best = SWORD_RANGE;
           for (const m of monsters) { const d = dist(player, m); if (d < best) { best = d; target = m; } }
-          if (target && player.swingCd <= 0) { player.swingCd = SWORD_CD; player.swing = 0.16; hitMonster(target); }
+          if (target && player.swingCd <= 0) { player.swingCd = SWORD_CD; player.swing = SWING_DUR; hitMonster(target); }
         } else if (selSlot === 'pickaxe') {         // only the pickaxe mines blocks
           const c = cellGet(a.cx, a.cy);
-          if (c && reachOK(a.cx, a.cy)) { c.mine += dt; player.swing = 0.12; if (c.mine >= MINE_TIME[c.type]) { spawnPickup(a.cx, a.cy, c.type); grid[a.cy][a.cx] = null; playPop(); } }
+          if (c && reachOK(a.cx, a.cy)) { c.mine += dt; player.mining = true; if (c.mine >= MINE_TIME[c.type]) { spawnPickup(a.cx, a.cy, c.type); grid[a.cy][a.cx] = null; playPop(); } }
         }
       }
     }
@@ -333,8 +339,9 @@
       const cry = { x: CC + 0.5, y: CC + 0.5 };
       for (const m of monsters) {
         const def = MONSTER_DEFS[m.type]; if (m.flash > 0) m.flash -= dt; m.atkCd -= dt;
-        // Crystal is one-shot: the instant ANY monster is right next to it, it's over.
-        if (Math.hypot(cry.x - m.x, cry.y - m.y) <= 1.25) { gameOver(); return; }
+        // Crystal is one-shot, but only if a monster actually TOUCHES it (pressed
+        // against the gem) with a clear line — walls it hasn't broken still block it.
+        if (Math.hypot(cry.x - m.x, cry.y - m.y) <= 0.55 + def.r && hasLOS(m.x, m.y, cry.x, cry.y)) { gameOver(); return; }
         // Aggro onto the player only if close AND actually visible (no wall between).
         const dpl = dist(player, m), see = hasLOS(m.x, m.y, player.x, player.y);
         const target = (dpl <= 1.8 && see) ? player : cry;
@@ -452,19 +459,24 @@
       ctx.beginPath(); ctx.arc(px, py, R, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       const fx = Math.cos(player.aim) * R * 0.4, fy = Math.sin(player.aim) * R * 0.4;
       ctx.fillStyle = '#20263a'; disc(px + fx - 3.5, py + fy - 1, 2); disc(px + fx + 3.5, py + fy - 1, 2);
-      // held tool toward aim, thrust out while swinging/mining
-      if (selSlot === 'pickaxe' || selSlot === 'sword') {
-        const thrust = player.swing > 0 ? 8 : 0;
-        ctx.save(); ctx.translate(px, py); ctx.rotate(player.aim); ctx.translate(R + 3 + thrust, 0); ctx.lineCap = 'round';
-        if (selSlot === 'sword') {
-          ctx.strokeStyle = '#e6ecf5'; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.moveTo(-2, 0); ctx.lineTo(17, 0); ctx.stroke();
-          ctx.strokeStyle = '#c99a4a'; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.moveTo(-2, -4); ctx.lineTo(-2, 4); ctx.stroke();
-        } else {
-          ctx.strokeStyle = '#8a5a2b'; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.moveTo(-3, 7); ctx.lineTo(9, -7); ctx.stroke();
-          ctx.strokeStyle = '#c0c6d0'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(3, -13); ctx.quadraticCurveTo(11, -9, 16, -2); ctx.stroke();
-        }
-        ctx.restore();
+      // held tool with a real swing (sword slashes an arc; pickaxe chops)
+      ctx.save(); ctx.translate(px, py); ctx.lineCap = 'round';
+      if (selSlot === 'sword') {
+        let a2 = player.aim;
+        if (player.swing > 0) { const s = 1 - player.swing / SWING_DUR; a2 += -1.05 + 2.1 * s; }   // sweep across
+        ctx.rotate(a2);
+        if (player.swing > 0) { ctx.strokeStyle = 'rgba(220,230,245,0.30)'; ctx.lineWidth = 7;
+          ctx.beginPath(); ctx.arc(0, 0, R + 15, -0.55, 0.55); ctx.stroke(); }
+        ctx.strokeStyle = '#e6ecf5'; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.moveTo(R, 0); ctx.lineTo(R + 20, 0); ctx.stroke();
+        ctx.strokeStyle = '#c99a4a'; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.moveTo(R - 2, -4); ctx.lineTo(R - 2, 4); ctx.stroke();
+        ctx.fillStyle = '#8a5a2b'; disc(R - 4, 0, 2);
+      } else if (selSlot === 'pickaxe') {
+        ctx.rotate(player.aim); ctx.translate(R, 0);
+        ctx.rotate(-0.2 + (player.mining ? Math.sin(frame * 0.5) * 0.7 : 0));   // chop bob while mining
+        ctx.strokeStyle = '#8a5a2b'; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.moveTo(-5, 9); ctx.lineTo(8, -8); ctx.stroke();
+        ctx.strokeStyle = '#c0c6d0'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(2, -14); ctx.quadraticCurveTo(11, -10, 16, -3); ctx.stroke();
       }
+      ctx.restore();
     }
     function disc(x, y, r) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
     function shade(hex, f) { const n = parseInt(hex.slice(1), 16); let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
@@ -496,8 +508,9 @@
     }
     function gameOver() {
       if (mode !== 'playing') return; mode = 'over';
-      store.bestWave = Math.max(store.bestWave, waveNum); store.bestTime = Math.max(store.bestTime, Math.floor(elapsed)); save();
-      document.getElementById('over-lines').innerHTML = 'You reached <b>Wave ' + waveNum + '</b><br>Survived <b>' + Math.floor(elapsed) + 's</b><br><br>Best: Wave ' + store.bestWave + ' · ' + store.bestTime + 's';
+      const surv = Math.max(0, Math.floor(elapsed - PREP));
+      store.bestWave = Math.max(store.bestWave, waveNum); store.bestTime = Math.max(store.bestTime, surv); save();
+      document.getElementById('over-lines').innerHTML = 'You reached <b>Wave ' + waveNum + '</b><br>Survived <b>' + surv + 's</b><br><br>Best: Wave ' + store.bestWave + ' · ' + store.bestTime + 's';
       playEl.classList.add('hidden'); overEl.classList.remove('hidden'); playLose();
     }
     function giveUp() { mode = 'menu'; playEl.classList.add('hidden'); menuEl.classList.remove('hidden'); renderMenu(); }
