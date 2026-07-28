@@ -42,6 +42,9 @@
       background: rgba(30,22,15,0.5); border: 1.5px solid rgba(120,90,50,0.4); color: #cfc3ad; transition: border-color 0.15s, color 0.15s, background 0.15s; }
     .boost:hover { border-color: rgba(120,90,50,0.8); }
     .boost.sel { border-color: #4ec3ff; color: #fff; background: rgba(46,110,140,0.3); box-shadow: 0 0 10px rgba(78,195,255,0.25); }
+    .admin-btn { margin-top: 0.1rem; padding: 0.4rem 1rem; background: rgba(30,22,15,0.6); border: 1.5px solid rgba(120,90,50,0.5); color: #b7a98f;
+      border-radius: 10px; cursor: pointer; font-family: inherit; font-weight: 700; font-size: 0.8rem; letter-spacing: 1px; }
+    .admin-btn.on { border-color: #ff5a5a; color: #ff9a9a; box-shadow: 0 0 10px rgba(255,90,90,0.25); }
 
     /* ===== PLAY ===== */
     #play { position: fixed; inset: 0; z-index: 10; }
@@ -128,6 +131,7 @@
       <p class="best" id="best-line">Wave 0 · 0s</p>
     </div>
     <button class="start-btn" id="start">Start</button>
+    <button id="admin-toggle" class="admin-btn">🔧 Admin (test): OFF</button>
   </div>
 
   <div id="play" class="hidden">
@@ -181,17 +185,18 @@
     const MONSTER_DEFS = {
       rode:     { dmg: 5,  range: 1, speed: 2.2, r: 0.36, color: '#d64545', size: 0.42, breakMult: 1 },
       superode: { dmg: 20, range: 2, speed: 1.4, r: 0.44, color: '#7d4fd6', size: 0.56, breakMult: 1 },
-      // Twister: no damage to you, but tears through blocks 3x fast and has 2x a rode's health.
-      twister:  { dmg: 0,  range: 1, speed: 1.8, r: 0.40, color: '#c9d3e0', size: 0.5,  breakMult: 3 },
+      // Twister: no damage to you, but tears through blocks fast (per-difficulty) and has 2x a rode's health.
+      twister:  { dmg: 0,  range: 1, speed: 2.4, r: 0.40, color: '#c9d3e0', size: 0.5 },
     };
 
     // Difficulty presets. Normal is the default (no mode selected on the menu).
     const DIFFS = {
-      normal: { prep: 90, rodeHits: 3, superHits: 10, mineDirt: 5, mineStone: 10, waveBase: 2, wavePer: 1,   superEarly: 0.10, superLate: 0.20, twister: 0.10, waveInterval: 22, hasteDirt: 1,   hasteStone: 3,  strRode: 1, strSuper: 3 },
-      easy:   { prep: 90, rodeHits: 2, superHits: 5,  mineDirt: 3, mineStone: 8,  waveBase: 1, wavePer: 0.6, superEarly: 0.05, superLate: 0.10, twister: 0.05, waveInterval: 26, hasteDirt: 0.5, hasteStone: 3,  strRode: 1, strSuper: 3 },
-      insane: { prep: 60, rodeHits: 8, superHits: 15, mineDirt: 8, mineStone: 15, waveBase: 3, wavePer: 1.6, superEarly: 0.20, superLate: 0.35, twister: 0.30, waveInterval: 16, hasteDirt: 5,   hasteStone: 10, strRode: 5, strSuper: 10 },
+      normal: { prep: 90, rodeHits: 3, superHits: 10, mineDirt: 5, mineStone: 10, waveBase: 2, wavePer: 1,   superEarly: 0.10, superLate: 0.20, twister: 0.10, twDirt: 1,   twStone: 2, waveInterval: 22, hasteDirt: 1,   hasteStone: 3,  strRode: 1, strSuper: 3 },
+      easy:   { prep: 90, rodeHits: 2, superHits: 5,  mineDirt: 3, mineStone: 8,  waveBase: 1, wavePer: 0.6, superEarly: 0.05, superLate: 0.10, twister: 0.05, twDirt: 3,   twStone: 4, waveInterval: 26, hasteDirt: 0.5, hasteStone: 3,  strRode: 1, strSuper: 3 },
+      insane: { prep: 60, rodeHits: 8, superHits: 15, mineDirt: 8, mineStone: 15, waveBase: 3, wavePer: 1.6, superEarly: 0.20, superLate: 0.35, twister: 0.30, twDirt: 0.3, twStone: 1, waveInterval: 16, hasteDirt: 5,   hasteStone: 10, strRode: 5, strSuper: 10 },
     };
     let diffMode = 'normal', D = DIFFS.normal;
+    let adminMode = false;   // test mode: one-hit kills, infinite blocks, all effects
     function mineTime(type) { return hasEff('haste') ? (type === 'dirt' ? D.hasteDirt : D.hasteStone) : (type === 'dirt' ? D.mineDirt : D.mineStone); }
     function hitsNeeded(m) {
       const str = hasEff('strength');
@@ -237,7 +242,7 @@
     let effects = { strength: 0, speed: 0, haste: 0, fortune: 0 };
     let particles = [];
     const chosenBoosts = { strength: false, speed: false, haste: false, fortune: false };   // prep-time boosts (any number, default none)
-    function hasEff(id) { return effects[id] > 0; }
+    function hasEff(id) { return adminMode || effects[id] > 0; }
     function grantEffect(id) { effects[id] = EFFECT_DUR; toast(EFFECTS[id].name + '!'); burst(EFFECTS[id].color); playPing(); }
     function updateEffects(dt) { for (const k in effects) if (effects[k] > 0) { effects[k] -= dt; if (effects[k] < 0) effects[k] = 0; } }
     function burst(color) { for (let i = 0; i < 16; i++) { const a = Math.random() * Math.PI * 2, sp = 1 + Math.random() * 2.5;
@@ -266,6 +271,20 @@
         if (dx * dx + dy * dy < r * r) return true;
       }
       return false;
+    }
+    // If an entity's center ends up inside a solid cell (block placed on it, knocked in),
+    // shove it out to the nearest open side so nothing ever gets permanently stuck.
+    function unstick(e, r) {
+      const cx = Math.floor(e.x), cy = Math.floor(e.y);
+      if (!solidCell(cx, cy)) return;
+      const cand = [];
+      if (!solidCell(cx - 1, cy)) cand.push({ c: e.x - (cx - r), set: () => { e.x = cx - r; } });
+      if (!solidCell(cx + 1, cy)) cand.push({ c: (cx + 1 + r) - e.x, set: () => { e.x = cx + 1 + r; } });
+      if (!solidCell(cx, cy - 1)) cand.push({ c: e.y - (cy - r), set: () => { e.y = cy - r; } });
+      if (!solidCell(cx, cy + 1)) cand.push({ c: (cy + 1 + r) - e.y, set: () => { e.y = cy + 1 + r; } });
+      if (!cand.length) return;   // fully boxed in — must break/mine out
+      cand.sort((a, b) => a.c - b.c); cand[0].set();
+      e.x = clamp(e.x, r, COLS - r); e.y = clamp(e.y, r, ROWS - r);
     }
     function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
     // clear line of sight if no dirt/stone block sits between the two points
@@ -309,6 +328,7 @@
       else if (k === '1') selectSlot('pickaxe'); else if (k === '2') selectSlot('sword');
       else if (k === '3') selectSlot('dirt'); else if (k === '4') selectSlot('stone');
       else if (k === 'r') setRespawn();
+      else if (k === '`') toggleAdmin();
       if (['w', 'a', 's', 'd', '1', '2', '3', '4', 'r'].includes(k) || k.startsWith('arrow')) e.preventDefault();
     });
     window.addEventListener('keyup', (e) => { const k = e.key.toLowerCase();
@@ -318,6 +338,7 @@
     window.addEventListener('resize', () => { if (mode === 'playing') resize(); });
 
     function selectSlot(name) { selSlot = name; if (name === 'dirt' || name === 'stone') lastBlock = name; document.querySelectorAll('.slot').forEach(s => s.classList.toggle('sel', s.dataset.slot === name)); }
+    function toggleAdmin() { adminMode = !adminMode; toast('Admin mode ' + (adminMode ? 'ON' : 'OFF')); const b = document.getElementById('admin-toggle'); if (b) b.textContent = '🔧 Admin (test): ' + (adminMode ? 'ON' : 'OFF'); if (b) b.classList.toggle('on', adminMode); }
     function setRespawn() { respawn = { cx: Math.floor(player.x), cy: Math.floor(player.y) }; toast('Respawn point set'); playPop(); }
     function aimCell() { const tx = (mouse.x + cam.x) / TILE, ty = (mouse.y + cam.y) / TILE; return { cx: Math.floor(tx), cy: Math.floor(ty), tx, ty }; }
     function reachOK(cx, cy) { return Math.hypot(player.x - (cx + 0.5), player.y - (cy + 0.5)) <= REACH; }
@@ -328,8 +349,8 @@
       if (!reachOK(a.cx, a.cy)) { toast('Too far to place', true); return; }
       if (Math.floor(player.x) === a.cx && Math.floor(player.y) === a.cy) return;
       for (const m of monsters) if (Math.floor(m.x) === a.cx && Math.floor(m.y) === a.cy) return;
-      if (inv[type] <= 0) { toast('No ' + type + ' left', true); return; }
-      grid[a.cy][a.cx] = { type, mine: 0, brk: 0 }; inv[type]--; playPop();
+      if (!adminMode && inv[type] <= 0) { toast('No ' + type + ' left', true); return; }
+      grid[a.cy][a.cx] = { type, mine: 0, brk: 0 }; if (!adminMode) inv[type]--; playPop();
     }
 
     // =====================================================================
@@ -344,6 +365,7 @@
       if (dx || dy) { const l = Math.hypot(dx, dy); dx /= l; dy /= l; const sp = PLAYER_SPEED * (hasEff('speed') ? 1.6 : 1) * dt;
         if (!solidCircle(player.x + dx * sp, player.y, PLAYER_R)) player.x += dx * sp;
         if (!solidCircle(player.x, player.y + dy * sp, PLAYER_R)) player.y += dy * sp; }
+      unstick(player, PLAYER_R);
       // action: attack nearest monster in sword range, else mine aimed block
       player.swingCd -= dt; if (player.swing > 0) player.swing -= dt;
       if (mouse.left) {
@@ -359,8 +381,12 @@
       }
     }
     function hitMonster(m) {
-      m.swings++; m.flash = 0.12; playHit();
-      if (m.type !== 'superode') { const d = dist(player, m) || 1; m.x += (m.x - player.x) / d * 0.18; m.y += (m.y - player.y) / d * 0.18; }  // superodes are unmovable
+      m.swings += adminMode ? 9999 : 1; m.flash = 0.12; playHit();
+      if (m.type !== 'superode') {   // superodes are unmovable; others get knocked back but not INTO blocks
+        const def = MONSTER_DEFS[m.type], d = dist(player, m) || 1, kx = (m.x - player.x) / d * 0.22, ky = (m.y - player.y) / d * 0.22;
+        if (!solidCircle(m.x + kx, m.y, def.r)) m.x += kx;
+        if (!solidCircle(m.x, m.y + ky, def.r)) m.y += ky;
+      }
       if (m.swings >= hitsNeeded(m)) {
         monsters.splice(monsters.indexOf(m), 1); playKill();
         if (Math.random() < EFFECT_DROP_CHANCE) { const ids = Object.keys(EFFECTS); grantEffect(ids[Math.floor(Math.random() * ids.length)]); }
@@ -410,7 +436,9 @@
     }
     function breakAhead(m, sx, sy, dt) {
       const cx = Math.floor(m.x + sx * 0.5), cy = Math.floor(m.y + sy * 0.5), c = cellGet(cx, cy);
-      if (c) { c.brk += dt * (MONSTER_DEFS[m.type].breakMult || 1); if (c.brk >= BREAK_TIME[c.type]) grid[cy][cx] = null; }
+      if (!c) return;
+      const bt = m.type === 'twister' ? (c.type === 'dirt' ? D.twDirt : D.twStone) : BREAK_TIME[c.type];
+      c.brk += dt; if (c.brk >= bt) grid[cy][cx] = null;
     }
     function updateMonsters(dt) {
       const cry = { x: CC + 0.5, y: CC + 0.5 };
@@ -431,6 +459,7 @@
         const dirx = dtx / dd, diry = dty / dd, sp = def.speed * dt;
         if (Math.abs(dirx) > 0.02) { if (!solidCircle(m.x + dirx * sp, m.y, def.r)) m.x += dirx * sp; else breakAhead(m, dirx > 0 ? 1 : -1, 0, dt); }
         if (Math.abs(diry) > 0.02) { if (!solidCircle(m.x, m.y + diry * sp, def.r)) m.y += diry * sp; else breakAhead(m, 0, diry > 0 ? 1 : -1, dt); }
+        unstick(m, def.r);
       }
     }
     function updatePickups(dt) {
@@ -585,10 +614,10 @@
     const hpFill = document.getElementById('hp-fill'), waveLabel = document.getElementById('wave-label');
     const countDirt = document.getElementById('count-dirt'), countStone = document.getElementById('count-stone');
     const effectsEl = document.getElementById('effects');
-    function updateEffectsHud() { let h = ''; for (const k in effects) if (effects[k] > 0) { const e = EFFECTS[k]; h += '<div class="chip" style="border-color:' + e.color + ';color:' + e.color + '">' + e.name + ' ' + Math.ceil(effects[k]) + 's</div>'; } effectsEl.innerHTML = h; }
+    function updateEffectsHud() { let h = ''; if (adminMode) h += '<div class="chip" style="border-color:#ff5a5a;color:#ff9a9a">ADMIN</div>'; for (const k in effects) if (effects[k] > 0) { const e = EFFECTS[k]; h += '<div class="chip" style="border-color:' + e.color + ';color:' + e.color + '">' + e.name + ' ' + Math.ceil(effects[k]) + 's</div>'; } effectsEl.innerHTML = h; }
     function updateHud() {
       hpFill.style.width = (player.hp / PLAYER_HP * 100) + '%';
-      countDirt.textContent = inv.dirt; countStone.textContent = inv.stone;
+      countDirt.textContent = adminMode ? '∞' : inv.dirt; countStone.textContent = adminMode ? '∞' : inv.stone;
       if (elapsed < D.prep) waveLabel.textContent = 'Build! First wave in ' + Math.ceil(D.prep - elapsed) + 's';
       else waveLabel.textContent = 'Wave ' + waveNum + ' · next in ' + Math.max(0, Math.ceil(nextWaveAt - elapsed)) + 's';
     }
@@ -648,9 +677,11 @@
     function giveUp() { mode = 'menu'; playEl.classList.add('hidden'); menuEl.classList.remove('hidden'); renderMenu(); }
     function renderMenu() { document.getElementById('best-line').textContent = 'Wave ' + store.bestWave + ' · ' + store.bestTime + 's';
       document.querySelectorAll('#boosts .boost').forEach(b => b.classList.toggle('sel', chosenBoosts[b.dataset.boost]));
-      document.querySelectorAll('#diffs .boost').forEach(b => b.classList.toggle('sel', b.dataset.diff === diffMode)); }
+      document.querySelectorAll('#diffs .boost').forEach(b => b.classList.toggle('sel', b.dataset.diff === diffMode));
+      const ab = document.getElementById('admin-toggle'); ab.textContent = '🔧 Admin (test): ' + (adminMode ? 'ON' : 'OFF'); ab.classList.toggle('on', adminMode); }
 
     document.getElementById('start').addEventListener('click', startGame);
+    document.getElementById('admin-toggle').addEventListener('click', toggleAdmin);
     document.getElementById('giveup').addEventListener('click', giveUp);
     document.getElementById('over-retry').addEventListener('click', () => { overEl.classList.add('hidden'); startGame(); });
     document.getElementById('over-title').addEventListener('click', () => { overEl.classList.add('hidden'); menuEl.classList.remove('hidden'); mode = 'menu'; renderMenu(); });
