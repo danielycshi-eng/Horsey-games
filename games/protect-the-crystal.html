@@ -179,6 +179,7 @@
     const SWORD_RANGE = 1.15, SWORD_CD = 0.34, SWING_DUR = 0.28;
     const BREAK_TIME = { dirt: 10, stone: 25 };
     const PLAYER_HP = 100, CRYSTAL_HP = 220;
+    const RESUPPLY_WARN = 3;   // seconds the new deposits flash before they solidify
     // crack overlay segments, revealed progressively as a block takes damage
     const CRACKS = [[.5,.5,.22,.16],[.5,.5,.8,.24],[.5,.5,.72,.82],[.5,.5,.2,.76],[.22,.16,.08,.34],[.8,.24,.93,.5],[.72,.82,.88,.92],[.2,.76,.07,.6],[.5,.5,.5,.14],[.5,.5,.9,.6]];
 
@@ -229,6 +230,7 @@
     let selSlot = 'pickaxe';   // 'pickaxe' | 'sword' | 'dirt' | 'stone'
     let lastBlock = 'dirt';    // most-recent block type, for right-click placing
     let respawn = null;          // {cx, cy}
+    let resupply = null;         // { cells:[{cx,cy,type}], t } — deposits forming after every 10 waves
     const player = { x: CC + 0.5, y: CC + 2.5, hp: PLAYER_HP, invuln: 0, swingCd: 0, swing: 0, aim: 0, mining: false };
 
     // ---- Effects (buffs) ----
@@ -398,11 +400,11 @@
       player.hp -= dmg; player.invuln = 0.6; playHurt();
       if (player.hp <= 0) doRespawn();
     }
-    function doRespawn() {
+    function doRespawn(msg) {
       player.hp = PLAYER_HP; player.invuln = 1.4;
       if (respawn) { player.x = respawn.cx + 0.5; player.y = respawn.cy + 0.5; }
       else { player.x = CC + 0.5; player.y = CC + 2.5; }
-      toast('You died!', true);
+      toast(msg || 'You died!', true); playPoof();
     }
 
     // =====================================================================
@@ -433,6 +435,42 @@
         spawnMonster(type);
       }
       toast('Wave ' + waveNum + '!', false);
+      if (waveNum % 10 === 0) startResupply();   // fresh dirt/stone every 10 waves
+    }
+    // Plan clusters of new dirt/stone on currently-empty tiles (not placed yet).
+    function planVeins(dirtC, stoneC) {
+      const cells = [], seen = {};
+      for (const [type, count] of [['dirt', dirtC], ['stone', stoneC]]) {
+        for (let v = 0; v < count; v++) {
+          let x = randInt(2, GRID - 3), y = randInt(2, GRID - 3), n = randInt(3, 6);
+          for (let k = 0; k < n; k++) {
+            if (inBounds(x, y) && Math.hypot(x - CC, y - CC) >= 3.5 && !grid[y][x] && !isCrystal(x, y)) {
+              const key = x + ',' + y; if (!seen[key]) { seen[key] = 1; cells.push({ cx: x, cy: y, type }); }
+            }
+            x = clamp(x + randInt(-1, 1), 1, GRID - 2); y = clamp(y + randInt(-1, 1), 1, GRID - 2);
+          }
+        }
+      }
+      return cells;
+    }
+    function startResupply() {
+      const cells = planVeins(8, 5);
+      if (cells.length) { resupply = { cells, t: RESUPPLY_WARN }; toast('Deposits forming — get clear!', true); }
+    }
+    function updateResupply(dt) {
+      if (!resupply) return;
+      resupply.t -= dt;
+      if (resupply.t > 0) return;
+      // solidify: find if the player is caught inside any new block, then place them all
+      let caught = null;
+      for (const c of resupply.cells) {
+        if (grid[c.cy][c.cx] || isCrystal(c.cx, c.cy)) continue;
+        const clx = clamp(player.x, c.cx, c.cx + 1), cly = clamp(player.y, c.cy, c.cy + 1), dx = player.x - clx, dy = player.y - cly;
+        if (dx * dx + dy * dy < (PLAYER_R + 0.02) * (PLAYER_R + 0.02)) caught = c.type;
+      }
+      for (const c of resupply.cells) if (!grid[c.cy][c.cx] && !isCrystal(c.cx, c.cy)) grid[c.cy][c.cx] = { type: c.type, mine: 0, brk: 0 };
+      resupply = null;
+      if (caught) doRespawn('You get suffocated in some ' + caught + '!');
     }
     // Chip whichever solid block the monster's circle (at the attempted spot)
     // actually overlaps most — not just the cell dead-ahead — so it can never
@@ -506,6 +544,16 @@
         const c = grid[y][x]; if (!c) continue; const px = sx(x), py = sy(y);
         if (px < -TILE || py < -TILE || px > viewW || py > viewH) continue;
         drawBlock(px, py, c);
+      }
+      // incoming-deposit warning: flash the soon-to-be blocks in their material colour
+      if (resupply) {
+        const blink = 0.2 + 0.55 * Math.abs(Math.sin(frame * 0.32));
+        for (const c of resupply.cells) {
+          if (grid[c.cy][c.cx]) continue; const px = sx(c.cx), py = sy(c.cy);
+          ctx.globalAlpha = blink; ctx.fillStyle = c.type === 'dirt' ? '#8a5a34' : '#808690'; ctx.fillRect(px, py, TILE, TILE);
+          ctx.globalAlpha = Math.min(1, blink + 0.2); ctx.strokeStyle = c.type === 'dirt' ? '#c08a5a' : '#c2c8d2'; ctx.lineWidth = 2; ctx.strokeRect(px + 1, py + 1, TILE - 2, TILE - 2);
+        }
+        ctx.globalAlpha = 1;
       }
       drawCrystal();
       // pickups
@@ -644,7 +692,7 @@
     // =====================================================================
     const menuEl = document.getElementById('menu'), playEl = document.getElementById('play'), overEl = document.getElementById('over');
     function startGame() {
-      genTerrain(); crystalHP = CRYSTAL_HP; monsters = []; pickups = []; inv.dirt = 0; inv.stone = 0; respawn = null;
+      genTerrain(); crystalHP = CRYSTAL_HP; monsters = []; pickups = []; inv.dirt = 0; inv.stone = 0; respawn = null; resupply = null;
       player.x = CC + 0.5; player.y = CC + 2.5; player.hp = PLAYER_HP; player.invuln = 0; player.swing = 0; player.swingCd = 0;
       effects = { strength: 0, speed: 0, haste: 0, fortune: 0 }; particles = [];
       D = DIFFS[diffMode] || DIFFS.normal;
@@ -736,7 +784,7 @@
       if (mode === 'playing') {
         elapsed += dt;
         if (elapsed >= nextWaveAt) { spawnWave(); nextWaveAt += D.waveInterval; }
-        updatePlayer(dt); updateMonsters(dt); updatePickups(dt); updateEffects(dt); updateParticles(dt);
+        updatePlayer(dt); updateMonsters(dt); updatePickups(dt); updateEffects(dt); updateParticles(dt); updateResupply(dt);
         // camera
         let tx = player.x * TILE - viewW / 2, ty = player.y * TILE - viewH / 2;
         tx = WORLD_PX <= viewW ? (WORLD_PX - viewW) / 2 : clamp(tx, 0, WORLD_PX - viewW);
