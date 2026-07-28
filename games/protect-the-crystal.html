@@ -331,6 +331,7 @@
       else if (k === '3') selectSlot('dirt'); else if (k === '4') selectSlot('stone');
       else if (k === 'r') setRespawn();
       else if (k === '`') toggleAdmin();
+      else if (k === 'n' && adminMode) skipWave();
       if (['w', 'a', 's', 'd', '1', '2', '3', '4', 'r'].includes(k) || k.startsWith('arrow')) e.preventDefault();
     });
     window.addEventListener('keyup', (e) => { const k = e.key.toLowerCase();
@@ -340,7 +341,8 @@
     window.addEventListener('resize', () => { if (mode === 'playing') resize(); });
 
     function selectSlot(name) { selSlot = name; if (name === 'dirt' || name === 'stone') lastBlock = name; document.querySelectorAll('.slot').forEach(s => s.classList.toggle('sel', s.dataset.slot === name)); }
-    function toggleAdmin() { adminMode = !adminMode; toast('Admin mode ' + (adminMode ? 'ON' : 'OFF')); const b = document.getElementById('admin-toggle'); if (b) b.textContent = '🔧 Admin (test): ' + (adminMode ? 'ON' : 'OFF'); if (b) b.classList.toggle('on', adminMode); }
+    function toggleAdmin() { adminMode = !adminMode; toast('Admin mode ' + (adminMode ? 'ON — press N to skip wave' : 'OFF')); const b = document.getElementById('admin-toggle'); if (b) b.textContent = '🔧 Admin (test): ' + (adminMode ? 'ON' : 'OFF'); if (b) b.classList.toggle('on', adminMode); }
+    function skipWave() { monsters = []; spawnWave(); nextWaveAt = elapsed + D.waveInterval; toast('Skipped to wave ' + waveNum); }
     function setRespawn() { respawn = { cx: Math.floor(player.x), cy: Math.floor(player.y) }; toast('Respawn point set'); playPop(); }
     function aimCell() { const tx = (mouse.x + cam.x) / TILE, ty = (mouse.y + cam.y) / TILE; return { cx: Math.floor(tx), cy: Math.floor(ty), tx, ty }; }
     function reachOK(cx, cy) { return Math.hypot(player.x - (cx + 0.5), player.y - (cy + 0.5)) <= REACH; }
@@ -377,7 +379,7 @@
           if (target && player.swingCd <= 0) { player.swingCd = SWORD_CD; player.swing = SWING_DUR; hitMonster(target); }
         } else if (selSlot === 'pickaxe') {         // only the pickaxe mines blocks
           const c = cellGet(a.cx, a.cy);
-          if (c && reachOK(a.cx, a.cy)) { c.mine += dt; player.mining = true;
+          if (c && reachOK(a.cx, a.cy)) { c.mine += adminMode ? 999 : dt; player.mining = true;
             if (c.mine >= mineTime(c.type)) { const drops = hasEff('fortune') ? 2 : 1; for (let k = 0; k < drops; k++) spawnPickup(a.cx, a.cy, c.type); grid[a.cy][a.cx] = null; playPop(); } }
         }
       }
@@ -396,7 +398,7 @@
     }
     function spawnPickup(cx, cy, type) { pickups.push({ x: cx + 0.5, y: cy + 0.5, type }); }
     function hurtPlayer(dmg) {
-      if (player.invuln > 0) return;
+      if (adminMode || player.invuln > 0) return;
       player.hp -= dmg; player.invuln = 0.6; playHurt();
       if (player.hp <= 0) doRespawn();
     }
@@ -470,7 +472,7 @@
       }
       for (const c of resupply.cells) if (!grid[c.cy][c.cx] && !isCrystal(c.cx, c.cy)) grid[c.cy][c.cx] = { type: c.type, mine: 0, brk: 0 };
       resupply = null;
-      if (caught) doRespawn('You get suffocated in some ' + caught + '!');
+      if (caught && !adminMode) doRespawn('You get suffocated in some ' + caught + '!');
     }
     // Chip whichever solid block the monster's circle (at the attempted spot)
     // actually overlaps most — not just the cell dead-ahead — so it can never
