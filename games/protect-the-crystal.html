@@ -454,9 +454,11 @@
       const cry = { x: CC + 0.5, y: CC + 0.5 };
       for (const m of monsters) {
         const def = MONSTER_DEFS[m.type]; if (m.flash > 0) m.flash -= dt; m.atkCd -= dt;
-        // Crystal is one-shot, but only if a monster actually TOUCHES it (pressed
-        // against the gem) with a clear line — walls it hasn't broken still block it.
-        if (Math.hypot(cry.x - m.x, cry.y - m.y) <= 0.55 + def.r && hasLOS(m.x, m.y, cry.x, cry.y)) { crystalFall(); return; }
+        // Crystal is one-shot when a monster's body actually TOUCHES the crystal
+        // cell (circle-vs-rect, so it works from any angle — flat face OR corner),
+        // with a clear line. Walls it hasn't broken keep it too far to touch.
+        const clx = clamp(m.x, CC, CC + 1), cly = clamp(m.y, CC, CC + 1), tdx = m.x - clx, tdy = m.y - cly, rr = def.r + 0.05;
+        if (tdx * tdx + tdy * tdy < rr * rr && hasLOS(m.x, m.y, cry.x, cry.y)) { crystalFall(); return; }
         // Aggro onto the player only if close AND visible — but harmless monsters (twisters) ignore you.
         const dpl = dist(player, m), see = hasLOS(m.x, m.y, player.x, player.y);
         const target = (def.dmg > 0 && dpl <= 1.8 && see) ? player : cry;
@@ -466,18 +468,14 @@
           if (m.atkCd <= 0) { m.atkCd = 1.0; m.swing = 0.2; hurtPlayer(def.dmg); }
           continue;
         }
-        // Dig straight toward the target: if the block in the primary direction is
-        // in the way, break THROUGH it instead of sliding around it.
+        // Move toward the target on each axis independently (so it can slide along
+        // walls and around the crystal to line up); if a block is in the way, chip
+        // the actual block it's pressed against.
         const dirx = dtx / dd, diry = dty / dd, sp = def.speed * dt;
-        if (Math.abs(dirx) >= Math.abs(diry)) {
-          const nx = m.x + dirx * sp;
-          if (!solidCircle(nx, m.y, def.r)) { m.x = nx; if (Math.abs(diry) > 0.02) { const ny = m.y + diry * sp; if (!solidCircle(m.x, ny, def.r)) m.y = ny; } }
-          else breakBlockAt(m, nx, m.y, dt);
-        } else {
-          const ny = m.y + diry * sp;
-          if (!solidCircle(m.x, ny, def.r)) { m.y = ny; if (Math.abs(dirx) > 0.02) { const nx = m.x + dirx * sp; if (!solidCircle(nx, m.y, def.r)) m.x = nx; } }
-          else breakBlockAt(m, m.x, ny, dt);
-        }
+        const nx = m.x + dirx * sp;
+        if (!solidCircle(nx, m.y, def.r)) m.x = nx; else if (Math.abs(dirx) > 0.05) breakBlockAt(m, nx, m.y, dt);
+        const ny = m.y + diry * sp;
+        if (!solidCircle(m.x, ny, def.r)) m.y = ny; else if (Math.abs(diry) > 0.05) breakBlockAt(m, m.x, ny, dt);
         unstick(m, def.r);
       }
     }
