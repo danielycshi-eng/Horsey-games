@@ -284,9 +284,12 @@
       if (!solidCell(cx + 1, cy)) cand.push({ c: (cx + 1 + r) - e.x, set: () => { e.x = cx + 1 + r; } });
       if (!solidCell(cx, cy - 1)) cand.push({ c: e.y - (cy - r), set: () => { e.y = cy - r; } });
       if (!solidCell(cx, cy + 1)) cand.push({ c: (cy + 1 + r) - e.y, set: () => { e.y = cy + 1 + r; } });
-      if (!cand.length) return;   // fully boxed in — must break/mine out
-      cand.sort((a, b) => a.c - b.c); cand[0].set();
-      e.x = clamp(e.x, r, COLS - r); e.y = clamp(e.y, r, ROWS - r);
+      if (cand.length) { cand.sort((a, b) => a.c - b.c); cand[0].set(); e.x = clamp(e.x, r, COLS - r); e.y = clamp(e.y, r, ROWS - r); return; }
+      // Fully enclosed: spiral outward to the nearest open cell and pop there.
+      for (let rad = 1; rad <= 6; rad++) for (let dy = -rad; dy <= rad; dy++) for (let dx = -rad; dx <= rad; dx++) {
+        if (Math.abs(dx) !== rad && Math.abs(dy) !== rad) continue;   // ring only
+        if (!solidCell(cx + dx, cy + dy)) { e.x = clamp(cx + dx + 0.5, r, COLS - r); e.y = clamp(cy + dy + 0.5, r, ROWS - r); return; }
+      }
     }
     function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
     // clear line of sight if no dirt/stone block sits between the two points
@@ -463,16 +466,22 @@
       if (!resupply) return;
       resupply.t -= dt;
       if (resupply.t > 0) return;
-      // solidify: find if the player is caught inside any new block, then place them all
       let caught = null;
       for (const c of resupply.cells) {
         if (grid[c.cy][c.cx] || isCrystal(c.cx, c.cy)) continue;
-        const clx = clamp(player.x, c.cx, c.cx + 1), cly = clamp(player.y, c.cy, c.cy + 1), dx = player.x - clx, dy = player.y - cly;
-        if (dx * dx + dy * dy < (PLAYER_R + 0.02) * (PLAYER_R + 0.02)) caught = c.type;
+        // Never bury a monster (they'd get boxed in) — skip cells they're standing on.
+        let mob = false;
+        for (const m of monsters) { const mr = MONSTER_DEFS[m.type].r + 0.02, ax = clamp(m.x, c.cx, c.cx + 1), ay = clamp(m.y, c.cy, c.cy + 1), dx = m.x - ax, dy = m.y - ay; if (dx * dx + dy * dy < mr * mr) { mob = true; break; } }
+        if (mob) continue;
+        // Is the player standing here?
+        const pr = PLAYER_R + 0.02, px = clamp(player.x, c.cx, c.cx + 1), py = clamp(player.y, c.cy, c.cy + 1), dpx = player.x - px, dpy = player.y - py;
+        const onPlayer = dpx * dpx + dpy * dpy < pr * pr;
+        if (onPlayer && adminMode) continue;   // don't trap the invincible admin player
+        if (onPlayer) caught = c.type;          // gets suffocated, then respawned clear
+        grid[c.cy][c.cx] = { type: c.type, mine: 0, brk: 0 };
       }
-      for (const c of resupply.cells) if (!grid[c.cy][c.cx] && !isCrystal(c.cx, c.cy)) grid[c.cy][c.cx] = { type: c.type, mine: 0, brk: 0 };
       resupply = null;
-      if (caught && !adminMode) doRespawn('You get suffocated in some ' + caught + '!');
+      if (caught) doRespawn('You get suffocated in some ' + caught + '!');
     }
     // Chip whichever solid block the monster's circle (at the attempted spot)
     // actually overlaps most — not just the cell dead-ahead — so it can never
