@@ -190,13 +190,15 @@
       superode: { dmg: 20, range: 2, speed: 1.4, r: 0.44, color: '#7d4fd6', size: 0.56, breakMult: 1 },
       // Twister: no damage to you, but tears through blocks fast (per-difficulty) and has 2x a rode's health.
       twister:  { dmg: 0,  range: 1, speed: 2.4, r: 0.40, color: '#c9d3e0', size: 0.5 },
+      // Cagerode: a chained rode that INSTANTLY kills you, breaks blocks like a twister.
+      cagerode: { dmg: 5,  range: 1, speed: 2.2, r: 0.37, color: '#8f2222', size: 0.44 },
     };
 
     // Difficulty presets. Normal is the default (no mode selected on the menu).
     const DIFFS = {
-      normal: { prep: 90, rodeHits: 3, superHits: 10, mineDirt: 5, mineStone: 10, waveBase: 2, wavePer: 1,   superEarly: 0.10, superLate: 0.20, twister: 0.10, twDirt: 1,   twStone: 2, waveInterval: 22, hasteDirt: 1,   hasteStone: 3,  strRode: 1, strSuper: 3,  goldMine: 20, goldBreak: 40, goldTwister: 20 },
-      easy:   { prep: 90, rodeHits: 2, superHits: 5,  mineDirt: 3, mineStone: 8,  waveBase: 1, wavePer: 0.6, superEarly: 0.05, superLate: 0.10, twister: 0.05, twDirt: 3,   twStone: 4, waveInterval: 26, hasteDirt: 0.5, hasteStone: 3,  strRode: 1, strSuper: 3,  goldMine: 15, goldBreak: 50, goldTwister: 30 },
-      insane: { prep: 60, rodeHits: 8, superHits: 15, mineDirt: 8, mineStone: 15, waveBase: 3, wavePer: 1.6, superEarly: 0.20, superLate: 0.35, twister: 0.30, twDirt: 0.3, twStone: 1, waveInterval: 16, hasteDirt: 5,   hasteStone: 10, strRode: 5, strSuper: 10, goldMine: 35, goldBreak: 35, goldTwister: 15 },
+      normal: { prep: 90, rodeHits: 3, superHits: 10, mineDirt: 5, mineStone: 10, waveBase: 2, wavePer: 1,   superEarly: 0.10, superLate: 0.20, twister: 0.10, twDirt: 1,   twStone: 2, waveInterval: 22, hasteDirt: 1,   hasteStone: 3,  strRode: 1, strSuper: 3,  goldMine: 20, goldBreak: 40, goldTwister: 20, cageHits: 5 },
+      easy:   { prep: 90, rodeHits: 2, superHits: 5,  mineDirt: 3, mineStone: 8,  waveBase: 1, wavePer: 0.6, superEarly: 0.05, superLate: 0.10, twister: 0.05, twDirt: 3,   twStone: 4, waveInterval: 26, hasteDirt: 0.5, hasteStone: 3,  strRode: 1, strSuper: 3,  goldMine: 15, goldBreak: 50, goldTwister: 30, cageHits: 3 },
+      insane: { prep: 60, rodeHits: 8, superHits: 15, mineDirt: 8, mineStone: 15, waveBase: 3, wavePer: 1.6, superEarly: 0.20, superLate: 0.35, twister: 0.30, twDirt: 0.3, twStone: 1, waveInterval: 16, hasteDirt: 5,   hasteStone: 10, strRode: 5, strSuper: 10, goldMine: 35, goldBreak: 35, goldTwister: 15, cageHits: 7 },
     };
     let diffMode = 'normal', D = DIFFS.normal;
     let adminMode = false;   // test mode: one-hit kills, infinite blocks, all effects
@@ -207,6 +209,7 @@
     }
     function hitsNeeded(m) {
       const str = hasEff('strength');
+      if (m.type === 'cagerode') return D.cageHits;                          // chains shrug off Strength
       if (m.type === 'twister') return 2 * (str ? D.strRode : D.rodeHits);   // twice a rode
       return str ? (m.type === 'rode' ? D.strRode : D.strSuper) : (m.type === 'rode' ? D.rodeHits : D.superHits);
     }
@@ -315,7 +318,7 @@
         for (let v = 0; v < count; v++) {
           let x = randInt(2, GRID - 3), y = randInt(2, GRID - 3), n = randInt(3, 6);
           for (let k = 0; k < n; k++) {
-            if (inBounds(x, y) && Math.hypot(x - CC, y - CC) >= 3.5) grid[y][x] = { type, gold: type === 'stone' && Math.random() < 0.2, mine: 0, brk: 0 };
+            if (inBounds(x, y) && Math.hypot(x - CC, y - CC) >= 3.5) grid[y][x] = { type, mine: 0, brk: 0 };
             x = clamp(x + randInt(-1, 1), 1, GRID - 2); y = clamp(y + randInt(-1, 1), 1, GRID - 2);
           }
         }
@@ -450,7 +453,7 @@
       for (let i = 0; i < count; i++) {
         let type = 'rode';
         if (Math.random() < superChance) type = 'superode';
-        else if (Math.random() < twisterChance) type = 'twister';
+        else if (Math.random() < twisterChance) type = (waveNum >= 10 && Math.random() < 0.30) ? 'cagerode' : 'twister';
         spawnMonster(type);
       }
       toast('Wave ' + waveNum + '!', false);
@@ -511,9 +514,9 @@
       }
       if (!tgt) return;
       const c = tgt.c;
-      let bt;
-      if (c.type === 'gold') bt = m.type === 'twister' ? D.goldTwister : D.goldBreak;   // placed gold block (tough)
-      else if (m.type === 'twister') bt = c.type === 'dirt' ? D.twDirt : D.twStone;
+      let bt; const tw = m.type === 'twister' || m.type === 'cagerode';   // both tear blocks fast
+      if (c.type === 'gold') bt = tw ? D.goldTwister : D.goldBreak;   // placed gold block (tough)
+      else if (tw) bt = c.type === 'dirt' ? D.twDirt : D.twStone;
       else bt = BREAK_TIME[c.type];   // dirt / stone (gold ore is type 'stone')
       c.brk += dt; if (c.brk >= bt) grid[tgt.cy][tgt.cx] = null;
     }
@@ -532,7 +535,10 @@
         const dtx = target.x - m.x, dty = target.y - m.y, dd = Math.hypot(dtx, dty) || 1;
         // Attack the player only within range AND with line of sight (no reaching through walls).
         if (target === player && dd <= def.range + 0.35 && see) {
-          if (m.atkCd <= 0) { m.atkCd = 1.0; m.swing = 0.2; hurtPlayer(def.dmg); }
+          if (m.atkCd <= 0) { m.atkCd = 1.0; m.swing = 0.2;
+            if (m.type === 'cagerode') { if (!adminMode) doRespawn('A Cagerode caught you in its chains!'); }
+            else hurtPlayer(def.dmg);
+          }
           continue;
         }
         // Move toward the target on each axis independently (so it can slide along
@@ -657,6 +663,11 @@
         ctx.fillStyle = shade(def.color, 0.6);
         for (let i = 0; i < 6; i++) { const an = i / 6 * Math.PI * 2 - Math.PI / 2, ox = Math.cos(an) * R, oy = Math.sin(an) * R;
           ctx.beginPath(); ctx.moveTo(px + ox * 0.8, py + oy * 0.8); ctx.lineTo(px + ox * 1.35, py + oy * 1.35); ctx.lineTo(px + ox * 0.8 + oy * 0.18, py + oy * 0.8 - ox * 0.18); ctx.closePath(); ctx.fill(); }
+      }
+      if (m.type === 'cagerode') { // orbiting chain links
+        ctx.strokeStyle = '#9aa0aa'; ctx.lineWidth = 2.2;
+        for (let i = 0; i < 8; i++) { const an = i / 8 * Math.PI * 2 + frame * 0.02;
+          ctx.beginPath(); ctx.arc(px + Math.cos(an) * R * 1.08, py + Math.sin(an) * R * 1.08, R * 0.17, 0, Math.PI * 2); ctx.stroke(); }
       }
       // eyes (angry)
       ctx.fillStyle = '#fff'; disc(px - R * 0.28, py - R * 0.2, R * 0.2); disc(px + R * 0.28, py - R * 0.2, R * 0.2);
