@@ -71,6 +71,7 @@
     .slot .icon { width: 26px; height: 26px; border-radius: 5px; }
     .slot .icon.dirt { background: #8a5a34; border: 2px solid #5f3c20; }
     .slot .icon.stone { background: #808690; border: 2px solid #565b66; }
+    .slot .icon.gold { background: #f2c94c; border: 2px solid #b8860b; }
     .slot .count { font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 800; font-size: 0.9rem; margin-top: 3px; color: #f0d9b0; }
     .slot .key { position: absolute; top: 3px; left: 5px; font-size: 0.62rem; color: #9a8f78; }
 
@@ -153,6 +154,7 @@
         <svg width="30" height="30" viewBox="0 0 28 28"><line x1="7" y1="21" x2="20" y2="8" stroke="#e6ecf5" stroke-width="3.5" stroke-linecap="round"/><line x1="5" y1="17" x2="11" y2="23" stroke="#c99a4a" stroke-width="3.5" stroke-linecap="round"/><circle cx="6" cy="22" r="1.8" fill="#8a5a2b"/></svg></div>
       <div class="slot" data-slot="dirt"><span class="key">3</span><span class="icon dirt"></span><span class="count" id="count-dirt">0</span></div>
       <div class="slot" data-slot="stone"><span class="key">4</span><span class="icon stone"></span><span class="count" id="count-stone">0</span></div>
+      <div class="slot" data-slot="gold" id="slot-gold" style="display:none"><span class="key">5</span><span class="icon gold"></span><span class="count" id="count-gold">0</span></div>
     </div>
     <button class="end-btn" id="giveup">Give Up</button>
   </div>
@@ -192,13 +194,17 @@
 
     // Difficulty presets. Normal is the default (no mode selected on the menu).
     const DIFFS = {
-      normal: { prep: 90, rodeHits: 3, superHits: 10, mineDirt: 5, mineStone: 10, waveBase: 2, wavePer: 1,   superEarly: 0.10, superLate: 0.20, twister: 0.10, twDirt: 1,   twStone: 2, waveInterval: 22, hasteDirt: 1,   hasteStone: 3,  strRode: 1, strSuper: 3 },
-      easy:   { prep: 90, rodeHits: 2, superHits: 5,  mineDirt: 3, mineStone: 8,  waveBase: 1, wavePer: 0.6, superEarly: 0.05, superLate: 0.10, twister: 0.05, twDirt: 3,   twStone: 4, waveInterval: 26, hasteDirt: 0.5, hasteStone: 3,  strRode: 1, strSuper: 3 },
-      insane: { prep: 60, rodeHits: 8, superHits: 15, mineDirt: 8, mineStone: 15, waveBase: 3, wavePer: 1.6, superEarly: 0.20, superLate: 0.35, twister: 0.30, twDirt: 0.3, twStone: 1, waveInterval: 16, hasteDirt: 5,   hasteStone: 10, strRode: 5, strSuper: 10 },
+      normal: { prep: 90, rodeHits: 3, superHits: 10, mineDirt: 5, mineStone: 10, waveBase: 2, wavePer: 1,   superEarly: 0.10, superLate: 0.20, twister: 0.10, twDirt: 1,   twStone: 2, waveInterval: 22, hasteDirt: 1,   hasteStone: 3,  strRode: 1, strSuper: 3,  goldMine: 20, goldBreak: 40, goldTwister: 20 },
+      easy:   { prep: 90, rodeHits: 2, superHits: 5,  mineDirt: 3, mineStone: 8,  waveBase: 1, wavePer: 0.6, superEarly: 0.05, superLate: 0.10, twister: 0.05, twDirt: 3,   twStone: 4, waveInterval: 26, hasteDirt: 0.5, hasteStone: 3,  strRode: 1, strSuper: 3,  goldMine: 15, goldBreak: 50, goldTwister: 30 },
+      insane: { prep: 60, rodeHits: 8, superHits: 15, mineDirt: 8, mineStone: 15, waveBase: 3, wavePer: 1.6, superEarly: 0.20, superLate: 0.35, twister: 0.30, twDirt: 0.3, twStone: 1, waveInterval: 16, hasteDirt: 5,   hasteStone: 10, strRode: 5, strSuper: 10, goldMine: 35, goldBreak: 35, goldTwister: 15 },
     };
     let diffMode = 'normal', D = DIFFS.normal;
     let adminMode = false;   // test mode: one-hit kills, infinite blocks, all effects
-    function mineTime(type) { return hasEff('haste') ? (type === 'dirt' ? D.hasteDirt : D.hasteStone) : (type === 'dirt' ? D.mineDirt : D.mineStone); }
+    function mineTime(c) {
+      if (c.gold) return D.goldMine;                                       // gold-bearing stone ore (slow)
+      if (c.type === 'dirt') return hasEff('haste') ? D.hasteDirt : D.mineDirt;
+      return hasEff('haste') ? D.hasteStone : D.mineStone;                 // stone or placed gold block
+    }
     function hitsNeeded(m) {
       const str = hasEff('strength');
       if (m.type === 'twister') return 2 * (str ? D.strRode : D.rodeHits);   // twice a rode
@@ -226,9 +232,10 @@
     let grid = [];               // grid[y][x] = null | {type, mine, brk}
     let crystalHP = CRYSTAL_HP;
     let monsters = [], pickups = [];
-    const inv = { dirt: 0, stone: 0 };
-    let selSlot = 'pickaxe';   // 'pickaxe' | 'sword' | 'dirt' | 'stone'
+    const inv = { dirt: 0, stone: 0, gold: 0 };
+    let selSlot = 'pickaxe';   // 'pickaxe' | 'sword' | 'dirt' | 'stone' | 'gold'
     let lastBlock = 'dirt';    // most-recent block type, for right-click placing
+    let goldUnlocked = false;  // gold hotbar slot appears once you first get gold
     let respawn = null;          // {cx, cy}
     let resupply = null;         // { cells:[{cx,cy,type}], t } — deposits forming after every 10 waves
     const player = { x: CC + 0.5, y: CC + 2.5, hp: PLAYER_HP, invuln: 0, swingCd: 0, swing: 0, aim: 0, mining: false };
@@ -308,7 +315,7 @@
         for (let v = 0; v < count; v++) {
           let x = randInt(2, GRID - 3), y = randInt(2, GRID - 3), n = randInt(3, 6);
           for (let k = 0; k < n; k++) {
-            if (inBounds(x, y) && Math.hypot(x - CC, y - CC) >= 3.5) grid[y][x] = { type, mine: 0, brk: 0 };
+            if (inBounds(x, y) && Math.hypot(x - CC, y - CC) >= 3.5) grid[y][x] = { type, gold: type === 'stone' && Math.random() < 0.2, mine: 0, brk: 0 };
             x = clamp(x + randInt(-1, 1), 1, GRID - 2); y = clamp(y + randInt(-1, 1), 1, GRID - 2);
           }
         }
@@ -322,7 +329,7 @@
     const mouse = { x: 0, y: 0, left: false };
     canvas.addEventListener('mousemove', (e) => { const r = canvas.getBoundingClientRect(); mouse.x = e.clientX - r.left; mouse.y = e.clientY - r.top; });
     canvas.addEventListener('mousedown', (e) => { if (mode !== 'playing') return;
-      if (e.button === 0) { mouse.left = true; if (selSlot === 'dirt' || selSlot === 'stone') tryPlace(selSlot); }
+      if (e.button === 0) { mouse.left = true; if (selSlot === 'dirt' || selSlot === 'stone' || selSlot === 'gold') tryPlace(selSlot); }
       else if (e.button === 2) tryPlace(lastBlock); });
     window.addEventListener('mouseup', (e) => { if (e.button === 0) mouse.left = false; });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -331,11 +338,11 @@
       if (k === 'w' || k === 'arrowup') keys.w = true; else if (k === 'a' || k === 'arrowleft') keys.a = true;
       else if (k === 's' || k === 'arrowdown') keys.s = true; else if (k === 'd' || k === 'arrowright') keys.d = true;
       else if (k === '1') selectSlot('pickaxe'); else if (k === '2') selectSlot('sword');
-      else if (k === '3') selectSlot('dirt'); else if (k === '4') selectSlot('stone');
+      else if (k === '3') selectSlot('dirt'); else if (k === '4') selectSlot('stone'); else if (k === '5' && (goldUnlocked || adminMode)) selectSlot('gold');
       else if (k === 'r') setRespawn();
       else if (k === '`') toggleAdmin();
       else if (k === 'n' && adminMode) skipWave();
-      if (['w', 'a', 's', 'd', '1', '2', '3', '4', 'r'].includes(k) || k.startsWith('arrow')) e.preventDefault();
+      if (['w', 'a', 's', 'd', '1', '2', '3', '4', '5', 'r'].includes(k) || k.startsWith('arrow')) e.preventDefault();
     });
     window.addEventListener('keyup', (e) => { const k = e.key.toLowerCase();
       if (k === 'w' || k === 'arrowup') keys.w = false; else if (k === 'a' || k === 'arrowleft') keys.a = false;
@@ -343,14 +350,14 @@
     window.addEventListener('blur', () => { keys.w = keys.a = keys.s = keys.d = false; mouse.left = false; });
     window.addEventListener('resize', () => { if (mode === 'playing') resize(); });
 
-    function selectSlot(name) { selSlot = name; if (name === 'dirt' || name === 'stone') lastBlock = name; document.querySelectorAll('.slot').forEach(s => s.classList.toggle('sel', s.dataset.slot === name)); }
+    function selectSlot(name) { selSlot = name; if (name === 'dirt' || name === 'stone' || name === 'gold') lastBlock = name; document.querySelectorAll('.slot').forEach(s => s.classList.toggle('sel', s.dataset.slot === name)); }
     function toggleAdmin() { adminMode = !adminMode; toast('Admin mode ' + (adminMode ? 'ON — press N to skip wave' : 'OFF')); const b = document.getElementById('admin-toggle'); if (b) b.textContent = '🔧 Admin (test): ' + (adminMode ? 'ON' : 'OFF'); if (b) b.classList.toggle('on', adminMode); }
     function skipWave() { monsters = []; spawnWave(); nextWaveAt = elapsed + D.waveInterval; toast('Skipped to wave ' + waveNum); }
     function setRespawn() { respawn = { cx: Math.floor(player.x), cy: Math.floor(player.y) }; toast('Respawn point set'); playPop(); }
     function aimCell() { const tx = (mouse.x + cam.x) / TILE, ty = (mouse.y + cam.y) / TILE; return { cx: Math.floor(tx), cy: Math.floor(ty), tx, ty }; }
     function reachOK(cx, cy) { return Math.hypot(player.x - (cx + 0.5), player.y - (cy + 0.5)) <= REACH; }
     function tryPlace(type) {
-      if (type !== 'dirt' && type !== 'stone') return;
+      if (type !== 'dirt' && type !== 'stone' && type !== 'gold') return;
       const a = aimCell();
       if (!inBounds(a.cx, a.cy) || isCrystal(a.cx, a.cy) || cellGet(a.cx, a.cy)) return;
       if (!reachOK(a.cx, a.cy)) { toast('Too far to place', true); return; }
@@ -383,7 +390,14 @@
         } else if (selSlot === 'pickaxe') {         // only the pickaxe mines blocks
           const c = cellGet(a.cx, a.cy);
           if (c && reachOK(a.cx, a.cy)) { c.mine += adminMode ? 999 : dt; player.mining = true;
-            if (c.mine >= mineTime(c.type)) { const drops = hasEff('fortune') ? 2 : 1; for (let k = 0; k < drops; k++) spawnPickup(a.cx, a.cy, c.type); grid[a.cy][a.cx] = null; playPop(); } }
+            if (c.mine >= mineTime(c)) {
+              const drops = hasEff('fortune') ? 2 : 1;
+              for (let k = 0; k < drops; k++) {
+                if (c.gold) { spawnPickup(a.cx, a.cy, 'stone'); spawnPickup(a.cx, a.cy, 'gold'); }   // gold ore -> stone + gold
+                else spawnPickup(a.cx, a.cy, c.type);                                                // dirt / stone / placed gold
+              }
+              grid[a.cy][a.cx] = null; playPop();
+            } }
         }
       }
     }
@@ -450,7 +464,7 @@
           let x = randInt(2, GRID - 3), y = randInt(2, GRID - 3), n = randInt(3, 6);
           for (let k = 0; k < n; k++) {
             if (inBounds(x, y) && Math.hypot(x - CC, y - CC) >= 3.5 && !grid[y][x] && !isCrystal(x, y)) {
-              const key = x + ',' + y; if (!seen[key]) { seen[key] = 1; cells.push({ cx: x, cy: y, type }); }
+              const key = x + ',' + y; if (!seen[key]) { seen[key] = 1; cells.push({ cx: x, cy: y, type, gold: type === 'stone' && Math.random() < 0.2 }); }
             }
             x = clamp(x + randInt(-1, 1), 1, GRID - 2); y = clamp(y + randInt(-1, 1), 1, GRID - 2);
           }
@@ -478,7 +492,7 @@
         const onPlayer = dpx * dpx + dpy * dpy < pr * pr;
         if (onPlayer && adminMode) continue;   // don't trap the invincible admin player
         if (onPlayer) caught = c.type;          // gets suffocated, then respawned clear
-        grid[c.cy][c.cx] = { type: c.type, mine: 0, brk: 0 };
+        grid[c.cy][c.cx] = { type: c.type, gold: c.gold, mine: 0, brk: 0 };
       }
       resupply = null;
       if (caught) doRespawn('You get suffocated in some ' + caught + '!');
@@ -496,7 +510,11 @@
         if (d2 < r * r && (r * r - d2) > best) { best = r * r - d2; tgt = { cx, cy, c }; }
       }
       if (!tgt) return;
-      const c = tgt.c, bt = m.type === 'twister' ? (c.type === 'dirt' ? D.twDirt : D.twStone) : BREAK_TIME[c.type];
+      const c = tgt.c;
+      let bt;
+      if (c.type === 'gold') bt = m.type === 'twister' ? D.goldTwister : D.goldBreak;   // placed gold block (tough)
+      else if (m.type === 'twister') bt = c.type === 'dirt' ? D.twDirt : D.twStone;
+      else bt = BREAK_TIME[c.type];   // dirt / stone (gold ore is type 'stone')
       c.brk += dt; if (c.brk >= bt) grid[tgt.cy][tgt.cx] = null;
     }
     function updateMonsters(dt) {
@@ -532,7 +550,7 @@
       for (let i = pickups.length - 1; i >= 0; i--) {
         const p = pickups[i], d = dist(player, p);
         if (d < 2.2) { const s = Math.min(d, 7 * dt); p.x += (player.x - p.x) / (d || 1) * s; p.y += (player.y - p.y) / (d || 1) * s; }
-        if (d < 0.45) { inv[p.type]++; pickups.splice(i, 1); playPing(); }
+        if (d < 0.45) { inv[p.type]++; if (p.type === 'gold') goldUnlocked = true; pickups.splice(i, 1); playPing(); }
       }
     }
 
@@ -569,7 +587,8 @@
       drawCrystal();
       // pickups
       for (const p of pickups) { const px = sx(p.x), py = sy(p.y);
-        ctx.fillStyle = p.type === 'dirt' ? '#8a5a34' : '#808690'; ctx.strokeStyle = p.type === 'dirt' ? '#5f3c20' : '#565b66'; ctx.lineWidth = 2;
+        ctx.fillStyle = p.type === 'dirt' ? '#8a5a34' : p.type === 'gold' ? '#f2c94c' : '#808690';
+        ctx.strokeStyle = p.type === 'dirt' ? '#5f3c20' : p.type === 'gold' ? '#b8860b' : '#565b66'; ctx.lineWidth = 2;
         ctx.fillRect(px - 7, py - 7, 14, 14); ctx.strokeRect(px - 7, py - 7, 14, 14); }
       // respawn flag
       if (respawn) { const px = sx(respawn.cx + 0.5), py = sy(respawn.cy + 0.85);
@@ -589,12 +608,20 @@
       drawParticles();
     }
     function drawBlock(px, py, c) {
-      const base = c.type === 'dirt' ? '#8a5a34' : '#808690';
+      const base = c.type === 'dirt' ? '#8a5a34' : c.type === 'gold' ? '#e6b53c' : '#808690';
       ctx.fillStyle = base; ctx.fillRect(px, py, TILE, TILE);
       ctx.fillStyle = 'rgba(255,255,255,0.14)'; ctx.fillRect(px, py, TILE, 4); ctx.fillRect(px, py, 4, TILE);
       ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.fillRect(px, py + TILE - 4, TILE, 4); ctx.fillRect(px + TILE - 4, py, 4, TILE);
+      if (c.gold) {   // gold flecks embedded in stone ore
+        ctx.fillStyle = '#f4cf52'; ctx.strokeStyle = '#a9791a'; ctx.lineWidth = 1;
+        for (const g of [[0.28, 0.32, 3.2], [0.62, 0.4, 2.6], [0.44, 0.66, 3.0], [0.72, 0.72, 2.2]]) {
+          ctx.beginPath(); ctx.arc(px + g[0] * TILE, py + g[1] * TILE, g[2], 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        }
+      } else if (c.type === 'gold') {   // solid gold block sheen
+        ctx.fillStyle = 'rgba(255,255,255,0.22)'; ctx.fillRect(px + 6, py + 6, TILE - 20, 4);
+      }
       // damage: MORE cracks appear the more it's damaged (not just wider ones)
-      const prog = Math.max(c.mine / mineTime(c.type), c.brk / BREAK_TIME[c.type]);
+      const prog = Math.max(c.mine / mineTime(c), c.brk / (BREAK_TIME[c.type] || D.goldBreak));
       if (prog > 0.03) {
         const n = Math.min(CRACKS.length, Math.ceil(prog * CRACKS.length));
         ctx.strokeStyle = 'rgba(15,10,6,0.75)'; ctx.lineWidth = 1.5; ctx.lineCap = 'round'; ctx.beginPath();
@@ -689,11 +716,14 @@
     // =====================================================================
     const hpFill = document.getElementById('hp-fill'), waveLabel = document.getElementById('wave-label');
     const countDirt = document.getElementById('count-dirt'), countStone = document.getElementById('count-stone');
+    const countGold = document.getElementById('count-gold'), slotGold = document.getElementById('slot-gold');
     const effectsEl = document.getElementById('effects');
     function updateEffectsHud() { let h = ''; if (adminMode) h += '<div class="chip" style="border-color:#ff5a5a;color:#ff9a9a">ADMIN</div>'; for (const k in effects) if (effects[k] > 0) { const e = EFFECTS[k]; h += '<div class="chip" style="border-color:' + e.color + ';color:' + e.color + '">' + e.name + ' ' + Math.ceil(effects[k]) + 's</div>'; } effectsEl.innerHTML = h; }
     function updateHud() {
       hpFill.style.width = (player.hp / PLAYER_HP * 100) + '%';
       countDirt.textContent = adminMode ? '∞' : inv.dirt; countStone.textContent = adminMode ? '∞' : inv.stone;
+      if (goldUnlocked || adminMode) { slotGold.style.display = ''; countGold.textContent = adminMode ? '∞' : inv.gold; }
+      else slotGold.style.display = 'none';
       if (waveNum === 0) waveLabel.textContent = 'Build! First wave in ' + Math.max(0, Math.ceil(nextWaveAt - elapsed)) + 's';
       else waveLabel.textContent = 'Wave ' + waveNum + ' · next in ' + Math.max(0, Math.ceil(nextWaveAt - elapsed)) + 's';
     }
@@ -703,7 +733,7 @@
     // =====================================================================
     const menuEl = document.getElementById('menu'), playEl = document.getElementById('play'), overEl = document.getElementById('over');
     function startGame() {
-      genTerrain(); crystalHP = CRYSTAL_HP; monsters = []; pickups = []; inv.dirt = 0; inv.stone = 0; respawn = null; resupply = null;
+      genTerrain(); crystalHP = CRYSTAL_HP; monsters = []; pickups = []; inv.dirt = 0; inv.stone = 0; inv.gold = 0; goldUnlocked = false; respawn = null; resupply = null;
       player.x = CC + 0.5; player.y = CC + 2.5; player.hp = PLAYER_HP; player.invuln = 0; player.swing = 0; player.swingCd = 0;
       effects = { strength: 0, speed: 0, haste: 0, fortune: 0 }; particles = [];
       D = DIFFS[diffMode] || DIFFS.normal;
