@@ -694,7 +694,7 @@
     function updateHud() {
       hpFill.style.width = (player.hp / PLAYER_HP * 100) + '%';
       countDirt.textContent = adminMode ? '∞' : inv.dirt; countStone.textContent = adminMode ? '∞' : inv.stone;
-      if (elapsed < D.prep) waveLabel.textContent = 'Build! First wave in ' + Math.ceil(D.prep - elapsed) + 's';
+      if (waveNum === 0) waveLabel.textContent = 'Build! First wave in ' + Math.max(0, Math.ceil(nextWaveAt - elapsed)) + 's';
       else waveLabel.textContent = 'Wave ' + waveNum + ' · next in ' + Math.max(0, Math.ceil(nextWaveAt - elapsed)) + 's';
     }
 
