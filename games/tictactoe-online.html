@@ -108,6 +108,15 @@
     const lobby = $('lobby'), waiting = $('waiting'), connecting = $('connecting'), gameEl = $('game');
     const boardEl = $('board');
     const PREFIX = 'horsey-ttt-';   // namespaces our peer ids on the shared broker
+    // More STUN servers = faster candidate gathering; free TURN relays = a fallback
+    // when a direct path is blocked (otherwise WebRTC can hang for a long time).
+    const PEER_OPTS = { config: { iceServers: [
+      { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] },
+      { urls: 'stun:global.stun.twilio.com:3478' },
+      { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+    ] } };
 
     // ---------- state ----------
     let peer = null, conn = null, isHost = false, mySym = 'X', oppSym = 'O';
@@ -132,9 +141,11 @@
       if (typeof Peer === 'undefined') return;
       const code = randCode();
       isHost = true; mySym = 'X'; oppSym = 'O';
-      show(waiting); $('code-display').textContent = code; $('wait-status').textContent = 'Waiting for opponent…'; $('wait-status').classList.remove('err');
-      peer = new Peer(PREFIX + code);
-      peer.on('connection', c => { conn = c; wireConn(); });
+      show(waiting); $('code-display').textContent = code; $('wait-status').textContent = 'Starting…'; $('wait-status').classList.remove('err');
+      peer = new Peer(PREFIX + code, PEER_OPTS);
+      peer.on('open', () => { $('wait-status').textContent = 'Waiting for opponent…'; });
+      peer.on('connection', c => { conn = c; wireConn($('wait-status')); });
+      peer.on('disconnected', () => { try { peer.reconnect(); } catch (_) {} });
       peer.on('error', err => {
         if (err.type === 'unavailable-id') { peer.destroy(); hostGame(); }   // rare code clash — just retry
         else { $('wait-status').textContent = 'Network error (' + err.type + ').'; $('wait-status').classList.add('err'); }
@@ -147,19 +158,34 @@
       if (code.length < 4) { flashJoin(); return; }
       isHost = false; mySym = 'O'; oppSym = 'X';
       show(connecting); $('conn-status').textContent = 'Connecting…'; $('conn-status').classList.remove('err');
-      peer = new Peer();
-      peer.on('open', () => { conn = peer.connect(PREFIX + code, { reliable: true }); wireConn(); });
+      peer = new Peer(undefined, PEER_OPTS);
+      peer.on('open', () => tryConnect(PREFIX + code, 0));
+      peer.on('disconnected', () => { try { peer.reconnect(); } catch (_) {} });
       peer.on('error', err => {
-        $('conn-status').textContent = err.type === 'peer-unavailable' ? 'No game found with that code.' : 'Network error (' + err.type + ').';
-        $('conn-status').classList.add('err');
+        if (err.type === 'peer-unavailable') { $('conn-status').textContent = 'No game found with that code.'; $('conn-status').classList.add('err'); }
+        else if (!conn || !conn.open) { $('conn-status').textContent = 'Network error (' + err.type + ').'; $('conn-status').classList.add('err'); }
       });
+    }
+    // Guest: attempt to connect, and retry every few seconds if it stalls.
+    function tryConnect(id, attempt) {
+      if (conn && conn.open) return;
+      $('conn-status').textContent = attempt ? 'Still connecting… (try ' + (attempt + 1) + ')' : 'Connecting…';
+      $('conn-status').classList.remove('err');
+      conn = peer.connect(id, { reliable: true });
+      wireConn($('conn-status'));
+      setTimeout(() => { if ((!conn || !conn.open) && !over && attempt < 5) { try { conn && conn.close(); } catch (_) {} tryConnect(id, attempt + 1); } }, 7000);
     }
     function flashJoin() { const i = $('code-input'); i.style.borderColor = '#e94560'; setTimeout(() => i.style.borderColor = '', 600); }
 
-    function wireConn() {
-      conn.on('open', startGame);
+    function wireConn(statusEl) {
+      const go = () => { if (gameEl.classList.contains('hidden')) startGame(); };
+      if (conn.open) go(); else conn.on('open', go);   // fix: incoming conn may already be open
       conn.on('data', onData);
       conn.on('close', () => { if (!over) { $('game-status').textContent = 'Opponent disconnected.'; $('game-status').classList.add('err'); over = true; } });
+      conn.on('error', () => { if (statusEl && (!conn || !conn.open)) { statusEl.textContent = 'Connection trouble — retrying…'; statusEl.classList.add('err'); } });
+      // Nudge if it's clearly struggling (strict firewalls can't do WebRTC).
+      const t = setTimeout(() => { if ((!conn || !conn.open) && statusEl) statusEl.textContent = (statusEl === $('wait-status') ? 'Waiting for opponent… (their side is still connecting)' : 'Taking a while — a strict network/firewall may be blocking the connection.'); }, 15000);
+      conn.on('open', () => clearTimeout(t));
     }
 
     // ---------- game ----------
