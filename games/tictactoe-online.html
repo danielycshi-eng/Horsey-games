@@ -42,7 +42,6 @@
     .status.err { color: #ff8ba0; }
     .hint { color: #6a82a6; font-size: 0.8rem; line-height: 1.5; }
 
-    /* board */
     .board { display: grid; grid-template-columns: repeat(3, 92px); grid-template-rows: repeat(3, 92px); gap: 8px; margin: 0.4rem auto; }
     .cell { background: rgba(22,33,62,0.7); border: 2px solid #0f3460; border-radius: 12px; font-size: 3rem; font-weight: 800;
       display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.12s, border-color 0.12s; font-family: inherit; color: #fff; }
@@ -64,7 +63,6 @@
     <h1>Tic Tac Toe Online</h1>
     <div class="tagline">play a friend anywhere</div>
 
-    <!-- LOBBY -->
     <div id="lobby" class="panel">
       <div class="row" style="flex-direction:column; gap:0.7rem;">
         <button class="btn green" id="host-btn">Host a game</button>
@@ -73,10 +71,9 @@
           <button class="btn" id="join-btn" style="width:auto; padding:0.75rem 1.2rem;">Join</button>
         </div>
       </div>
-      <p class="hint" style="margin-top:0.9rem;">Host a game to get a 5-letter code, then share it. Your friend picks <b>Join</b> and types the code. Works browser-to-browser — no sign-up.</p>
+      <p class="hint" style="margin-top:0.9rem;">Host a game to get a 5-letter code, then share it. Your friend picks <b>Join</b> and types the code. Browser-to-browser — no sign-up.</p>
     </div>
 
-    <!-- WAITING (host shows code) -->
     <div id="waiting" class="panel hidden">
       <div class="you">Share this code with your friend:</div>
       <div class="code-box" id="code-display">-----</div>
@@ -84,12 +81,10 @@
       <div class="status" id="wait-status" style="margin-top:0.8rem;">Waiting for opponent…</div>
     </div>
 
-    <!-- CONNECTING (guest) -->
     <div id="connecting" class="panel hidden">
       <div class="status" id="conn-status">Connecting…</div>
     </div>
 
-    <!-- GAME -->
     <div id="game" class="hidden">
       <div class="you" id="you-label">You are X</div>
       <div class="turn" id="turn-label">Your turn</div>
@@ -101,99 +96,81 @@
     <div class="status err" id="fatal"></div>
   </div>
 
-  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-  <script>
-    // ---------- elements ----------
+  <script type="module">
+    import { joinRoom } from 'https://esm.sh/trystero/nostr';
+    window.__tttReady = true;
+
     const $ = id => document.getElementById(id);
     const lobby = $('lobby'), waiting = $('waiting'), connecting = $('connecting'), gameEl = $('game');
     const boardEl = $('board');
-    const PREFIX = 'horsey-ttt-';   // namespaces our peer ids on the shared broker
-    // More STUN servers = faster candidate gathering; free TURN relays = a fallback
-    // when a direct path is blocked (otherwise WebRTC can hang for a long time).
-    const PEER_OPTS = { config: { iceServers: [
-      { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] },
+    const LINES = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+
+    const APP = { appId: 'horsey-games-tictactoe', rtcConfig: { iceServers: [
+      { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
       { urls: 'stun:global.stun.twilio.com:3478' },
       { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
       { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-      { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
     ] } };
 
     // ---------- state ----------
-    let peer = null, conn = null, isHost = false, mySym = 'X', oppSym = 'O';
+    let room = null, sendMove = null, sendRematch = null, sendKey = null, hs = null;
+    let mySym = 'X', oppSym = 'O', oppId = null, oppKey = null, started = false;
     let board = Array(9).fill(''), turn = 'X', over = false;
-    const LINES = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+    const myKey = Math.random().toString(36).slice(2) + Date.now() + Math.random().toString(36).slice(2);
 
-    if (typeof Peer === 'undefined') {
-      $('fatal').textContent = 'Could not load the networking library — check your internet connection and reload.';
-    }
-
-    // ---------- lobby ----------
-    function randCode() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = ''; for (let i = 0; i < 5; i++) s += A[Math.floor(Math.random() * A.length)]; return s; }
     function show(el) { [lobby, waiting, connecting, gameEl].forEach(e => e.classList.add('hidden')); el.classList.remove('hidden'); }
+    function randCode() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = ''; for (let i = 0; i < 5; i++) s += A[Math.floor(Math.random() * A.length)]; return s; }
 
+    // ---------- lobby / connect ----------
     $('host-btn').addEventListener('click', hostGame);
     $('join-btn').addEventListener('click', joinGame);
     $('code-input').addEventListener('keydown', e => { if (e.key === 'Enter') joinGame(); });
     $('copy-btn').addEventListener('click', () => { try { navigator.clipboard.writeText($('code-display').textContent); $('copy-btn').textContent = 'Copied!'; setTimeout(() => $('copy-btn').textContent = 'Copy code', 1200); } catch (_) {} });
-    $('rematch-btn').addEventListener('click', () => { sendMsg({ t: 'rematch' }); resetBoard(); });
+    $('rematch-btn').addEventListener('click', () => { try { sendRematch && sendRematch({}); } catch (_) {} resetBoard(); });
 
     function hostGame() {
-      if (typeof Peer === 'undefined') return;
       const code = randCode();
-      isHost = true; mySym = 'X'; oppSym = 'O';
-      show(waiting); $('code-display').textContent = code; $('wait-status').textContent = 'Starting…'; $('wait-status').classList.remove('err');
-      peer = new Peer(PREFIX + code, PEER_OPTS);
-      peer.on('open', () => { $('wait-status').textContent = 'Waiting for opponent…'; });
-      peer.on('connection', c => { conn = c; wireConn($('wait-status')); });
-      peer.on('disconnected', () => { try { peer.reconnect(); } catch (_) {} });
-      peer.on('error', err => {
-        if (err.type === 'unavailable-id') { peer.destroy(); hostGame(); }   // rare code clash — just retry
-        else { $('wait-status').textContent = 'Network error (' + err.type + ').'; $('wait-status').classList.add('err'); }
-      });
+      show(waiting); $('code-display').textContent = code; $('wait-status').textContent = 'Waiting for opponent…'; $('wait-status').classList.remove('err');
+      connectRoom(code, true);
     }
-
     function joinGame() {
-      if (typeof Peer === 'undefined') return;
-      const code = $('code-input').value.trim().toUpperCase();
-      if (code.length < 4) { flashJoin(); return; }
-      isHost = false; mySym = 'O'; oppSym = 'X';
+      const code = ($('code-input').value || '').trim().toUpperCase();
+      if (code.length < 4) { const i = $('code-input'); i.style.borderColor = '#e94560'; setTimeout(() => i.style.borderColor = '', 600); return; }
       show(connecting); $('conn-status').textContent = 'Connecting…'; $('conn-status').classList.remove('err');
-      peer = new Peer(undefined, PEER_OPTS);
-      peer.on('open', () => tryConnect(PREFIX + code, 0));
-      peer.on('disconnected', () => { try { peer.reconnect(); } catch (_) {} });
-      peer.on('error', err => {
-        if (err.type === 'peer-unavailable') { $('conn-status').textContent = 'No game found with that code.'; $('conn-status').classList.add('err'); }
-        else if (!conn || !conn.open) { $('conn-status').textContent = 'Network error (' + err.type + ').'; $('conn-status').classList.add('err'); }
-      });
+      connectRoom(code, false);
     }
-    // Guest: attempt to connect, and retry every few seconds if it stalls.
-    function tryConnect(id, attempt) {
-      if (conn && conn.open) return;
-      $('conn-status').textContent = attempt ? 'Still connecting… (try ' + (attempt + 1) + ')' : 'Connecting…';
-      $('conn-status').classList.remove('err');
-      conn = peer.connect(id, { reliable: true });
-      wireConn($('conn-status'));
-      setTimeout(() => { if ((!conn || !conn.open) && !over && attempt < 5) { try { conn && conn.close(); } catch (_) {} tryConnect(id, attempt + 1); } }, 7000);
-    }
-    function flashJoin() { const i = $('code-input'); i.style.borderColor = '#e94560'; setTimeout(() => i.style.borderColor = '', 600); }
 
-    function wireConn(statusEl) {
-      const go = () => { if (gameEl.classList.contains('hidden')) startGame(); };
-      if (conn.open) go(); else conn.on('open', go);   // fix: incoming conn may already be open
-      conn.on('data', onData);
-      conn.on('close', () => { if (!over) { $('game-status').textContent = 'Opponent disconnected.'; $('game-status').classList.add('err'); over = true; } });
-      conn.on('error', () => { if (statusEl && (!conn || !conn.open)) { statusEl.textContent = 'Connection trouble — retrying…'; statusEl.classList.add('err'); } });
-      // Nudge if it's clearly struggling (strict firewalls can't do WebRTC).
-      const t = setTimeout(() => { if ((!conn || !conn.open) && statusEl) statusEl.textContent = (statusEl === $('wait-status') ? 'Waiting for opponent… (their side is still connecting)' : 'Taking a while — a strict network/firewall may be blocking the connection.'); }, 15000);
-      conn.on('open', () => clearTimeout(t));
+    function connectRoom(code, hosting) {
+      const statusEl = hosting ? $('wait-status') : $('conn-status');
+      try { room = joinRoom(APP, code); }
+      catch (e) { statusEl.textContent = 'Failed to start networking.'; statusEl.classList.add('err'); return; }
+
+      const mv = room.makeAction('mv'); sendMove = mv[0];
+      mv[1](d => { if (started && !over && d && board[d.cell] === '' && turn === oppSym) applyMove(d.cell, oppSym); });
+      const rm = room.makeAction('rmt'); sendRematch = rm[0]; rm[1](() => resetBoard());
+      const ky = room.makeAction('key'); sendKey = ky[0]; ky[1](k => { oppKey = k; maybeStart(); });
+
+      room.onPeerJoin(id => { oppId = id; statusEl.textContent = 'Opponent found — syncing…'; beginHandshake(); });
+      room.onPeerLeave(id => { if (id === oppId && !over) { over = true; $('game-status').textContent = 'Opponent left the game.'; $('game-status').classList.add('err'); updateTurnLabel(); } });
+
+      setTimeout(() => { if (!started) statusEl.textContent = hosting
+        ? 'Waiting for opponent… (share the code)'
+        : "Still trying… make sure the code is right and your friend clicked Host."; }, 15000);
+    }
+    function beginHandshake() {
+      try { sendKey(myKey); } catch (_) {}
+      if (hs) clearInterval(hs);
+      hs = setInterval(() => { if (started) { clearInterval(hs); return; } try { sendKey(myKey); } catch (_) {} }, 800);
+    }
+    function maybeStart() {
+      if (started || oppKey === null) return;
+      started = true; if (hs) clearInterval(hs);
+      mySym = (myKey > oppKey) ? 'X' : 'O'; oppSym = (mySym === 'X') ? 'O' : 'X';   // deterministic on both sides
+      startGame();
     }
 
     // ---------- game ----------
-    function startGame() {
-      resetBoard();
-      show(gameEl);
-      $('you-label').textContent = 'You are ' + mySym;
-    }
+    function startGame() { resetBoard(); show(gameEl); $('you-label').textContent = 'You are ' + mySym; }
     function resetBoard() {
       board = Array(9).fill(''); turn = 'X'; over = false;
       $('rematch-btn').classList.add('hidden'); $('game-status').textContent = ''; $('game-status').classList.remove('err');
@@ -217,37 +194,32 @@
       t.style.color = (turn === mySym) ? '#6be2a6' : '#8ea7d6';
     }
     function tryMove(i) {
-      if (over || board[i] || turn !== mySym || !conn) return;
+      if (over || board[i] || turn !== mySym || !started) return;
       applyMove(i, mySym);
-      sendMsg({ t: 'move', cell: i });
+      try { sendMove({ cell: i }); } catch (_) {}
     }
     function applyMove(i, sym) {
       if (board[i]) return;
       board[i] = sym;
       const winLine = LINES.find(l => l.every(k => board[k] === sym));
-      if (winLine) { finish(sym, winLine); }
-      else if (board.every(v => v)) { finish(null); }
-      else { turn = (turn === 'X') ? 'O' : 'X'; }
+      if (winLine) finish(sym);
+      else if (board.every(v => v)) finish(null);
+      else turn = (turn === 'X') ? 'O' : 'X';
       renderBoard();
       if (winLine) winLine.forEach(k => boardEl.children[k].classList.add('win'));
     }
-    function finish(winner, line) {
+    function finish(winner) {
       over = true;
       const gs = $('game-status');
-      if (!winner) gs.textContent = "It's a draw!";
-      else gs.textContent = (winner === mySym) ? 'You win! 🎉' : 'You lose!';
+      gs.textContent = !winner ? "It's a draw!" : (winner === mySym ? 'You win! 🎉' : 'You lose!');
       gs.classList.remove('err');
       $('rematch-btn').classList.remove('hidden');
       updateTurnLabel();
     }
-
-    // ---------- networking messages ----------
-    function sendMsg(m) { try { conn && conn.open && conn.send(m); } catch (_) {} }
-    function onData(m) {
-      if (!m || !m.t) return;
-      if (m.t === 'move') { if (!over && board[m.cell] === '' && turn === oppSym) applyMove(m.cell, oppSym); }
-      else if (m.t === 'rematch') { resetBoard(); }
-    }
+  </script>
+  <script>
+    // Fallback if the multiplayer library (CDN module) fails to load.
+    setTimeout(function () { if (!window.__tttReady) { document.getElementById('fatal').textContent = 'Could not load the multiplayer library — check your connection and reload.'; } }, 6000);
   </script>
   <script src="../bg.js"></script>
 </body>
