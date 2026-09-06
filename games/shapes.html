@@ -112,6 +112,11 @@
       border-radius: 18px;
       overflow: hidden;
       box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.06);
+      transition: width 0.5s cubic-bezier(.4,.7,.3,1), height 0.5s cubic-bezier(.4,.7,.3,1);
+    }
+    .arena.expanded {
+      width: min(680px, 94vw);
+      height: min(430px, 60vh);
     }
 
     /* A spawned shape — flat gray with a gray rim */
@@ -133,16 +138,24 @@
       border-color: #555555;
       box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.9), inset 0 0 0 5px #6f6f6f;
     }
-    /* Square — a different shape, worth more */
+    /* Square — a different shape, worth more. Normal square has NO ring. */
     .shape.square {
       border-radius: 5px;
       background: radial-gradient(circle at 35% 30%, #c0c0c0, #a0a0a0 60%, #848484);
       border-color: #555555;
-      box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.55);
     }
     /* Big (grown) square keeps its square shape but gets the inner ring */
     .shape.square.big {
       box-shadow: inset 0 0 0 4px rgba(255, 255, 255, 0.85), inset 0 0 0 6px #6f6f6f;
+    }
+    /* Double-ring (Upgrade Growth) — two concentric rings, worth a lot more */
+    .shape.big.double {
+      box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.95), inset 0 0 0 5px #6f6f6f,
+                  inset 0 0 0 8px rgba(255, 255, 255, 0.95), inset 0 0 0 10px #6f6f6f;
+    }
+    .shape.square.big.double {
+      box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.95), inset 0 0 0 5px #6f6f6f,
+                  inset 0 0 0 8px rgba(255, 255, 255, 0.95), inset 0 0 0 10px #6f6f6f;
     }
     /* Green bonus circle — grants a points multiplier when clicked */
     .shape.green {
@@ -364,6 +377,7 @@
     }
     .test-btn:hover { background: #e2e7f0; border-color: #6b7c97; transform: translateY(-1px); }
     .test-btn:active { transform: translateY(1px); }
+    .btn-row { display: flex; gap: 0.6rem; flex-wrap: wrap; justify-content: center; }
 
     /* Floating "+N" feedback on collect */
     .fx-plus1 {
@@ -409,7 +423,10 @@
 
     <div class="arena" id="arena"></div>
 
-    <button class="test-btn" id="test-10" title="Dev: +10 points">+10 &#129514;</button>
+    <div class="btn-row">
+      <button class="test-btn" id="test-10" title="Dev: +10 points">+10 &#129514;</button>
+      <button class="test-btn" id="test-1000" title="Dev: +1000 points">+1000 &#129514;</button>
+    </div>
   </div>
 
   <!-- Shop lane: click the tab to slide it out of / back into view -->
@@ -432,6 +449,9 @@
 
     const CIRCLE_SIZE  = 16;   const BIG_SIZE       = 26;  const BIG_VALUE       = 5;
     const SQUARE_SIZE  = 22;   const SQUARE_BIG_SIZE = 34; const SQUARE_VALUE    = 10;  const SQUARE_BIG_VALUE = 50;
+    const CIRCLE_DOUBLE_SIZE = 32; const CIRCLE_DOUBLE_VALUE = 500;
+    const SQUARE_DOUBLE_SIZE = 42; const SQUARE_DOUBLE_VALUE = 1500;
+    const DOUBLE_CHANCE = 0.10;   // chance a ringed shape spawns double-ringed (needs Upgrade Growth)
     const CIRCLE_LIFE  = 30000;  // ms fully visible before the fade begins
     const FADE_MS      = 4500;   // must match .shape.fading transition duration
     const UNLOCK_AT    = 10;     // total points earned to unlock the shop
@@ -456,8 +476,10 @@
       squareGrowthUnlocked: false,
       squareSpawnLevel: 0,
       squareGrowthLevel: 0,
-      // evolution
-      growthUpgraded: false,
+      // growth upgrades (double-ring) + arena
+      circleGrowthUpgraded: false,
+      squareGrowthUpgraded: false,
+      arenaExpanded: false,
     };
 
     // --- Persistence ---
@@ -477,7 +499,9 @@
           squareGrowthUnlocked: !!p.squareGrowthUnlocked,
           squareSpawnLevel:     Number(p.squareSpawnLevel)   || 0,
           squareGrowthLevel:    Number(p.squareGrowthLevel)  || 0,
-          growthUpgraded:       !!p.growthUpgraded,
+          circleGrowthUpgraded: !!p.circleGrowthUpgraded,
+          squareGrowthUpgraded: !!p.squareGrowthUpgraded,
+          arenaExpanded:        !!p.arenaExpanded,
         };
       } catch (e) {
         return { ...DEFAULT_STATE };
@@ -534,15 +558,25 @@
 
       let size, value, cls;
       if (kind === 'square') {
-        const isBig = Math.random() < squareBigChance();
-        size = isBig ? SQUARE_BIG_SIZE : SQUARE_SIZE;
-        value = isBig ? SQUARE_BIG_VALUE : SQUARE_VALUE;
-        cls = 'shape square' + (isBig ? ' big' : '');
+        if (Math.random() < squareBigChance()) {
+          if (state.squareGrowthUpgraded && Math.random() < DOUBLE_CHANCE) {
+            size = SQUARE_DOUBLE_SIZE; value = SQUARE_DOUBLE_VALUE; cls = 'shape square big double';
+          } else {
+            size = SQUARE_BIG_SIZE; value = SQUARE_BIG_VALUE; cls = 'shape square big';
+          }
+        } else {
+          size = SQUARE_SIZE; value = SQUARE_VALUE; cls = 'shape square';
+        }
       } else {
-        const isBig = Math.random() < circleBigChance();
-        size = isBig ? BIG_SIZE : CIRCLE_SIZE;
-        value = isBig ? BIG_VALUE : 1;
-        cls = 'shape' + (isBig ? ' big' : '');
+        if (Math.random() < circleBigChance()) {
+          if (state.circleGrowthUpgraded && Math.random() < DOUBLE_CHANCE) {
+            size = CIRCLE_DOUBLE_SIZE; value = CIRCLE_DOUBLE_VALUE; cls = 'shape big double';
+          } else {
+            size = BIG_SIZE; value = BIG_VALUE; cls = 'shape big';
+          }
+        } else {
+          size = CIRCLE_SIZE; value = 1; cls = 'shape';
+        }
       }
       if (W < size || H < size) return;
 
@@ -627,7 +661,7 @@
           }
           applySize();
           scheduleGrowth(false);
-        }, 100 + Math.random() * 900);         // 0.1s .. 1s
+        }, 1000 + Math.random() * 4000);       // 1s .. 5s
       }
 
       el.addEventListener('click', (e) => {
@@ -706,11 +740,11 @@
           owned: () => state.squareUnlocked,
           buy: () => { state.squareUnlocked = true; } },
 
-        { id: 'upgrade_growth', name: 'Upgrade Growth', oneTime: true,
-          price: () => 10000,
-          requires: () => state.growthUnlocked,
-          owned: () => state.growthUpgraded,
-          buy: () => { state.growthUpgraded = true; } },
+        { id: 'expand_arena', name: 'Expand Arena', oneTime: true,
+          price: () => 5000,
+          requires: () => state.squareUnlocked,
+          owned: () => state.arenaExpanded,
+          buy: () => { state.arenaExpanded = true; } },
       ],
       circles: [
         { id: 'unlock_growth', name: 'Unlock Growth', oneTime: true,
@@ -730,6 +764,12 @@
           requires: () => state.growthUnlocked,
           owned: () => false,
           buy: () => { state.growthLevel += 1; } },
+
+        { id: 'circle_upgrade_growth', name: 'Upgrade Growth', oneTime: true,
+          price: () => 10000,
+          requires: () => state.growthUnlocked,
+          owned: () => state.circleGrowthUpgraded,
+          buy: () => { state.circleGrowthUpgraded = true; } },
       ],
       squares: [
         { id: 'sq_unlock_growth', name: 'Unlock Growth', oneTime: true,
@@ -749,6 +789,12 @@
           requires: () => state.squareGrowthUnlocked,
           owned: () => false,
           buy: () => { state.squareGrowthLevel += 1; } },
+
+        { id: 'sq_upgrade_growth', name: 'Upgrade Growth', oneTime: true,
+          price: () => 25000,
+          requires: () => state.squareGrowthUnlocked,
+          owned: () => state.squareGrowthUpgraded,
+          buy: () => { state.squareGrowthUpgraded = true; } },
       ],
     };
 
@@ -771,6 +817,7 @@
       state.points -= price;
       item.buy();
       save();
+      applyArena();
       syncCounter();
 
       if (item.oneTime) {
@@ -885,6 +932,11 @@
       else syncAffordability();
     }
 
+    // --- Arena size ---
+    function applyArena() {
+      arena.classList.toggle('expanded', state.arenaExpanded);
+    }
+
     // --- Drawer toggle ---
     function applyDrawer() {
       drawer.classList.toggle('closed', !state.drawerOpen);
@@ -903,15 +955,18 @@
       location.reload();
     });
 
-    // --- Dev: +10 points ---
-    document.getElementById('test-10').addEventListener('click', () => {
-      state.points += 10;
-      state.totalEarned += 10;
+    // --- Dev: point grants ---
+    function devGrant(n) {
+      state.points += n;
+      state.totalEarned += n;
       save();
       onPointsChanged();
-    });
+    }
+    document.getElementById('test-10').addEventListener('click', () => devGrant(10));
+    document.getElementById('test-1000').addEventListener('click', () => devGrant(1000));
 
     // --- Boot ---
+    applyArena();
     applyDrawer();
     syncCounter();
     renderShop();
