@@ -6,6 +6,7 @@
   <title>Shapes - Horsey Games</title>
   <link rel="stylesheet" href="../style.css">
   <style>
+    :root { --shop-w: min(340px, 88vw); }
     html, body { overflow-x: hidden; }
     body {
       justify-content: flex-start;
@@ -13,7 +14,12 @@
       background: #ffffff;
       color: #2a2f3a;
       overflow-y: auto;
+      transition: padding-right 0.45s cubic-bezier(.5,.15,.2,1);
     }
+    /* When the shop lane is open, reserve the right lane so the left content
+       (title/score/arena) centers in the remaining space — i.e. shifts left.
+       When collapsed, this padding is gone and everything re-centers. */
+    body.shop-open { padding-right: var(--shop-w); }
 
     .back-link { color: #3a6fd0; z-index: 2; }
     .back-link:hover { color: #1a4fb0; }
@@ -81,11 +87,29 @@
       margin-top: 0.25rem;
     }
 
+    /* Restart button (top of the game area) */
+    .restart-btn {
+      padding: 0.45rem 1.1rem;
+      background: #ffffff;
+      border: 2px solid #e05a6e;
+      color: #d23a52;
+      border-radius: 10px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s, color 0.15s, transform 0.1s;
+    }
+    .restart-btn:hover { background: #e05a6e; color: #fff; transform: translateY(-1px); }
+    .restart-btn:active { transform: translateY(1px); }
+
     /* === Spawn arena === */
     .arena {
       position: relative;
-      width: min(680px, 92vw);
-      height: min(420px, 56vh);
+      width: min(560px, 90vw);
+      height: min(360px, 50vh);
       background: #eef1f6;
       border: 1px solid #d3d9e3;
       border-radius: 18px;
@@ -122,24 +146,23 @@
       100% { transform: scale(0);   opacity: 0; }
     }
 
-    /* === Shop drawer (slides in/out from the right) === */
+    /* === Shop lane (full-height right column, slides in/out) === */
     .shop-drawer {
-      --pw: min(320px, 86vw);
       position: fixed;
-      top: 84px;
+      top: 0;
       right: 0;
+      height: 100vh;
       display: flex;
-      align-items: flex-start;
+      align-items: center;
       z-index: 6;
       transition: transform 0.45s cubic-bezier(.5,.15,.2,1);
     }
-    .shop-drawer.closed { transform: translateX(var(--pw)); }
+    .shop-drawer.closed { transform: translateX(var(--shop-w)); }
 
     .shop-tab {
       writing-mode: vertical-rl;
       text-orientation: mixed;
-      margin-top: 12px;
-      padding: 16px 9px;
+      padding: 18px 9px;
       background: #e9edf5;
       border: 1px solid #cdd3de;
       border-right: none;
@@ -157,12 +180,13 @@
     .shop-tab:hover { background: #dde3ee; color: #33518a; }
 
     .shop-panel {
-      width: var(--pw);
+      width: var(--shop-w);
+      height: 100vh;
       background: #f4f6fa;
-      border: 1px solid #cdd3de;
-      border-radius: 14px 0 0 14px;
-      box-shadow: -6px 8px 30px rgba(0, 0, 0, 0.14);
-      padding: 1rem 1.1rem 1.4rem;
+      border-left: 1px solid #cdd3de;
+      box-shadow: -6px 0 30px rgba(0, 0, 0, 0.12);
+      padding: 1.4rem 1.2rem;
+      overflow-y: auto;
     }
     .shop-title {
       color: #3a5a9c;
@@ -259,8 +283,7 @@
 
     @media (max-width: 900px) {
       h1 { font-size: 2rem; }
-      .arena { height: min(360px, 52vh); }
-      .shop-drawer { top: 70px; }
+      .arena { height: min(320px, 46vh); }
     }
   </style>
 </head>
@@ -270,6 +293,8 @@
   <h1>Shapes</h1>
 
   <div class="stage">
+    <button class="restart-btn" id="restart" title="Erase all progress and start over">&#8635; Restart</button>
+
     <div class="counter-block">
       <div class="counter-num" id="counter-num">0</div>
       <div class="counter-label">points</div>
@@ -501,11 +526,19 @@
     // --- Drawer toggle ---
     function applyDrawer() {
       drawer.classList.toggle('closed', !state.drawerOpen);
+      document.body.classList.toggle('shop-open', state.drawerOpen);
     }
     shopTab.addEventListener('click', () => {
       state.drawerOpen = !state.drawerOpen;
       applyDrawer();
       save();
+    });
+
+    // --- Restart ---
+    document.getElementById('restart').addEventListener('click', () => {
+      if (!confirm('Restart Shapes? This erases all your points and shop progress.')) return;
+      try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+      location.reload();
     });
 
     store.addEventListener('click', () => {
