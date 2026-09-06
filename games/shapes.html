@@ -17,8 +17,8 @@
       transition: padding-right 0.45s cubic-bezier(.5,.15,.2,1);
     }
     /* When the shop lane is open, reserve the right lane so the left content
-       (title/score/arena) centers in the remaining space — i.e. shifts left.
-       When collapsed, this padding is gone and everything re-centers. */
+       centers in the remaining space — i.e. shifts left. When collapsed the
+       padding is gone and everything re-centers. */
     body.shop-open { padding-right: var(--shop-w); }
 
     .back-link { color: #3a6fd0; z-index: 2; }
@@ -51,13 +51,31 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 1.1rem;
+      gap: 1rem;
       animation: fadeIn 0.9s cubic-bezier(.2,.7,.2,1) both;
     }
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(15px); }
       to   { opacity: 1; transform: translateY(0); }
     }
+
+    /* Restart button */
+    .restart-btn {
+      padding: 0.45rem 1.1rem;
+      background: #ffffff;
+      border: 2px solid #e05a6e;
+      color: #d23a52;
+      border-radius: 10px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s, color 0.15s, transform 0.1s;
+    }
+    .restart-btn:hover { background: #e05a6e; color: #fff; transform: translateY(-1px); }
+    .restart-btn:active { transform: translateY(1px); }
 
     /* === Counter === */
     .counter-block { text-align: center; }
@@ -87,29 +105,11 @@
       margin-top: 0.25rem;
     }
 
-    /* Restart button (top of the game area) */
-    .restart-btn {
-      padding: 0.45rem 1.1rem;
-      background: #ffffff;
-      border: 2px solid #e05a6e;
-      color: #d23a52;
-      border-radius: 10px;
-      font-size: 0.78rem;
-      font-weight: 700;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      cursor: pointer;
-      font-family: inherit;
-      transition: background 0.15s, color 0.15s, transform 0.1s;
-    }
-    .restart-btn:hover { background: #e05a6e; color: #fff; transform: translateY(-1px); }
-    .restart-btn:active { transform: translateY(1px); }
-
     /* === Spawn arena === */
     .arena {
       position: relative;
-      width: min(560px, 90vw);
-      height: min(360px, 50vh);
+      width: min(480px, 86vw);
+      height: min(300px, 44vh);
       background: #eef1f6;
       border: 1px solid #d3d9e3;
       border-radius: 18px;
@@ -117,7 +117,7 @@
       box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.06);
     }
 
-    /* A spawned circle — all the same small size, flat gray with a gray rim */
+    /* A spawned circle — flat gray with a gray rim */
     .shape {
       position: absolute;
       border-radius: 50%;
@@ -129,8 +129,14 @@
       transition: opacity 0.15s linear, transform 0.12s ease-out;
       will-change: opacity, transform;
     }
-    .shape:hover { transform: scale(1.25); }
-    /* Fade-out phase (added by JS). Long transition = the slow fade. */
+    .shape:hover { transform: scale(1.22); }
+    /* Big (grown) circle — larger, worth more, with an inner ring */
+    .shape.big {
+      background: radial-gradient(circle at 35% 30%, #bcbcbc, #9c9c9c 60%, #808080);
+      border-color: #555555;
+      box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.9), inset 0 0 0 5px #6f6f6f;
+    }
+    /* Fade-out phase. Long transition = the slow fade. */
     .shape.fading {
       opacity: 0;
       transition: opacity 4.5s linear;
@@ -190,52 +196,107 @@
     }
     .shop-title {
       color: #3a5a9c;
-      font-size: 0.9rem;
+      font-size: 0.95rem;
       letter-spacing: 3px;
       text-transform: uppercase;
-      margin: 0 0 0.7rem;
+      margin: 0 0 0.9rem;
       border-bottom: 1px solid #d3d9e3;
-      padding-bottom: 0.45rem;
+      padding-bottom: 0.5rem;
       font-weight: 700;
       text-align: center;
     }
 
-    /* Boarded-up storefront inside the panel */
-    .store {
-      position: relative;
-      width: 100%;
-      cursor: default;
-      filter: grayscale(0.9) brightness(0.8);
-      transition: filter 0.4s ease, transform 0.15s ease;
+    /* Locked (grayed) state before the shop unlocks */
+    .shop-locked {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 220px;
     }
-    .store svg { width: 100%; height: auto; display: block; }
-    .store.unlocked {
-      cursor: pointer;
-      filter: grayscale(0) brightness(1);
-      animation: storeGlow 2s ease-in-out infinite;
-    }
-    .store.unlocked:hover { transform: translateY(-2px); }
-    @keyframes storeGlow {
-      0%, 100% { filter: grayscale(0) brightness(1) drop-shadow(0 0 6px rgba(245, 200, 90, 0.5)); }
-      50%      { filter: grayscale(0) brightness(1.08) drop-shadow(0 0 20px rgba(245, 200, 90, 0.9)); }
-    }
-    /* Board planks nailed across the storefront */
-    .board {
-      transition: transform 0.5s cubic-bezier(.5,-0.4,.5,1), opacity 0.5s ease;
-      transform-origin: center;
-    }
-    .board.gone {
-      opacity: 0;
-      transform: translateX(60px) rotate(22deg);
+    .shop-locked .lock-ic {
+      font-size: 3.4rem;
+      opacity: 0.35;
+      filter: grayscale(1);
     }
 
-    .shop-body { margin-top: 0.4rem; }
+    /* Top tabs: Evolution / Shapes / Special */
+    .shop-tabs { display: flex; gap: 0.35rem; margin-bottom: 0.8rem; }
+    .shop-tab-btn {
+      flex: 1;
+      padding: 0.45rem 0.3rem;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      background: #e9edf5;
+      border: 1px solid #cdd3de;
+      border-radius: 8px;
+      color: #5a6f9c;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s, color 0.15s;
+    }
+    .shop-tab-btn:hover:not(.locked):not(.active) { background: #dde3ee; }
+    .shop-tab-btn.active { background: #3a5a9c; color: #fff; border-color: #3a5a9c; }
+    .shop-tab-btn.locked { opacity: 0.45; cursor: not-allowed; }
+
+    /* Sub-tabs (e.g. Circles under Shapes) */
+    .shop-subtabs { display: flex; gap: 0.35rem; margin-bottom: 0.7rem; }
+    .shop-subtab-btn {
+      padding: 0.3rem 0.85rem;
+      font-size: 0.72rem;
+      font-weight: 700;
+      background: #eef1f6;
+      border: 1px solid #d3d9e3;
+      border-radius: 20px;
+      color: #5a6f9c;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .shop-subtab-btn.active { background: #dbe4f3; color: #33518a; border-color: #b9c8e0; }
+
+    /* Item cards */
+    .shop-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.5rem;
+      width: 100%;
+      text-align: left;
+      padding: 0.6rem 0.7rem;
+      margin-bottom: 0.5rem;
+      background: #ffffff;
+      border: 1.5px solid #d3d9e3;
+      border-radius: 10px;
+      font-family: inherit;
+      cursor: default;
+      transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+    }
+    .si-name { font-weight: 600; color: #2a2f3a; font-size: 0.9rem; }
+    .si-price {
+      color: #3a5a9c;
+      font-weight: 700;
+      font-size: 0.78rem;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      white-space: nowrap;
+    }
+    .shop-item.buyable { border-color: #22c55e; cursor: pointer; }
+    .shop-item.buyable:hover {
+      background: #f0fff5;
+      box-shadow: 0 0 12px rgba(34, 197, 94, 0.28);
+      transform: translateY(-1px);
+    }
+    .shop-item.owned { border-color: #4e7fff; background: #eef3ff; }
+    .shop-item.owned .si-price { color: #4e7fff; }
+    .shop-item.locked,
+    .shop-item.unaffordable { opacity: 0.5; filter: grayscale(0.4); cursor: not-allowed; }
+
     .shop-empty {
-      color: #7a86a0;
-      font-size: 0.9rem;
+      color: #8a94a8;
+      font-size: 0.85rem;
       font-style: italic;
-      padding: 1.4rem 0.2rem;
       text-align: center;
+      padding: 1.4rem 0.2rem;
     }
     .hidden { display: none !important; }
 
@@ -254,14 +315,10 @@
       font-family: inherit;
       transition: background 0.15s, border-color 0.15s, transform 0.1s;
     }
-    .test-btn:hover {
-      background: #e2e7f0;
-      border-color: #6b7c97;
-      transform: translateY(-1px);
-    }
+    .test-btn:hover { background: #e2e7f0; border-color: #6b7c97; transform: translateY(-1px); }
     .test-btn:active { transform: translateY(1px); }
 
-    /* Floating "+1" feedback on collect */
+    /* Floating "+N" feedback on collect */
     .fx-plus1 {
       position: fixed;
       transform: translate(-50%, -50%);
@@ -275,6 +332,7 @@
       animation: floatUp 1.4s cubic-bezier(.25,.6,.45,1) forwards;
       will-change: transform, opacity;
     }
+    .fx-plus1.big { font-size: 1.9rem; color: #1c8f4a; }
     @keyframes floatUp {
       0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
       15%  { opacity: 1; transform: translate(-50%, -70%) scale(1.15); }
@@ -283,7 +341,7 @@
 
     @media (max-width: 900px) {
       h1 { font-size: 2rem; }
-      .arena { height: min(320px, 46vh); }
+      .arena { height: min(280px, 42vh); }
     }
   </style>
 </head>
@@ -305,63 +363,16 @@
     <button class="test-btn" id="test-10" title="Dev: +10 points">+10 &#129514;</button>
   </div>
 
-  <!-- Shop drawer: click the tab to slide it out of / back into view -->
+  <!-- Shop lane: click the tab to slide it out of / back into view -->
   <div class="shop-drawer" id="shop-drawer">
     <button class="shop-tab" id="shop-tab" aria-label="Show or hide the shop">Shop</button>
     <div class="shop-panel">
       <h2 class="shop-title">Shop</h2>
-      <div class="store" id="store" role="button" aria-label="The boarded-up store">
-        <svg viewBox="0 0 300 220" xmlns="http://www.w3.org/2000/svg">
-          <!-- awning -->
-          <rect x="20" y="34" width="260" height="24" rx="4" fill="#7a3b4a"/>
-          <g fill="#e05a6e">
-            <rect x="24"  y="34" width="26" height="24"/>
-            <rect x="76"  y="34" width="26" height="24"/>
-            <rect x="128" y="34" width="26" height="24"/>
-            <rect x="180" y="34" width="26" height="24"/>
-            <rect x="232" y="34" width="26" height="24"/>
-          </g>
-          <path d="M20 58 h260 l-14 16 h-232 z" fill="#5f2c38"/>
-          <!-- sign -->
-          <rect x="70" y="12" width="160" height="22" rx="5" fill="#16213e" stroke="#4e7fff" stroke-width="2"/>
-          <text x="150" y="28" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif"
-                font-size="13" letter-spacing="2" fill="#a0c4ff" font-weight="700">SHOP</text>
-          <!-- storefront body -->
-          <rect x="30" y="74" width="240" height="132" rx="6" fill="#2a2f45" stroke="#1a1e2e" stroke-width="2"/>
-          <!-- dark window / doorway behind the boards -->
-          <rect x="52" y="92" width="196" height="102" rx="4" fill="#0c1020"/>
-          <!-- boards nailed across (5 planks) -->
-          <g id="boards">
-            <g class="board" data-board="0">
-              <rect x="40" y="96"  width="220" height="20" rx="2" fill="#9c6b3f" stroke="#5f3d20" stroke-width="1.5" transform="rotate(-4 150 106)"/>
-              <circle cx="58"  cy="104" r="2.2" fill="#3a2510"/>
-              <circle cx="242" cy="110" r="2.2" fill="#3a2510"/>
-            </g>
-            <g class="board" data-board="1">
-              <rect x="40" y="120" width="220" height="20" rx="2" fill="#b07d4c" stroke="#5f3d20" stroke-width="1.5" transform="rotate(3 150 130)"/>
-              <circle cx="58"  cy="132" r="2.2" fill="#3a2510"/>
-              <circle cx="242" cy="126" r="2.2" fill="#3a2510"/>
-            </g>
-            <g class="board" data-board="2">
-              <rect x="40" y="144" width="220" height="20" rx="2" fill="#9c6b3f" stroke="#5f3d20" stroke-width="1.5" transform="rotate(-2 150 154)"/>
-              <circle cx="58"  cy="150" r="2.2" fill="#3a2510"/>
-              <circle cx="242" cy="156" r="2.2" fill="#3a2510"/>
-            </g>
-            <g class="board" data-board="3">
-              <rect x="40" y="168" width="220" height="20" rx="2" fill="#b07d4c" stroke="#5f3d20" stroke-width="1.5" transform="rotate(4 150 178)"/>
-              <circle cx="58"  cy="176" r="2.2" fill="#3a2510"/>
-              <circle cx="242" cy="170" r="2.2" fill="#3a2510"/>
-            </g>
-            <g class="board" data-board="4">
-              <rect x="66" y="86" width="20" height="112" rx="2" fill="#8a5d38" stroke="#5f3d20" stroke-width="1.5" transform="rotate(6 76 142)"/>
-              <circle cx="76" cy="98"  r="2.2" fill="#3a2510"/>
-              <circle cx="76" cy="186" r="2.2" fill="#3a2510"/>
-            </g>
-          </g>
-        </svg>
-      </div>
-      <div class="shop-body hidden" id="shop-body">
-        <div class="shop-empty">Shop coming soon&hellip;</div>
+      <div class="shop-locked" id="shop-locked"><div class="lock-ic">&#128274;</div></div>
+      <div class="shop-inner hidden" id="shop-inner">
+        <div class="shop-tabs" id="shop-tabs"></div>
+        <div class="shop-subtabs" id="shop-subtabs"></div>
+        <div class="shop-items" id="shop-items"></div>
       </div>
     </div>
   </div>
@@ -370,27 +381,39 @@
     'use strict';
     const STORAGE_KEY = 'horsey:shapes:v1';
 
-    const SPAWN_CHANCE = 0.10;   // per second
-    const CIRCLE_SIZE  = 16;     // px diameter — every circle is the same size
+    const BASE_SPAWN   = 0.10;   // per second
+    const FAST_SPAWN   = 0.13;   // after the spawn-rate upgrade
+    const CIRCLE_SIZE  = 16;     // normal circle diameter (px)
+    const BIG_SIZE     = 26;     // grown circle diameter (px)
+    const BIG_VALUE    = 5;      // points from a grown circle
+    const BIG_CHANCE_1 = 0.10;   // chance once Growth is unlocked
+    const BIG_CHANCE_2 = 0.15;   // chance after the Evolution upgrade
     const CIRCLE_LIFE  = 30000;  // ms fully visible before the fade begins
     const FADE_MS      = 4500;   // must match .shape.fading transition duration
-    const UNLOCK_AT    = 10;     // total points earned to unlock the store
-    const TOTAL_BOARDS = 5;
+    const UNLOCK_AT    = 10;     // total points earned to unlock the shop
 
-    const DEFAULT_STATE = { points: 0, totalEarned: 0, boardsRemoved: 0, shopOpen: false, drawerOpen: true };
+    const DEFAULT_STATE = {
+      points: 0,
+      totalEarned: 0,
+      drawerOpen: true,
+      growthUnlocked: false,   // "Unlock Growth"
+      spawnUpgraded: false,    // "Upgrade Spawn Rate"
+      growthChancePlus: false, // Evolution: "Growth Chance +5%"
+    };
 
     // --- Persistence ---
     function load() {
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return { ...DEFAULT_STATE };
-        const parsed = JSON.parse(raw);
+        const p = JSON.parse(raw);
         return {
-          points:        Number(parsed.points)     || 0,
-          totalEarned:   Number(parsed.totalEarned) || 0,
-          boardsRemoved: Math.min(TOTAL_BOARDS, Number(parsed.boardsRemoved) || 0),
-          shopOpen:      !!parsed.shopOpen,
-          drawerOpen:    parsed.drawerOpen !== false,   // default open
+          points:           Number(p.points)      || 0,
+          totalEarned:      Number(p.totalEarned)  || 0,
+          drawerOpen:       p.drawerOpen !== false,
+          growthUnlocked:   !!p.growthUnlocked,
+          spawnUpgraded:    !!p.spawnUpgraded,
+          growthChancePlus: !!p.growthChancePlus,
         };
       } catch (e) {
         return { ...DEFAULT_STATE };
@@ -402,49 +425,60 @@
 
     const state = load();
 
+    // --- Derived rates ---
+    function spawnChanceNow() { return state.spawnUpgraded ? FAST_SPAWN : BASE_SPAWN; }
+    function bigChanceNow() {
+      if (!state.growthUnlocked) return 0;
+      return state.growthChancePlus ? BIG_CHANCE_2 : BIG_CHANCE_1;
+    }
+
     // --- Elements ---
     const arena       = document.getElementById('arena');
     const counterNum  = document.getElementById('counter-num');
-    const store       = document.getElementById('store');
-    const boardsGroup = document.getElementById('boards');
-    const shopBody    = document.getElementById('shop-body');
     const drawer      = document.getElementById('shop-drawer');
     const shopTab     = document.getElementById('shop-tab');
+    const shopLocked  = document.getElementById('shop-locked');
+    const shopInner   = document.getElementById('shop-inner');
+    const shopTabsEl  = document.getElementById('shop-tabs');
+    const shopSubsEl  = document.getElementById('shop-subtabs');
+    const shopItemsEl = document.getElementById('shop-items');
 
     // --- Circle spawning ---
-    // Live circles being animated. Each: { el, x, y, vx, vy, dead }.
+    // Each: { el, x, y, vx, vy, size, dead }.
     const circles = [];
-    const SIZE = CIRCLE_SIZE;
 
     function spawnCircle() {
       const rect = arena.getBoundingClientRect();
       const W = rect.width, H = rect.height;
-      if (W < SIZE || H < SIZE) return;
+      const isBig = Math.random() < bigChanceNow();
+      const size  = isBig ? BIG_SIZE : CIRCLE_SIZE;
+      const value = isBig ? BIG_VALUE : 1;
+      if (W < size || H < size) return;
+
       const speed = 0.2 + Math.random() * 0.5;       // slow float
       const drift = () => (Math.random() - 0.5) * speed * 1.6;
 
       // Spawn on a random edge, heading inward.
       let x, y, vx, vy;
       switch (Math.floor(Math.random() * 4)) {
-        case 0: x = Math.random() * (W - SIZE); y = 0;        vx = drift();  vy = speed;  break; // top
-        case 1: x = Math.random() * (W - SIZE); y = H - SIZE; vx = drift();  vy = -speed; break; // bottom
-        case 2: x = 0;        y = Math.random() * (H - SIZE); vx = speed;    vy = drift(); break; // left
-        default:x = W - SIZE; y = Math.random() * (H - SIZE); vx = -speed;   vy = drift(); break; // right
+        case 0: x = Math.random() * (W - size); y = 0;        vx = drift();  vy = speed;  break; // top
+        case 1: x = Math.random() * (W - size); y = H - size; vx = drift();  vy = -speed; break; // bottom
+        case 2: x = 0;        y = Math.random() * (H - size); vx = speed;    vy = drift(); break; // left
+        default:x = W - size; y = Math.random() * (H - size); vx = -speed;   vy = drift(); break; // right
       }
 
       const el = document.createElement('div');
-      el.className = 'shape';
-      el.style.width  = SIZE + 'px';
-      el.style.height = SIZE + 'px';
+      el.className = 'shape' + (isBig ? ' big' : '');
+      el.style.width  = size + 'px';
+      el.style.height = size + 'px';
       el.style.left = x + 'px';
       el.style.top  = y + 'px';
       el.style.transform = 'scale(0)';                // pop-in
       arena.appendChild(el);
       requestAnimationFrame(() => { el.style.transform = 'scale(1)'; });
 
-      const c = { el, x, y, vx, vy, dead: false };
+      const c = { el, x, y, vx, vy, size, dead: false };
 
-      // Begin the slow fade after CIRCLE_LIFE, remove once fully faded.
       const fadeTimer = setTimeout(() => {
         el.classList.add('fading');
         setTimeout(() => { c.dead = true; el.remove(); }, FADE_MS);
@@ -454,7 +488,7 @@
         if (c.dead) return;               // fully faded circles are already gone
         c.dead = true;
         clearTimeout(fadeTimer);
-        collect(e.clientX, e.clientY);
+        collect(e.clientX, e.clientY, value);
         el.classList.add('collected');
         setTimeout(() => el.remove(), 320);
       });
@@ -471,41 +505,131 @@
         if (c.dead) { circles.splice(i, 1); continue; }
         c.x += c.vx;
         c.y += c.vy;
-        if (c.x <= 0)               { c.x = 0;         c.vx =  Math.abs(c.vx); }
-        else if (c.x >= W - SIZE)   { c.x = W - SIZE;  c.vx = -Math.abs(c.vx); }
-        if (c.y <= 0)               { c.y = 0;         c.vy =  Math.abs(c.vy); }
-        else if (c.y >= H - SIZE)   { c.y = H - SIZE;  c.vy = -Math.abs(c.vy); }
+        if (c.x <= 0)                 { c.x = 0;          c.vx =  Math.abs(c.vx); }
+        else if (c.x >= W - c.size)   { c.x = W - c.size; c.vx = -Math.abs(c.vx); }
+        if (c.y <= 0)                 { c.y = 0;          c.vy =  Math.abs(c.vy); }
+        else if (c.y >= H - c.size)   { c.y = H - c.size; c.vy = -Math.abs(c.vy); }
         c.el.style.left = c.x + 'px';
         c.el.style.top  = c.y + 'px';
       }
       requestAnimationFrame(animate);
     }
 
-    function collect(x, y) {
-      state.points += 1;
-      state.totalEarned += 1;
+    function collect(x, y, value) {
+      state.points += value;
+      state.totalEarned += value;
       save();
-      floatPlus1(x, y);
+      floatPlus1(x, y, value);
       refresh();
     }
 
-    function floatPlus1(x, y) {
+    function floatPlus1(x, y, value) {
       const f = document.createElement('div');
-      f.className = 'fx-plus1';
-      f.textContent = '+1';
+      f.className = 'fx-plus1' + (value > 1 ? ' big' : '');
+      f.textContent = '+' + value;
       f.style.left = x + 'px';
       f.style.top  = y + 'px';
       document.body.appendChild(f);
       setTimeout(() => f.remove(), 1400);
     }
 
-    // --- Store / boards ---
-    function renderBoards() {
-      boardsGroup.querySelectorAll('.board').forEach((b) => {
-        const idx = Number(b.getAttribute('data-board'));
-        // Boards are removed from the top down: indices < boardsRemoved are gone.
-        b.classList.toggle('gone', idx < state.boardsRemoved);
+    // === Shop catalog ===
+    // Each item: name, price, requires() gate, owned() flag, buy() effect.
+    const SHOP = {
+      evolution: [
+        {
+          id: 'growth_chance',
+          name: 'Growth Chance +5%',
+          price: 100,
+          requires: () => state.growthUnlocked,   // locked until Growth is unlocked
+          owned: () => state.growthChancePlus,
+          buy: () => { state.growthChancePlus = true; },
+        },
+      ],
+      circles: [
+        {
+          id: 'unlock_growth',
+          name: 'Unlock Growth',
+          price: 30,
+          requires: () => true,
+          owned: () => state.growthUnlocked,
+          buy: () => { state.growthUnlocked = true; },
+        },
+        {
+          id: 'spawn_rate',
+          name: 'Upgrade Spawn Rate',
+          price: 70,
+          requires: () => true,
+          owned: () => state.spawnUpgraded,
+          buy: () => { state.spawnUpgraded = true; },
+        },
+      ],
+    };
+
+    const TABS = [
+      { id: 'evolution', label: 'Evolution' },
+      { id: 'shapes',    label: 'Shapes' },
+      { id: 'special',   label: 'Special', locked: true },
+    ];
+
+    let activeTab = 'shapes';   // default to the tab with buyable items
+
+    function buyItem(item) {
+      if (item.owned() || !item.requires() || state.points < item.price) return;
+      state.points -= item.price;
+      item.buy();
+      save();
+      refresh();
+    }
+
+    function makeItemCard(item) {
+      const owned = item.owned();
+      const available = item.requires();
+      const afford = state.points >= item.price;
+      const buyable = !owned && available && afford;
+
+      const btn = document.createElement('button');
+      btn.className = 'shop-item ' +
+        (owned ? 'owned' : !available ? 'locked' : !afford ? 'unaffordable' : 'buyable');
+      btn.innerHTML =
+        '<span class="si-name">' + item.name + '</span>' +
+        '<span class="si-price">' + (owned ? 'Owned' : 'Price: ' + item.price) + '</span>';
+      if (buyable) btn.addEventListener('click', () => buyItem(item));
+      return btn;
+    }
+
+    function renderShop() {
+      const unlocked = state.totalEarned >= UNLOCK_AT;
+      shopLocked.classList.toggle('hidden', unlocked);
+      shopInner.classList.toggle('hidden', !unlocked);
+      if (!unlocked) return;
+
+      // Top tabs
+      shopTabsEl.innerHTML = '';
+      TABS.forEach((t) => {
+        const b = document.createElement('button');
+        b.className = 'shop-tab-btn' +
+          (t.id === activeTab ? ' active' : '') + (t.locked ? ' locked' : '');
+        b.textContent = t.label;
+        if (!t.locked) b.addEventListener('click', () => { activeTab = t.id; renderShop(); });
+        shopTabsEl.appendChild(b);
       });
+
+      // Sub-tabs + items
+      shopSubsEl.innerHTML = '';
+      shopItemsEl.innerHTML = '';
+
+      if (activeTab === 'evolution') {
+        SHOP.evolution.forEach((it) => shopItemsEl.appendChild(makeItemCard(it)));
+      } else if (activeTab === 'shapes') {
+        const sub = document.createElement('button');
+        sub.className = 'shop-subtab-btn active';
+        sub.textContent = 'Circles';
+        shopSubsEl.appendChild(sub);
+        SHOP.circles.forEach((it) => shopItemsEl.appendChild(makeItemCard(it)));
+      } else if (activeTab === 'special') {
+        shopItemsEl.innerHTML = '<div class="shop-empty">Locked</div>';
+      }
     }
 
     function refresh() {
@@ -513,14 +637,7 @@
       counterNum.classList.remove('pulse');
       void counterNum.offsetWidth;                    // reflow to restart the pulse
       counterNum.classList.add('pulse');
-
-      const unlocked = state.totalEarned >= UNLOCK_AT;
-      store.classList.toggle('unlocked', unlocked && !state.shopOpen);
-      if (state.shopOpen) {
-        store.classList.add('hidden');
-        shopBody.classList.remove('hidden');
-      }
-      renderBoards();
+      renderShop();
     }
 
     // --- Drawer toggle ---
@@ -541,16 +658,7 @@
       location.reload();
     });
 
-    store.addEventListener('click', () => {
-      if (state.shopOpen) return;
-      if (state.totalEarned < UNLOCK_AT) return;
-      if (state.boardsRemoved >= TOTAL_BOARDS) return;
-      state.boardsRemoved += 1;
-      if (state.boardsRemoved >= TOTAL_BOARDS) state.shopOpen = true;
-      save();
-      refresh();
-    });
-
+    // --- Dev: +10 points ---
     document.getElementById('test-10').addEventListener('click', () => {
       state.points += 10;
       state.totalEarned += 10;
@@ -560,12 +668,10 @@
 
     // --- Boot ---
     applyDrawer();
-    renderBoards();
     refresh();
     requestAnimationFrame(animate);
-    // Each second, an independent 10% chance to spawn a single circle.
     setInterval(() => {
-      if (Math.random() < SPAWN_CHANCE) spawnCircle();
+      if (Math.random() < spawnChanceNow()) spawnCircle();
     }, 1000);
   </script>
 </body>
