@@ -6,40 +6,29 @@
   <title>Shapes - Horsey Games</title>
   <link rel="stylesheet" href="../style.css">
   <style>
+    html, body { overflow-x: hidden; }
     body {
       justify-content: flex-start;
       padding-top: 1.5rem;
-      background: #0b0f24;
-      overflow: hidden;
+      background: #ffffff;
+      color: #2a2f3a;
+      overflow-y: auto;
     }
 
-    canvas#bg {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      z-index: 0;
-      pointer-events: none;
-    }
-    .vignette {
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      z-index: 1;
-      background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.55) 100%);
-    }
-    .back-link { z-index: 2; }
+    .back-link { color: #3a6fd0; z-index: 2; }
+    .back-link:hover { color: #1a4fb0; }
 
     h1 {
       font-size: 2.4rem;
       margin-bottom: 0.4rem;
       letter-spacing: 4px;
-      background: linear-gradient(135deg, #a0c4ff 0%, #4e7fff 35%, #c7a0ff 70%, #a0c4ff 100%);
+      background: linear-gradient(135deg, #3f74e6 0%, #6a4fd8 50%, #9b3fc4 100%);
       background-size: 300% 300%;
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
       animation: shimmer 5s ease-in-out infinite, float 6s ease-in-out infinite;
-      filter: drop-shadow(0 0 18px rgba(78, 127, 255, 0.4));
+      filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.12));
       position: relative;
       z-index: 2;
     }
@@ -50,7 +39,7 @@
       position: relative;
       z-index: 2;
       width: 100%;
-      max-width: 1100px;
+      max-width: 900px;
       margin: 0 auto;
       padding: 0 1rem 2rem;
       display: flex;
@@ -70,11 +59,10 @@
       font-size: 2.8rem;
       font-family: ui-monospace, Menlo, Consolas, monospace;
       font-weight: 700;
-      background: linear-gradient(135deg, #a0c4ff, #4e7fff);
+      background: linear-gradient(135deg, #4e7fff, #2f5fd0);
       -webkit-background-clip: text;
       background-clip: text;
       -webkit-text-fill-color: transparent;
-      filter: drop-shadow(0 0 12px rgba(78, 127, 255, 0.35));
       display: inline-block;
       line-height: 1;
       transform-origin: center;
@@ -86,33 +74,31 @@
       100% { transform: scale(1); }
     }
     .counter-label {
-      color: #8ea7d6;
+      color: #5a6f9c;
       font-size: 0.8rem;
       letter-spacing: 3px;
       text-transform: uppercase;
       margin-top: 0.25rem;
     }
+
     /* === Spawn arena === */
     .arena {
       position: relative;
       width: min(680px, 92vw);
       height: min(420px, 56vh);
-      background: rgba(11, 15, 36, 0.45);
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
-      border: 1px solid rgba(78, 127, 255, 0.22);
+      background: #eef1f6;
+      border: 1px solid #d3d9e3;
       border-radius: 18px;
       overflow: hidden;
-      box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.35);
+      box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.06);
     }
 
-    /* A spawned circle */
+    /* A spawned circle — all the same small size, flat gray with a gray rim */
     .shape {
       position: absolute;
       border-radius: 50%;
-      background: radial-gradient(circle at 35% 30%, #9a9a9a, #808080 55%, #666666);
-      border: 1px solid #565656;
-      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+      background: radial-gradient(circle at 35% 30%, #b2b2b2, #979797 60%, #7d7d7d);
+      border: 2px solid #5f5f5f;
       cursor: pointer;
       opacity: 1;
       transform: scale(1);
@@ -136,18 +122,66 @@
       100% { transform: scale(0);   opacity: 0; }
     }
 
-    /* === Store === */
-    .store-wrap {
+    /* === Shop drawer (slides in/out from the right) === */
+    .shop-drawer {
+      --pw: min(320px, 86vw);
+      position: fixed;
+      top: 84px;
+      right: 0;
       display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 0.5rem;
+      align-items: flex-start;
+      z-index: 6;
+      transition: transform 0.45s cubic-bezier(.5,.15,.2,1);
     }
+    .shop-drawer.closed { transform: translateX(var(--pw)); }
+
+    .shop-tab {
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+      margin-top: 12px;
+      padding: 16px 9px;
+      background: #e9edf5;
+      border: 1px solid #cdd3de;
+      border-right: none;
+      border-radius: 12px 0 0 12px;
+      color: #4e6a9c;
+      font-family: inherit;
+      font-weight: 700;
+      font-size: 0.82rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      box-shadow: -3px 3px 10px rgba(0, 0, 0, 0.08);
+      transition: background 0.15s, color 0.15s;
+    }
+    .shop-tab:hover { background: #dde3ee; color: #33518a; }
+
+    .shop-panel {
+      width: var(--pw);
+      background: #f4f6fa;
+      border: 1px solid #cdd3de;
+      border-radius: 14px 0 0 14px;
+      box-shadow: -6px 8px 30px rgba(0, 0, 0, 0.14);
+      padding: 1rem 1.1rem 1.4rem;
+    }
+    .shop-title {
+      color: #3a5a9c;
+      font-size: 0.9rem;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin: 0 0 0.7rem;
+      border-bottom: 1px solid #d3d9e3;
+      padding-bottom: 0.45rem;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    /* Boarded-up storefront inside the panel */
     .store {
       position: relative;
-      width: min(340px, 80vw);
+      width: 100%;
       cursor: default;
-      filter: grayscale(0.85) brightness(0.7);
+      filter: grayscale(0.9) brightness(0.8);
       transition: filter 0.4s ease, transform 0.15s ease;
     }
     .store svg { width: 100%; height: auto; display: block; }
@@ -158,8 +192,8 @@
     }
     .store.unlocked:hover { transform: translateY(-2px); }
     @keyframes storeGlow {
-      0%, 100% { filter: grayscale(0) brightness(1) drop-shadow(0 0 6px rgba(245, 215, 122, 0.35)); }
-      50%      { filter: grayscale(0) brightness(1.08) drop-shadow(0 0 20px rgba(245, 215, 122, 0.75)); }
+      0%, 100% { filter: grayscale(0) brightness(1) drop-shadow(0 0 6px rgba(245, 200, 90, 0.5)); }
+      50%      { filter: grayscale(0) brightness(1.08) drop-shadow(0 0 20px rgba(245, 200, 90, 0.9)); }
     }
     /* Board planks nailed across the storefront */
     .board {
@@ -170,32 +204,13 @@
       opacity: 0;
       transform: translateX(60px) rotate(22deg);
     }
-    /* === Revealed shop === */
-    .shop {
-      width: min(680px, 92vw);
-      background: rgba(11, 15, 36, 0.55);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-      border: 1px solid rgba(78, 127, 255, 0.18);
-      border-radius: 16px;
-      padding: 1.2rem 1.3rem;
-      animation: fadeIn 0.6s ease both;
-    }
-    .shop-title {
-      color: #a0c4ff;
-      font-size: 0.85rem;
-      letter-spacing: 3px;
-      text-transform: uppercase;
-      margin: 0 0 0.6rem;
-      border-bottom: 1px solid rgba(78, 127, 255, 0.25);
-      padding-bottom: 0.4rem;
-      font-weight: 600;
-    }
+
+    .shop-body { margin-top: 0.4rem; }
     .shop-empty {
-      color: #5a6f9c;
+      color: #7a86a0;
       font-size: 0.9rem;
       font-style: italic;
-      padding: 0.6rem 0.2rem;
+      padding: 1.4rem 0.2rem;
       text-align: center;
     }
     .hidden { display: none !important; }
@@ -203,10 +218,10 @@
     /* Dev/test button — dashed border signals it isn't a normal button. */
     .test-btn {
       padding: 0.5rem 1rem;
-      background: rgba(80, 100, 140, 0.55);
-      border: 2px dashed #6b7c97;
+      background: #eef1f6;
+      border: 2px dashed #9aa6bd;
       border-radius: 12px;
-      color: #e0e6f0;
+      color: #4a5a78;
       font-size: 0.78rem;
       font-weight: 700;
       letter-spacing: 1.5px;
@@ -216,8 +231,8 @@
       transition: background 0.15s, border-color 0.15s, transform 0.1s;
     }
     .test-btn:hover {
-      background: rgba(110, 135, 180, 0.75);
-      border-color: #9ab2d6;
+      background: #e2e7f0;
+      border-color: #6b7c97;
       transform: translateY(-1px);
     }
     .test-btn:active { transform: translateY(1px); }
@@ -229,8 +244,8 @@
       font-size: 1.4rem;
       font-weight: 700;
       font-family: ui-monospace, Menlo, Consolas, monospace;
-      color: #a0c4ff;
-      text-shadow: 0 0 12px rgba(120, 160, 255, 0.7), 0 2px 4px rgba(0,0,0,0.4);
+      color: #2f6fe0;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
       pointer-events: none;
       z-index: 30;
       animation: floatUp 1.4s cubic-bezier(.25,.6,.45,1) forwards;
@@ -243,15 +258,13 @@
     }
 
     @media (max-width: 900px) {
-      body { overflow: auto; }
       h1 { font-size: 2rem; }
       .arena { height: min(360px, 52vh); }
+      .shop-drawer { top: 70px; }
     }
   </style>
 </head>
 <body>
-  <canvas id="bg"></canvas>
-  <div class="vignette"></div>
   <a href="../games.html" class="back-link">&larr; All Games</a>
 
   <h1>Shapes</h1>
@@ -264,7 +277,14 @@
 
     <div class="arena" id="arena"></div>
 
-    <div class="store-wrap">
+    <button class="test-btn" id="test-10" title="Dev: +10 points">+10 &#129514;</button>
+  </div>
+
+  <!-- Shop drawer: click the tab to slide it out of / back into view -->
+  <div class="shop-drawer" id="shop-drawer">
+    <button class="shop-tab" id="shop-tab" aria-label="Show or hide the shop">Shop</button>
+    <div class="shop-panel">
+      <h2 class="shop-title">Shop</h2>
       <div class="store" id="store" role="button" aria-label="The boarded-up store">
         <svg viewBox="0 0 300 220" xmlns="http://www.w3.org/2000/svg">
           <!-- awning -->
@@ -315,30 +335,24 @@
           </g>
         </svg>
       </div>
-    </div>
-
-    <div class="shop hidden" id="shop">
-      <h2 class="shop-title">The Shop</h2>
-      <div class="shop-body" id="shop-body">
+      <div class="shop-body hidden" id="shop-body">
         <div class="shop-empty">Shop coming soon&hellip;</div>
       </div>
     </div>
-
-    <button class="test-btn" id="test-10" title="Dev: +10 points">+10 &#129514;</button>
   </div>
 
-  <script src="../bg.js"></script>
   <script>
     'use strict';
     const STORAGE_KEY = 'horsey:shapes:v1';
 
     const SPAWN_CHANCE = 0.10;   // per second
+    const CIRCLE_SIZE  = 16;     // px diameter — every circle is the same size
     const CIRCLE_LIFE  = 30000;  // ms fully visible before the fade begins
     const FADE_MS      = 4500;   // must match .shape.fading transition duration
     const UNLOCK_AT    = 10;     // total points earned to unlock the store
     const TOTAL_BOARDS = 5;
 
-    const DEFAULT_STATE = { points: 0, totalEarned: 0, boardsRemoved: 0, shopOpen: false };
+    const DEFAULT_STATE = { points: 0, totalEarned: 0, boardsRemoved: 0, shopOpen: false, drawerOpen: true };
 
     // --- Persistence ---
     function load() {
@@ -347,10 +361,11 @@
         if (!raw) return { ...DEFAULT_STATE };
         const parsed = JSON.parse(raw);
         return {
-          points:        Number(parsed.points)        || 0,
-          totalEarned:   Number(parsed.totalEarned)    || 0,
+          points:        Number(parsed.points)     || 0,
+          totalEarned:   Number(parsed.totalEarned) || 0,
           boardsRemoved: Math.min(TOTAL_BOARDS, Number(parsed.boardsRemoved) || 0),
           shopOpen:      !!parsed.shopOpen,
+          drawerOpen:    parsed.drawerOpen !== false,   // default open
         };
       } catch (e) {
         return { ...DEFAULT_STATE };
@@ -367,39 +382,42 @@
     const counterNum  = document.getElementById('counter-num');
     const store       = document.getElementById('store');
     const boardsGroup = document.getElementById('boards');
-    const shop        = document.getElementById('shop');
+    const shopBody    = document.getElementById('shop-body');
+    const drawer      = document.getElementById('shop-drawer');
+    const shopTab     = document.getElementById('shop-tab');
 
     // --- Circle spawning ---
-    // Live circles being animated. Each: { el, x, y, vx, vy, size, dead }.
+    // Live circles being animated. Each: { el, x, y, vx, vy, dead }.
     const circles = [];
+    const SIZE = CIRCLE_SIZE;
 
     function spawnCircle() {
-      const size = 10 + Math.random() * 8;           // 10–18px diameter (small)
       const rect = arena.getBoundingClientRect();
       const W = rect.width, H = rect.height;
+      if (W < SIZE || H < SIZE) return;
       const speed = 0.2 + Math.random() * 0.5;       // slow float
       const drift = () => (Math.random() - 0.5) * speed * 1.6;
 
       // Spawn on a random edge, heading inward.
       let x, y, vx, vy;
       switch (Math.floor(Math.random() * 4)) {
-        case 0: x = Math.random() * (W - size); y = 0;        vx = drift();  vy = speed;  break; // top
-        case 1: x = Math.random() * (W - size); y = H - size; vx = drift();  vy = -speed; break; // bottom
-        case 2: x = 0;        y = Math.random() * (H - size); vx = speed;    vy = drift(); break; // left
-        default:x = W - size; y = Math.random() * (H - size); vx = -speed;   vy = drift(); break; // right
+        case 0: x = Math.random() * (W - SIZE); y = 0;        vx = drift();  vy = speed;  break; // top
+        case 1: x = Math.random() * (W - SIZE); y = H - SIZE; vx = drift();  vy = -speed; break; // bottom
+        case 2: x = 0;        y = Math.random() * (H - SIZE); vx = speed;    vy = drift(); break; // left
+        default:x = W - SIZE; y = Math.random() * (H - SIZE); vx = -speed;   vy = drift(); break; // right
       }
 
       const el = document.createElement('div');
       el.className = 'shape';
-      el.style.width  = size + 'px';
-      el.style.height = size + 'px';
+      el.style.width  = SIZE + 'px';
+      el.style.height = SIZE + 'px';
       el.style.left = x + 'px';
       el.style.top  = y + 'px';
       el.style.transform = 'scale(0)';                // pop-in
       arena.appendChild(el);
       requestAnimationFrame(() => { el.style.transform = 'scale(1)'; });
 
-      const c = { el, x, y, vx, vy, size, dead: false };
+      const c = { el, x, y, vx, vy, dead: false };
 
       // Begin the slow fade after CIRCLE_LIFE, remove once fully faded.
       const fadeTimer = setTimeout(() => {
@@ -428,10 +446,10 @@
         if (c.dead) { circles.splice(i, 1); continue; }
         c.x += c.vx;
         c.y += c.vy;
-        if (c.x <= 0)          { c.x = 0;          c.vx =  Math.abs(c.vx); }
-        else if (c.x >= W - c.size) { c.x = W - c.size; c.vx = -Math.abs(c.vx); }
-        if (c.y <= 0)          { c.y = 0;          c.vy =  Math.abs(c.vy); }
-        else if (c.y >= H - c.size) { c.y = H - c.size; c.vy = -Math.abs(c.vy); }
+        if (c.x <= 0)               { c.x = 0;         c.vx =  Math.abs(c.vx); }
+        else if (c.x >= W - SIZE)   { c.x = W - SIZE;  c.vx = -Math.abs(c.vx); }
+        if (c.y <= 0)               { c.y = 0;         c.vy =  Math.abs(c.vy); }
+        else if (c.y >= H - SIZE)   { c.y = H - SIZE;  c.vy = -Math.abs(c.vy); }
         c.el.style.left = c.x + 'px';
         c.el.style.top  = c.y + 'px';
       }
@@ -458,8 +476,7 @@
 
     // --- Store / boards ---
     function renderBoards() {
-      const boards = boardsGroup.querySelectorAll('.board');
-      boards.forEach((b) => {
+      boardsGroup.querySelectorAll('.board').forEach((b) => {
         const idx = Number(b.getAttribute('data-board'));
         // Boards are removed from the top down: indices < boardsRemoved are gone.
         b.classList.toggle('gone', idx < state.boardsRemoved);
@@ -469,15 +486,27 @@
     function refresh() {
       counterNum.textContent = state.points;
       counterNum.classList.remove('pulse');
-      // reflow to restart the pulse animation
-      void counterNum.offsetWidth;
+      void counterNum.offsetWidth;                    // reflow to restart the pulse
       counterNum.classList.add('pulse');
 
       const unlocked = state.totalEarned >= UNLOCK_AT;
       store.classList.toggle('unlocked', unlocked && !state.shopOpen);
-      if (state.shopOpen) shop.classList.remove('hidden');
+      if (state.shopOpen) {
+        store.classList.add('hidden');
+        shopBody.classList.remove('hidden');
+      }
       renderBoards();
     }
+
+    // --- Drawer toggle ---
+    function applyDrawer() {
+      drawer.classList.toggle('closed', !state.drawerOpen);
+    }
+    shopTab.addEventListener('click', () => {
+      state.drawerOpen = !state.drawerOpen;
+      applyDrawer();
+      save();
+    });
 
     store.addEventListener('click', () => {
       if (state.shopOpen) return;
@@ -497,15 +526,13 @@
     });
 
     // --- Boot ---
+    applyDrawer();
     renderBoards();
     refresh();
     requestAnimationFrame(animate);
-    // Each second, 10% chance to spawn a burst of 1–3 circles at once.
+    // Each second, an independent 10% chance to spawn a single circle.
     setInterval(() => {
-      if (Math.random() < SPAWN_CHANCE) {
-        const burst = 1 + Math.floor(Math.random() * 3);
-        for (let i = 0; i < burst; i++) spawnCircle();
-      }
+      if (Math.random() < SPAWN_CHANCE) spawnCircle();
     }, 1000);
   </script>
 </body>
