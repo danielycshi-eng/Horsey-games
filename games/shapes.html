@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shapes - Horsey Games</title>
+  <link rel="stylesheet" href="../style.css">
+  <style>
+    body {
+      justify-content: flex-start;
+      padding-top: 1.5rem;
+      background: #0b0f24;
+      overflow: hidden;
+    }
+
+    canvas#bg {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 0;
+      pointer-events: none;
+    }
+    .vignette {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 1;
+      background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.55) 100%);
+    }
+    .back-link { z-index: 2; }
+
+    h1 {
+      font-size: 2.4rem;
+      margin-bottom: 0.4rem;
+      letter-spacing: 4px;
+      background: linear-gradient(135deg, #a0c4ff 0%, #4e7fff 35%, #c7a0ff 70%, #a0c4ff 100%);
+      background-size: 300% 300%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: shimmer 5s ease-in-out infinite, float 6s ease-in-out infinite;
+      filter: drop-shadow(0 0 18px rgba(78, 127, 255, 0.4));
+      position: relative;
+      z-index: 2;
+    }
+    @keyframes shimmer { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+    @keyframes float   { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+
+    .stage {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 1rem 2rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.1rem;
+      animation: fadeIn 0.9s cubic-bezier(.2,.7,.2,1) both;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(15px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* === Counter === */
+    .counter-block { text-align: center; }
+    .counter-num {
+      font-size: 2.8rem;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-weight: 700;
+      background: linear-gradient(135deg, #a0c4ff, #4e7fff);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 0 12px rgba(78, 127, 255, 0.35));
+      display: inline-block;
+      line-height: 1;
+      transform-origin: center;
+    }
+    .counter-num.pulse { animation: counterPulse 0.18s ease-out; }
+    @keyframes counterPulse {
+      0%   { transform: scale(1); }
+      50%  { transform: scale(1.08); }
+      100% { transform: scale(1); }
+    }
+    .counter-label {
+      color: #8ea7d6;
+      font-size: 0.8rem;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-top: 0.25rem;
+    }
+    .counter-sub {
+      color: #5a6f9c;
+      font-size: 0.75rem;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      margin-top: 0.35rem;
+    }
+    .counter-sub b { color: #a0c4ff; font-weight: 700; }
+
+    /* === Spawn arena === */
+    .arena {
+      position: relative;
+      width: min(680px, 92vw);
+      height: min(420px, 56vh);
+      background: rgba(11, 15, 36, 0.45);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      border: 1px solid rgba(78, 127, 255, 0.22);
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.35);
+    }
+    .arena-hint {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #46587f;
+      font-size: 0.85rem;
+      letter-spacing: 1px;
+      font-style: italic;
+      pointer-events: none;
+      text-align: center;
+      padding: 1rem;
+    }
+
+    /* A spawned circle */
+    .shape {
+      position: absolute;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #b9c2d4, #8a93a8 55%, #5c6579);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45), inset 0 2px 6px rgba(255,255,255,0.15);
+      cursor: pointer;
+      opacity: 1;
+      transform: scale(1);
+      transition: opacity 0.15s linear, transform 0.12s ease-out;
+      will-change: opacity, transform;
+    }
+    .shape:hover { transform: scale(1.08); }
+    /* Fade-out phase (added by JS). Long transition = the slow fade. */
+    .shape.fading {
+      opacity: 0;
+      transition: opacity 4.5s linear;
+    }
+    /* Collect pop when clicked */
+    .shape.collected {
+      pointer-events: none;
+      animation: collectPop 0.32s cubic-bezier(.3,1.4,.5,1) forwards;
+    }
+    @keyframes collectPop {
+      0%   { transform: scale(1);   opacity: 1; }
+      40%  { transform: scale(1.5); opacity: 0.9; }
+      100% { transform: scale(0);   opacity: 0; }
+    }
+
+    /* === Store === */
+    .store-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .store {
+      position: relative;
+      width: min(340px, 80vw);
+      cursor: default;
+      filter: grayscale(0.85) brightness(0.7);
+      transition: filter 0.4s ease, transform 0.15s ease;
+    }
+    .store svg { width: 100%; height: auto; display: block; }
+    .store.unlocked {
+      cursor: pointer;
+      filter: grayscale(0) brightness(1);
+      animation: storeGlow 2s ease-in-out infinite;
+    }
+    .store.unlocked:hover { transform: translateY(-2px); }
+    @keyframes storeGlow {
+      0%, 100% { filter: grayscale(0) brightness(1) drop-shadow(0 0 6px rgba(245, 215, 122, 0.35)); }
+      50%      { filter: grayscale(0) brightness(1.08) drop-shadow(0 0 20px rgba(245, 215, 122, 0.75)); }
+    }
+    /* Board planks nailed across the storefront */
+    .board {
+      transition: transform 0.5s cubic-bezier(.5,-0.4,.5,1), opacity 0.5s ease;
+      transform-origin: center;
+    }
+    .board.gone {
+      opacity: 0;
+      transform: translateX(60px) rotate(22deg);
+    }
+    .store-label {
+      color: #8ea7d6;
+      font-size: 0.78rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      text-align: center;
+    }
+    .store-label b { color: #f5d77a; }
+
+    /* === Revealed shop === */
+    .shop {
+      width: min(680px, 92vw);
+      background: rgba(11, 15, 36, 0.55);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(78, 127, 255, 0.18);
+      border-radius: 16px;
+      padding: 1.2rem 1.3rem;
+      animation: fadeIn 0.6s ease both;
+    }
+    .shop-title {
+      color: #a0c4ff;
+      font-size: 0.85rem;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin: 0 0 0.6rem;
+      border-bottom: 1px solid rgba(78, 127, 255, 0.25);
+      padding-bottom: 0.4rem;
+      font-weight: 600;
+    }
+    .shop-empty {
+      color: #5a6f9c;
+      font-size: 0.9rem;
+      font-style: italic;
+      padding: 0.6rem 0.2rem;
+      text-align: center;
+    }
+    .hidden { display: none !important; }
+
+    /* Dev/test button — dashed border signals it isn't a normal button. */
+    .test-btn {
+      padding: 0.5rem 1rem;
+      background: rgba(80, 100, 140, 0.55);
+      border: 2px dashed #6b7c97;
+      border-radius: 12px;
+      color: #e0e6f0;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s, border-color 0.15s, transform 0.1s;
+    }
+    .test-btn:hover {
+      background: rgba(110, 135, 180, 0.75);
+      border-color: #9ab2d6;
+      transform: translateY(-1px);
+    }
+    .test-btn:active { transform: translateY(1px); }
+
+    /* Floating "+1" feedback on collect */
+    .fx-plus1 {
+      position: fixed;
+      transform: translate(-50%, -50%);
+      font-size: 1.4rem;
+      font-weight: 700;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      color: #a0c4ff;
+      text-shadow: 0 0 12px rgba(120, 160, 255, 0.7), 0 2px 4px rgba(0,0,0,0.4);
+      pointer-events: none;
+      z-index: 30;
+      animation: floatUp 1.4s cubic-bezier(.25,.6,.45,1) forwards;
+      will-change: transform, opacity;
+    }
+    @keyframes floatUp {
+      0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+      15%  { opacity: 1; transform: translate(-50%, -70%) scale(1.15); }
+      100% { opacity: 0; transform: translate(-50%, -180%) scale(0.9); }
+    }
+
+    @media (max-width: 900px) {
+      body { overflow: auto; }
+      h1 { font-size: 2rem; }
+      .arena { height: min(360px, 52vh); }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="bg"></canvas>
+  <div class="vignette"></div>
+  <a href="../games.html" class="back-link">&larr; All Games</a>
+
+  <h1>Shapes</h1>
+
+  <div class="stage">
+    <div class="counter-block">
+      <div class="counter-num" id="counter-num">0</div>
+      <div class="counter-label">points</div>
+      <div class="counter-sub" id="counter-sub">Earned <b id="total-earned">0</b> all-time</div>
+    </div>
+
+    <div class="arena" id="arena">
+      <div class="arena-hint" id="arena-hint">Watch for shapes to appear&hellip; click them for points.</div>
+    </div>
+
+    <div class="store-wrap">
+      <div class="store" id="store" role="button" aria-label="The boarded-up store">
+        <svg viewBox="0 0 300 220" xmlns="http://www.w3.org/2000/svg">
+          <!-- awning -->
+          <rect x="20" y="34" width="260" height="24" rx="4" fill="#7a3b4a"/>
+          <g fill="#e05a6e">
+            <rect x="24"  y="34" width="26" height="24"/>
+            <rect x="76"  y="34" width="26" height="24"/>
+            <rect x="128" y="34" width="26" height="24"/>
+            <rect x="180" y="34" width="26" height="24"/>
+            <rect x="232" y="34" width="26" height="24"/>
+          </g>
+          <path d="M20 58 h260 l-14 16 h-232 z" fill="#5f2c38"/>
+          <!-- sign -->
+          <rect x="70" y="12" width="160" height="22" rx="5" fill="#16213e" stroke="#4e7fff" stroke-width="2"/>
+          <text x="150" y="28" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif"
+                font-size="13" letter-spacing="2" fill="#a0c4ff" font-weight="700">SHOP</text>
+          <!-- storefront body -->
+          <rect x="30" y="74" width="240" height="132" rx="6" fill="#2a2f45" stroke="#1a1e2e" stroke-width="2"/>
+          <!-- dark window / doorway behind the boards -->
+          <rect x="52" y="92" width="196" height="102" rx="4" fill="#0c1020"/>
+          <!-- boards nailed across (5 planks) -->
+          <g id="boards">
+            <g class="board" data-board="0">
+              <rect x="40" y="96"  width="220" height="20" rx="2" fill="#9c6b3f" stroke="#5f3d20" stroke-width="1.5" transform="rotate(-4 150 106)"/>
+              <circle cx="58"  cy="104" r="2.2" fill="#3a2510"/>
+              <circle cx="242" cy="110" r="2.2" fill="#3a2510"/>
+            </g>
+            <g class="board" data-board="1">
+              <rect x="40" y="120" width="220" height="20" rx="2" fill="#b07d4c" stroke="#5f3d20" stroke-width="1.5" transform="rotate(3 150 130)"/>
+              <circle cx="58"  cy="132" r="2.2" fill="#3a2510"/>
+              <circle cx="242" cy="126" r="2.2" fill="#3a2510"/>
+            </g>
+            <g class="board" data-board="2">
+              <rect x="40" y="144" width="220" height="20" rx="2" fill="#9c6b3f" stroke="#5f3d20" stroke-width="1.5" transform="rotate(-2 150 154)"/>
+              <circle cx="58"  cy="150" r="2.2" fill="#3a2510"/>
+              <circle cx="242" cy="156" r="2.2" fill="#3a2510"/>
+            </g>
+            <g class="board" data-board="3">
+              <rect x="40" y="168" width="220" height="20" rx="2" fill="#b07d4c" stroke="#5f3d20" stroke-width="1.5" transform="rotate(4 150 178)"/>
+              <circle cx="58"  cy="176" r="2.2" fill="#3a2510"/>
+              <circle cx="242" cy="170" r="2.2" fill="#3a2510"/>
+            </g>
+            <g class="board" data-board="4">
+              <rect x="66" y="86" width="20" height="112" rx="2" fill="#8a5d38" stroke="#5f3d20" stroke-width="1.5" transform="rotate(6 76 142)"/>
+              <circle cx="76" cy="98"  r="2.2" fill="#3a2510"/>
+              <circle cx="76" cy="186" r="2.2" fill="#3a2510"/>
+            </g>
+          </g>
+        </svg>
+      </div>
+      <div class="store-label" id="store-label">Boarded up &mdash; earn <b>10</b> points to pry it open</div>
+    </div>
+
+    <div class="shop hidden" id="shop">
+      <h2 class="shop-title">The Shop</h2>
+      <div class="shop-body" id="shop-body">
+        <div class="shop-empty">Shop coming soon&hellip;</div>
+      </div>
+    </div>
+
+    <button class="test-btn" id="test-10" title="Dev: +10 points">+10 &#129514;</button>
+  </div>
+
+  <script src="../bg.js"></script>
+  <script>
+    'use strict';
+    const STORAGE_KEY = 'horsey:shapes:v1';
+
+    const SPAWN_CHANCE = 0.05;   // per second
+    const CIRCLE_LIFE  = 30000;  // ms fully visible before the fade begins
+    const FADE_MS      = 4500;   // must match .shape.fading transition duration
+    const UNLOCK_AT    = 10;     // total points earned to unlock the store
+    const TOTAL_BOARDS = 5;
+
+    const DEFAULT_STATE = { points: 0, totalEarned: 0, boardsRemoved: 0, shopOpen: false };
+
+    // --- Persistence ---
+    function load() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return { ...DEFAULT_STATE };
+        const parsed = JSON.parse(raw);
+        return {
+          points:        Number(parsed.points)        || 0,
+          totalEarned:   Number(parsed.totalEarned)    || 0,
+          boardsRemoved: Math.min(TOTAL_BOARDS, Number(parsed.boardsRemoved) || 0),
+          shopOpen:      !!parsed.shopOpen,
+        };
+      } catch (e) {
+        return { ...DEFAULT_STATE };
+      }
+    }
+    function save() {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+    }
+
+    const state = load();
+
+    // --- Elements ---
+    const arena       = document.getElementById('arena');
+    const arenaHint   = document.getElementById('arena-hint');
+    const counterNum  = document.getElementById('counter-num');
+    const totalEl     = document.getElementById('total-earned');
+    const store       = document.getElementById('store');
+    const storeLabel  = document.getElementById('store-label');
+    const boardsGroup = document.getElementById('boards');
+    const shop        = document.getElementById('shop');
+
+    // --- Circle spawning ---
+    function spawnCircle() {
+      const size = 26 + Math.random() * 22;          // 26–48px diameter
+      const rect = arena.getBoundingClientRect();
+      const maxX = Math.max(0, rect.width  - size);
+      const maxY = Math.max(0, rect.height - size);
+
+      arenaHint.classList.add('hidden');   // once shapes appear, drop the hint for good
+
+      const el = document.createElement('div');
+      el.className = 'shape';
+      el.style.width  = size + 'px';
+      el.style.height = size + 'px';
+      el.style.left = (Math.random() * maxX) + 'px';
+      el.style.top  = (Math.random() * maxY) + 'px';
+      // pop-in from small
+      el.style.transform = 'scale(0)';
+      arena.appendChild(el);
+      requestAnimationFrame(() => { el.style.transform = 'scale(1)'; });
+
+      let dead = false;
+      // Begin the slow fade after CIRCLE_LIFE, remove once fully faded.
+      const fadeTimer = setTimeout(() => {
+        el.classList.add('fading');
+        setTimeout(() => { if (!dead) { dead = true; el.remove(); } }, FADE_MS);
+      }, CIRCLE_LIFE);
+
+      el.addEventListener('click', (e) => {
+        if (dead) return;                 // fully faded circles are already gone
+        dead = true;
+        clearTimeout(fadeTimer);
+        collect(e.clientX, e.clientY);
+        el.classList.add('collected');
+        setTimeout(() => el.remove(), 320);
+      });
+    }
+
+    function collect(x, y) {
+      state.points += 1;
+      state.totalEarned += 1;
+      save();
+      floatPlus1(x, y);
+      refresh();
+    }
+
+    function floatPlus1(x, y) {
+      const f = document.createElement('div');
+      f.className = 'fx-plus1';
+      f.textContent = '+1';
+      f.style.left = x + 'px';
+      f.style.top  = y + 'px';
+      document.body.appendChild(f);
+      setTimeout(() => f.remove(), 1400);
+    }
+
+    // --- Store / boards ---
+    function renderBoards() {
+      const boards = boardsGroup.querySelectorAll('.board');
+      boards.forEach((b) => {
+        const idx = Number(b.getAttribute('data-board'));
+        // Boards are removed from the top down: indices < boardsRemoved are gone.
+        b.classList.toggle('gone', idx < state.boardsRemoved);
+      });
+    }
+
+    function refresh() {
+      counterNum.textContent = state.points;
+      totalEl.textContent = state.totalEarned;
+      counterNum.classList.remove('pulse');
+      // reflow to restart the pulse animation
+      void counterNum.offsetWidth;
+      counterNum.classList.add('pulse');
+
+      const unlocked = state.totalEarned >= UNLOCK_AT;
+      store.classList.toggle('unlocked', unlocked && !state.shopOpen);
+
+      if (state.shopOpen) {
+        storeLabel.textContent = '';
+        storeLabel.classList.add('hidden');
+        shop.classList.remove('hidden');
+      } else if (unlocked) {
+        const left = TOTAL_BOARDS - state.boardsRemoved;
+        storeLabel.innerHTML = 'It glows! Click to pry off the boards &mdash; <b>' + left + '</b> left';
+      } else {
+        const need = UNLOCK_AT - state.totalEarned;
+        storeLabel.innerHTML = 'Boarded up &mdash; earn <b>' + need + '</b> more point' + (need === 1 ? '' : 's') + ' to pry it open';
+      }
+      renderBoards();
+    }
+
+    store.addEventListener('click', () => {
+      if (state.shopOpen) return;
+      if (state.totalEarned < UNLOCK_AT) return;
+      if (state.boardsRemoved >= TOTAL_BOARDS) return;
+      state.boardsRemoved += 1;
+      if (state.boardsRemoved >= TOTAL_BOARDS) state.shopOpen = true;
+      save();
+      refresh();
+    });
+
+    document.getElementById('test-10').addEventListener('click', () => {
+      state.points += 10;
+      state.totalEarned += 10;
+      save();
+      refresh();
+    });
+
+    // --- Boot ---
+    renderBoards();
+    refresh();
+    setInterval(() => {
+      if (Math.random() < SPAWN_CHANCE) spawnCircle();
+    }, 1000);
+  </script>
+</body>
+</html>
