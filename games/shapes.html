@@ -219,7 +219,7 @@
       filter: grayscale(1);
     }
 
-    /* Top tabs: Evolution / Shapes / Special */
+    /* Top tabs: Evolution (blue) / Shapes (orange) / Special (purple) */
     .shop-tabs { display: flex; gap: 0.35rem; margin-bottom: 0.8rem; }
     .shop-tab-btn {
       flex: 1;
@@ -228,17 +228,24 @@
       font-weight: 700;
       letter-spacing: 0.5px;
       text-transform: uppercase;
-      background: #e9edf5;
-      border: 1px solid #cdd3de;
+      background: #ffffff;
+      border: 1.5px solid var(--tc, #5a6f9c);
       border-radius: 8px;
-      color: #5a6f9c;
+      color: var(--tc, #5a6f9c);
       cursor: pointer;
       font-family: inherit;
-      transition: background 0.15s, color 0.15s;
+      transition: background 0.15s, color 0.15s, box-shadow 0.15s;
     }
-    .shop-tab-btn:hover:not(.locked):not(.active) { background: #dde3ee; }
-    .shop-tab-btn.active { background: #3a5a9c; color: #fff; border-color: #3a5a9c; }
-    .shop-tab-btn.locked { opacity: 0.45; cursor: not-allowed; }
+    .shop-tab-btn.evolution { --tc: #3a6fd0; --tc-soft: #eaf1fc; }
+    .shop-tab-btn.shapes    { --tc: #e07b1f; --tc-soft: #fdf1e3; }
+    .shop-tab-btn.special   { --tc: #8a3fc4; --tc-soft: #f3ebfb; }
+    .shop-tab-btn:hover:not(.locked):not(.active) { background: var(--tc-soft); }
+    .shop-tab-btn.active {
+      background: var(--tc);
+      color: #fff;
+      box-shadow: 0 3px 10px color-mix(in srgb, var(--tc) 40%, transparent);
+    }
+    .shop-tab-btn.locked { opacity: 0.5; cursor: not-allowed; }
 
     /* Sub-tabs (e.g. Circles under Shapes) */
     .shop-subtabs { display: flex; gap: 0.35rem; margin-bottom: 0.7rem; }
@@ -288,8 +295,26 @@
     }
     .shop-item.owned { border-color: #4e7fff; background: #eef3ff; }
     .shop-item.owned .si-price { color: #4e7fff; }
-    .shop-item.locked,
-    .shop-item.unaffordable { opacity: 0.5; filter: grayscale(0.4); cursor: not-allowed; }
+
+    /* Locked = prerequisite not met: dashed, drained, with a lock glyph. */
+    .shop-item.locked {
+      border-style: dashed;
+      border-color: #b8c0cf;
+      background: #f2f4f8;
+      opacity: 0.7;
+      filter: grayscale(0.6);
+      cursor: not-allowed;
+    }
+    .shop-item.locked .si-name { color: #8a94a8; }
+    .shop-item.locked .si-price { color: #9aa4b6; }
+
+    /* Can't afford = you could buy it, just not enough points: red price. */
+    .shop-item.unaffordable {
+      border-color: #e6b0b8;
+      background: #fdf6f7;
+      cursor: not-allowed;
+    }
+    .shop-item.unaffordable .si-price { color: #d23a52; }
 
     .shop-empty {
       color: #8a94a8;
@@ -591,9 +616,13 @@
       const btn = document.createElement('button');
       btn.className = 'shop-item ' +
         (owned ? 'owned' : !available ? 'locked' : !afford ? 'unaffordable' : 'buyable');
+      let priceText;
+      if (owned) priceText = 'Owned';
+      else if (!available) priceText = '🔒 ' + item.price;   // lock glyph
+      else priceText = 'Price: ' + item.price;
       btn.innerHTML =
         '<span class="si-name">' + item.name + '</span>' +
-        '<span class="si-price">' + (owned ? 'Owned' : 'Price: ' + item.price) + '</span>';
+        '<span class="si-price">' + priceText + '</span>';
       if (buyable) btn.addEventListener('click', () => buyItem(item));
       return btn;
     }
@@ -608,7 +637,7 @@
       shopTabsEl.innerHTML = '';
       TABS.forEach((t) => {
         const b = document.createElement('button');
-        b.className = 'shop-tab-btn' +
+        b.className = 'shop-tab-btn ' + t.id +
           (t.id === activeTab ? ' active' : '') + (t.locked ? ' locked' : '');
         b.textContent = t.label;
         if (!t.locked) b.addEventListener('click', () => { activeTab = t.id; renderShop(); });
