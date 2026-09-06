@@ -157,6 +157,14 @@
       box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.95), inset 0 0 0 5px #6f6f6f,
                   inset 0 0 0 8px rgba(255, 255, 255, 0.95), inset 0 0 0 10px #6f6f6f;
     }
+    /* Triangle — filled gray triangle (no border/ring) */
+    .shape.triangle {
+      border: none;
+      border-radius: 0;
+      background: linear-gradient(135deg, #b2b2b2, #7d7d7d);
+      clip-path: polygon(50% 4%, 96% 96%, 4% 96%);
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+    }
     /* Green bonus circle — grants a points multiplier when clicked */
     .shape.green {
       background: radial-gradient(circle at 35% 30%, #7ee0a0, #46c878 60%, #2f9e58);
@@ -451,7 +459,8 @@
     const SQUARE_SIZE  = 22;   const SQUARE_BIG_SIZE = 34; const SQUARE_VALUE    = 10;  const SQUARE_BIG_VALUE = 50;
     const CIRCLE_DOUBLE_SIZE = 32; const CIRCLE_DOUBLE_VALUE = 500;
     const SQUARE_DOUBLE_SIZE = 42; const SQUARE_DOUBLE_VALUE = 1500;
-    const DOUBLE_CHANCE = 0.10;   // chance a ringed shape spawns double-ringed (needs Upgrade Growth)
+    const DOUBLE_CHANCE = 0.05;   // chance ANY circle/square spawns double-ringed (needs Upgrade Growth)
+    const TRIANGLE_SIZE = 30; const TRIANGLE_VALUE = 2500; const TRIANGLE_SPAWN = 0.10;
     const CIRCLE_LIFE  = 30000;  // ms fully visible before the fade begins
     const FADE_MS      = 4500;   // must match .shape.fading transition duration
     const UNLOCK_AT    = 10;     // total points earned to unlock the shop
@@ -480,6 +489,9 @@
       circleGrowthUpgraded: false,
       squareGrowthUpgraded: false,
       arenaExpanded: false,
+      // triangles + special
+      triangleUnlocked: false,
+      multipliersUpgraded: false,
     };
 
     // --- Persistence ---
@@ -502,6 +514,8 @@
           circleGrowthUpgraded: !!p.circleGrowthUpgraded,
           squareGrowthUpgraded: !!p.squareGrowthUpgraded,
           arenaExpanded:        !!p.arenaExpanded,
+          triangleUnlocked:     !!p.triangleUnlocked,
+          multipliersUpgraded:  !!p.multipliersUpgraded,
         };
       } catch (e) {
         return { ...DEFAULT_STATE };
@@ -557,23 +571,21 @@
       const W = rect.width, H = rect.height;
 
       let size, value, cls;
-      if (kind === 'square') {
-        if (Math.random() < squareBigChance()) {
-          if (state.squareGrowthUpgraded && Math.random() < DOUBLE_CHANCE) {
-            size = SQUARE_DOUBLE_SIZE; value = SQUARE_DOUBLE_VALUE; cls = 'shape square big double';
-          } else {
-            size = SQUARE_BIG_SIZE; value = SQUARE_BIG_VALUE; cls = 'shape square big';
-          }
+      if (kind === 'triangle') {
+        size = TRIANGLE_SIZE; value = TRIANGLE_VALUE; cls = 'shape triangle';
+      } else if (kind === 'square') {
+        if (state.squareGrowthUpgraded && Math.random() < DOUBLE_CHANCE) {   // 5% of any square
+          size = SQUARE_DOUBLE_SIZE; value = SQUARE_DOUBLE_VALUE; cls = 'shape square big double';
+        } else if (Math.random() < squareBigChance()) {
+          size = SQUARE_BIG_SIZE; value = SQUARE_BIG_VALUE; cls = 'shape square big';
         } else {
           size = SQUARE_SIZE; value = SQUARE_VALUE; cls = 'shape square';
         }
       } else {
-        if (Math.random() < circleBigChance()) {
-          if (state.circleGrowthUpgraded && Math.random() < DOUBLE_CHANCE) {
-            size = CIRCLE_DOUBLE_SIZE; value = CIRCLE_DOUBLE_VALUE; cls = 'shape big double';
-          } else {
-            size = BIG_SIZE; value = BIG_VALUE; cls = 'shape big';
-          }
+        if (state.circleGrowthUpgraded && Math.random() < DOUBLE_CHANCE) {   // 5% of any circle
+          size = CIRCLE_DOUBLE_SIZE; value = CIRCLE_DOUBLE_VALUE; cls = 'shape big double';
+        } else if (Math.random() < circleBigChance()) {
+          size = BIG_SIZE; value = BIG_VALUE; cls = 'shape big';
         } else {
           size = CIRCLE_SIZE; value = 1; cls = 'shape';
         }
@@ -649,14 +661,17 @@
       function scheduleGrowth(first) {
         growthTimer = setTimeout(() => {
           if (s.dead) return;
+          // With Upgrade Multipliers: climbs to 3.0x and the top stage lasts 0.75s.
+          const cap = state.multipliersUpgraded ? 2.00 : 1.00;
+          const popMs = state.multipliersUpgraded ? 750 : 500;
           bonus = round2(bonus + (first ? 0.09 : 0.05));
-          if (bonus >= 1.00) {                 // reached 2.0x — final stage
-            bonus = 1.00;
+          if (bonus >= cap) {                  // reached the max multiplier — final stage
+            bonus = cap;
             applySize();
             popTimer = setTimeout(() => {
               if (s.dead) return;
               s.dead = true; clearTimers(); popGreen(el);
-            }, 500);
+            }, popMs);
             return;
           }
           applySize();
@@ -745,6 +760,12 @@
           requires: () => state.squareUnlocked,
           owned: () => state.arenaExpanded,
           buy: () => { state.arenaExpanded = true; } },
+
+        { id: 'triangle', name: 'Triangle', oneTime: true,
+          price: () => 75000,
+          requires: () => state.circleGrowthUpgraded && state.squareGrowthUpgraded,
+          owned: () => state.triangleUnlocked,
+          buy: () => { state.triangleUnlocked = true; } },
       ],
       circles: [
         { id: 'unlock_growth', name: 'Unlock Growth', oneTime: true,
@@ -796,16 +817,26 @@
           owned: () => state.squareGrowthUpgraded,
           buy: () => { state.squareGrowthUpgraded = true; } },
       ],
+      triangles: [],   // no upgrades yet
+      special: [
+        { id: 'upgrade_multipliers', name: 'Upgrade Multipliers', oneTime: true,
+          price: () => 50000,
+          requires: () => true,
+          owned: () => state.multipliersUpgraded,
+          buy: () => { state.multipliersUpgraded = true; } },
+      ],
     };
 
     const TABS = [
       { id: 'evolution', label: 'Evolution' },
       { id: 'shapes',    label: 'Shapes' },
-      { id: 'special',   label: 'Special', locked: true },
+      { id: 'special',   label: 'Special',
+        locked: () => !(state.circleGrowthUpgraded && state.squareGrowthUpgraded) },
     ];
     const SHAPE_SUBS = [
-      { id: 'circles', label: 'Circles', available: () => true,                 items: () => SHOP.circles },
-      { id: 'squares', label: 'Squares', available: () => state.squareUnlocked, items: () => SHOP.squares },
+      { id: 'circles',   label: 'Circles',   available: () => true,                  items: () => SHOP.circles },
+      { id: 'squares',   label: 'Squares',   available: () => state.squareUnlocked,  items: () => SHOP.squares },
+      { id: 'triangles', label: 'Triangles', available: () => state.triangleUnlocked, items: () => SHOP.triangles },
     ];
 
     let activeTab = 'shapes';    // default to the tab with buyable items
@@ -877,11 +908,12 @@
       // Top tabs
       shopTabsEl.innerHTML = '';
       TABS.forEach((t) => {
+        const locked = typeof t.locked === 'function' ? t.locked() : !!t.locked;
         const b = document.createElement('button');
         b.className = 'shop-tab-btn ' + t.id +
-          (t.id === activeTab ? ' active' : '') + (t.locked ? ' locked' : '');
+          (t.id === activeTab ? ' active' : '') + (locked ? ' locked' : '');
         b.textContent = t.label;
-        if (!t.locked) b.addEventListener('click', () => { activeTab = t.id; renderShop(); });
+        if (!locked) b.addEventListener('click', () => { activeTab = t.id; renderShop(); });
         shopTabsEl.appendChild(b);
       });
 
@@ -903,7 +935,7 @@
       } else if (activeTab === 'evolution') {
         renderItemList(SHOP.evolution);
       } else if (activeTab === 'special') {
-        shopItemsEl.innerHTML = '<div class="shop-empty">Locked</div>';
+        renderItemList(SHOP.special);
       }
     }
 
@@ -974,6 +1006,7 @@
     setInterval(() => {
       if (Math.random() < circleSpawnChance()) spawnShape('circle');
       if (state.squareUnlocked && Math.random() < squareSpawnChance()) spawnShape('square');
+      if (state.triangleUnlocked && Math.random() < TRIANGLE_SPAWN) spawnShape('triangle');
       if (Math.random() < GREEN_SPAWN) spawnGreen();
     }, 1000);
   </script>
