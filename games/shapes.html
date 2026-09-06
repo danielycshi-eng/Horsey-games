@@ -16,9 +16,6 @@
       overflow-y: auto;
       transition: padding-right 0.45s cubic-bezier(.5,.15,.2,1);
     }
-    /* When the shop lane is open, reserve the right lane so the left content
-       centers in the remaining space — i.e. shifts left. When collapsed the
-       padding is gone and everything re-centers. */
     body.shop-open { padding-right: var(--shop-w); }
 
     .back-link { color: #3a6fd0; z-index: 2; }
@@ -117,7 +114,7 @@
       box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.06);
     }
 
-    /* A spawned circle — flat gray with a gray rim */
+    /* A spawned shape — flat gray with a gray rim */
     .shape {
       position: absolute;
       border-radius: 50%;
@@ -135,6 +132,13 @@
       background: radial-gradient(circle at 35% 30%, #bcbcbc, #9c9c9c 60%, #808080);
       border-color: #555555;
       box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.9), inset 0 0 0 5px #6f6f6f;
+    }
+    /* Square — a different shape entirely, worth +10 */
+    .shape.square {
+      border-radius: 5px;
+      background: radial-gradient(circle at 35% 30%, #c0c0c0, #a0a0a0 60%, #848484);
+      border-color: #555555;
+      box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.55);
     }
     /* Fade-out phase. Long transition = the slow fade. */
     .shape.fading {
@@ -247,8 +251,8 @@
     }
     .shop-tab-btn.locked { opacity: 0.5; cursor: not-allowed; }
 
-    /* Sub-tabs (e.g. Circles under Shapes) */
-    .shop-subtabs { display: flex; gap: 0.35rem; margin-bottom: 0.7rem; }
+    /* Sub-tabs (e.g. Circles / Squares under Shapes) */
+    .shop-subtabs { display: flex; gap: 0.35rem; margin-bottom: 0.7rem; flex-wrap: wrap; }
     .shop-subtab-btn {
       padding: 0.3rem 0.85rem;
       font-size: 0.72rem;
@@ -277,8 +281,13 @@
       border-radius: 10px;
       font-family: inherit;
       cursor: default;
-      transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+      overflow: hidden;
+      animation: itemIn 0.28s ease;
+      transition: background 0.15s, border-color 0.15s, box-shadow 0.15s,
+                  opacity 0.3s ease, transform 0.3s ease,
+                  max-height 0.4s ease, margin 0.4s ease, padding 0.4s ease;
     }
+    @keyframes itemIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
     .si-name { font-weight: 600; color: #2a2f3a; font-size: 0.9rem; }
     .si-price {
       color: #3a5a9c;
@@ -296,25 +305,21 @@
     .shop-item.owned { border-color: #4e7fff; background: #eef3ff; }
     .shop-item.owned .si-price { color: #4e7fff; }
 
-    /* Locked = prerequisite not met: dashed, drained, with a lock glyph. */
-    .shop-item.locked {
-      border-style: dashed;
-      border-color: #b8c0cf;
-      background: #f2f4f8;
-      opacity: 0.7;
-      filter: grayscale(0.6);
-      cursor: not-allowed;
-    }
-    .shop-item.locked .si-name { color: #8a94a8; }
-    .shop-item.locked .si-price { color: #9aa4b6; }
-
-    /* Can't afford = you could buy it, just not enough points: red price. */
+    /* Can't afford = buyable, just not enough points: red price. */
     .shop-item.unaffordable {
       border-color: #e6b0b8;
       background: #fdf6f7;
       cursor: not-allowed;
     }
     .shop-item.unaffordable .si-price { color: #d23a52; }
+
+    /* Fade + collapse when a one-time item is bought (others slide up). */
+    .shop-item.removing {
+      opacity: 0;
+      transform: translateX(24px);
+      border-color: transparent;
+      box-shadow: none;
+    }
 
     .shop-empty {
       color: #8a94a8;
@@ -357,7 +362,8 @@
       animation: floatUp 1.4s cubic-bezier(.25,.6,.45,1) forwards;
       will-change: transform, opacity;
     }
-    .fx-plus1.big { font-size: 1.9rem; color: #1c8f4a; }
+    .fx-plus1.big  { font-size: 1.9rem; color: #1c8f4a; }
+    .fx-plus1.mega { font-size: 2.2rem; color: #c8860b; }
     @keyframes floatUp {
       0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
       15%  { opacity: 1; transform: translate(-50%, -70%) scale(1.15); }
@@ -406,24 +412,29 @@
     'use strict';
     const STORAGE_KEY = 'horsey:shapes:v1';
 
-    const BASE_SPAWN   = 0.10;   // per second
-    const FAST_SPAWN   = 0.13;   // after the spawn-rate upgrade
     const CIRCLE_SIZE  = 16;     // normal circle diameter (px)
     const BIG_SIZE     = 26;     // grown circle diameter (px)
     const BIG_VALUE    = 5;      // points from a grown circle
-    const BIG_CHANCE_1 = 0.10;   // chance once Growth is unlocked
-    const BIG_CHANCE_2 = 0.15;   // chance after the Evolution upgrade
+    const SQUARE_SIZE  = 22;     // square side (px)
+    const SQUARE_VALUE = 10;     // points from a square
+    const SQUARE_SPAWN = 0.05;   // per-second chance once Square is unlocked
     const CIRCLE_LIFE  = 30000;  // ms fully visible before the fade begins
     const FADE_MS      = 4500;   // must match .shape.fading transition duration
     const UNLOCK_AT    = 10;     // total points earned to unlock the shop
+
+    // Spawn-rate percentages by upgrade level; past the table it asymptotes to 35%.
+    const SPAWN_TABLE  = [10, 13, 15, 17, 19, 20, 22, 23, 25, 26, 27, 28, 29, 30, 32, 33, 34];
+    // Growth-chance percentages by upgrade level; past the table it asymptotes to 25%.
+    const GROWTH_TABLE = [10, 13, 15, 17, 19, 20, 21, 22, 23, 24];
 
     const DEFAULT_STATE = {
       points: 0,
       totalEarned: 0,
       drawerOpen: true,
       growthUnlocked: false,   // "Unlock Growth"
-      spawnUpgraded: false,    // "Upgrade Spawn Rate"
-      growthChancePlus: false, // Evolution: "Growth Chance +5%"
+      spawnLevel: 0,           // "Upgrade Spawn Rate" purchases
+      growthLevel: 0,          // "Upgrade Growth Chance" purchases
+      squareUnlocked: false,   // "Square"
     };
 
     // --- Persistence ---
@@ -433,12 +444,13 @@
         if (!raw) return { ...DEFAULT_STATE };
         const p = JSON.parse(raw);
         return {
-          points:           Number(p.points)      || 0,
-          totalEarned:      Number(p.totalEarned)  || 0,
-          drawerOpen:       p.drawerOpen !== false,
-          growthUnlocked:   !!p.growthUnlocked,
-          spawnUpgraded:    !!p.spawnUpgraded,
-          growthChancePlus: !!p.growthChancePlus,
+          points:         Number(p.points)      || 0,
+          totalEarned:    Number(p.totalEarned) || 0,
+          drawerOpen:     p.drawerOpen !== false,
+          growthUnlocked: !!p.growthUnlocked,
+          spawnLevel:     Number(p.spawnLevel)  || 0,
+          growthLevel:    Number(p.growthLevel) || 0,
+          squareUnlocked: !!p.squareUnlocked,
         };
       } catch (e) {
         return { ...DEFAULT_STATE };
@@ -451,11 +463,19 @@
     const state = load();
 
     // --- Derived rates ---
-    function spawnChanceNow() { return state.spawnUpgraded ? FAST_SPAWN : BASE_SPAWN; }
-    function bigChanceNow() {
-      if (!state.growthUnlocked) return 0;
-      return state.growthChancePlus ? BIG_CHANCE_2 : BIG_CHANCE_1;
+    function spawnRatePercent() {
+      const n = state.spawnLevel;
+      if (n < SPAWN_TABLE.length) return SPAWN_TABLE[n];
+      return 35 - Math.pow(10, -(n - (SPAWN_TABLE.length - 1)));   // 34.9, 34.99, ...
     }
+    function spawnChanceNow() { return spawnRatePercent() / 100; }
+
+    function growthPercent() {
+      const n = state.growthLevel;
+      if (n < GROWTH_TABLE.length) return GROWTH_TABLE[n];
+      return 25 - Math.pow(10, -(n - (GROWTH_TABLE.length - 1)));  // 24.9, 24.99, ...
+    }
+    function bigChanceNow() { return state.growthUnlocked ? growthPercent() / 100 : 0; }
 
     // --- Elements ---
     const arena       = document.getElementById('arena');
@@ -468,16 +488,23 @@
     const shopSubsEl  = document.getElementById('shop-subtabs');
     const shopItemsEl = document.getElementById('shop-items');
 
-    // --- Circle spawning ---
+    // === Shapes in the arena ===
     // Each: { el, x, y, vx, vy, size, dead }.
-    const circles = [];
+    const shapes = [];
 
-    function spawnCircle() {
+    function spawnShape(kind) {
       const rect = arena.getBoundingClientRect();
       const W = rect.width, H = rect.height;
-      const isBig = Math.random() < bigChanceNow();
-      const size  = isBig ? BIG_SIZE : CIRCLE_SIZE;
-      const value = isBig ? BIG_VALUE : 1;
+
+      let size, value, cls;
+      if (kind === 'square') {
+        size = SQUARE_SIZE; value = SQUARE_VALUE; cls = 'shape square';
+      } else {
+        const isBig = Math.random() < bigChanceNow();
+        size = isBig ? BIG_SIZE : CIRCLE_SIZE;
+        value = isBig ? BIG_VALUE : 1;
+        cls = 'shape' + (isBig ? ' big' : '');
+      }
       if (W < size || H < size) return;
 
       const speed = 0.2 + Math.random() * 0.5;       // slow float
@@ -493,7 +520,7 @@
       }
 
       const el = document.createElement('div');
-      el.className = 'shape' + (isBig ? ' big' : '');
+      el.className = cls;
       el.style.width  = size + 'px';
       el.style.height = size + 'px';
       el.style.left = x + 'px';
@@ -502,40 +529,40 @@
       arena.appendChild(el);
       requestAnimationFrame(() => { el.style.transform = 'scale(1)'; });
 
-      const c = { el, x, y, vx, vy, size, dead: false };
+      const s = { el, x, y, vx, vy, size, dead: false };
 
       const fadeTimer = setTimeout(() => {
         el.classList.add('fading');
-        setTimeout(() => { c.dead = true; el.remove(); }, FADE_MS);
+        setTimeout(() => { s.dead = true; el.remove(); }, FADE_MS);
       }, CIRCLE_LIFE);
 
       el.addEventListener('click', (e) => {
-        if (c.dead) return;               // fully faded circles are already gone
-        c.dead = true;
+        if (s.dead) return;               // fully faded shapes are already gone
+        s.dead = true;
         clearTimeout(fadeTimer);
         collect(e.clientX, e.clientY, value);
         el.classList.add('collected');
         setTimeout(() => el.remove(), 320);
       });
 
-      circles.push(c);
+      shapes.push(s);
     }
 
-    // Float the circles around, bouncing off the arena walls.
+    // Float the shapes around, bouncing off the arena walls.
     function animate() {
       const rect = arena.getBoundingClientRect();
       const W = rect.width, H = rect.height;
-      for (let i = circles.length - 1; i >= 0; i--) {
-        const c = circles[i];
-        if (c.dead) { circles.splice(i, 1); continue; }
-        c.x += c.vx;
-        c.y += c.vy;
-        if (c.x <= 0)                 { c.x = 0;          c.vx =  Math.abs(c.vx); }
-        else if (c.x >= W - c.size)   { c.x = W - c.size; c.vx = -Math.abs(c.vx); }
-        if (c.y <= 0)                 { c.y = 0;          c.vy =  Math.abs(c.vy); }
-        else if (c.y >= H - c.size)   { c.y = H - c.size; c.vy = -Math.abs(c.vy); }
-        c.el.style.left = c.x + 'px';
-        c.el.style.top  = c.y + 'px';
+      for (let i = shapes.length - 1; i >= 0; i--) {
+        const s = shapes[i];
+        if (s.dead) { shapes.splice(i, 1); continue; }
+        s.x += s.vx;
+        s.y += s.vy;
+        if (s.x <= 0)                 { s.x = 0;          s.vx =  Math.abs(s.vx); }
+        else if (s.x >= W - s.size)   { s.x = W - s.size; s.vx = -Math.abs(s.vx); }
+        if (s.y <= 0)                 { s.y = 0;          s.vy =  Math.abs(s.vy); }
+        else if (s.y >= H - s.size)   { s.y = H - s.size; s.vy = -Math.abs(s.vy); }
+        s.el.style.left = s.x + 'px';
+        s.el.style.top  = s.y + 'px';
       }
       requestAnimationFrame(animate);
     }
@@ -545,12 +572,12 @@
       state.totalEarned += value;
       save();
       floatPlus1(x, y, value);
-      refresh();
+      onPointsChanged();
     }
 
     function floatPlus1(x, y, value) {
       const f = document.createElement('div');
-      f.className = 'fx-plus1' + (value > 1 ? ' big' : '');
+      f.className = 'fx-plus1' + (value >= 10 ? ' mega' : value > 1 ? ' big' : '');
       f.textContent = '+' + value;
       f.style.left = x + 'px';
       f.style.top  = y + 'px';
@@ -558,36 +585,34 @@
       setTimeout(() => f.remove(), 1400);
     }
 
-    // === Shop catalog ===
-    // Each item: name, price, requires() gate, owned() flag, buy() effect.
+    // === Shop ===
+    // price(): current cost. requires(): visible only when true (else hidden).
+    // oneTime: bought once then fades away. owned(): for one-time items.
     const SHOP = {
-      evolution: [
-        {
-          id: 'growth_chance',
-          name: 'Growth Chance +5%',
-          price: 100,
-          requires: () => state.growthUnlocked,   // locked until Growth is unlocked
-          owned: () => state.growthChancePlus,
-          buy: () => { state.growthChancePlus = true; },
-        },
-      ],
       circles: [
-        {
-          id: 'unlock_growth',
-          name: 'Unlock Growth',
-          price: 30,
+        { id: 'unlock_growth', name: 'Unlock Growth', oneTime: true,
+          price: () => 30,
           requires: () => true,
           owned: () => state.growthUnlocked,
-          buy: () => { state.growthUnlocked = true; },
-        },
-        {
-          id: 'spawn_rate',
-          name: 'Upgrade Spawn Rate',
-          price: 70,
+          buy: () => { state.growthUnlocked = true; } },
+
+        { id: 'spawn_rate', name: 'Upgrade Spawn Rate', oneTime: false,
+          price: () => Math.round(70 * Math.pow(1.4, state.spawnLevel)),
           requires: () => true,
-          owned: () => state.spawnUpgraded,
-          buy: () => { state.spawnUpgraded = true; },
-        },
+          owned: () => false,
+          buy: () => { state.spawnLevel += 1; } },
+
+        { id: 'growth_chance', name: 'Upgrade Growth Chance', oneTime: false,
+          price: () => Math.round(100 * Math.pow(1.6, state.growthLevel)),
+          requires: () => state.growthUnlocked,
+          owned: () => false,
+          buy: () => { state.growthLevel += 1; } },
+
+        { id: 'square', name: 'Square', oneTime: true,
+          price: () => 500,
+          requires: () => state.growthUnlocked,
+          owned: () => state.squareUnlocked,
+          buy: () => { state.squareUnlocked = true; } },
       ],
     };
 
@@ -596,35 +621,65 @@
       { id: 'shapes',    label: 'Shapes' },
       { id: 'special',   label: 'Special', locked: true },
     ];
+    const SHAPE_SUBS = [
+      { id: 'circles', label: 'Circles', available: () => true },
+      { id: 'squares', label: 'Squares', available: () => state.squareUnlocked },
+    ];
 
-    let activeTab = 'shapes';   // default to the tab with buyable items
+    let activeTab = 'shapes';    // default to the tab with buyable items
+    let activeSub = 'circles';
 
-    function buyItem(item) {
-      if (item.owned() || !item.requires() || state.points < item.price) return;
-      state.points -= item.price;
+    function buyItem(item, cardEl) {
+      const price = item.price();
+      if (!item.requires() || (item.oneTime && item.owned()) || state.points < price) return;
+      state.points -= price;
       item.buy();
       save();
-      refresh();
+      syncCounter();
+
+      if (item.oneTime) {
+        // Show "Owned", then fade + collapse; siblings slide up on rebuild.
+        cardEl._item = null;
+        cardEl.classList.remove('buyable', 'unaffordable');
+        cardEl.classList.add('owned');
+        const priceEl = cardEl.querySelector('.si-price');
+        if (priceEl) priceEl.textContent = 'Owned';
+        setTimeout(() => {
+          cardEl.style.maxHeight = cardEl.offsetHeight + 'px';
+          requestAnimationFrame(() => {
+            cardEl.classList.add('removing');
+            cardEl.style.maxHeight = '0';
+            cardEl.style.marginTop = '0';
+            cardEl.style.marginBottom = '0';
+            cardEl.style.paddingTop = '0';
+            cardEl.style.paddingBottom = '0';
+          });
+          setTimeout(renderShop, 460);
+        }, 600);
+      } else {
+        renderShop();   // repeatable: rebuild with the new (higher) price
+      }
     }
 
     function makeItemCard(item) {
-      const owned = item.owned();
-      const available = item.requires();
-      const afford = state.points >= item.price;
-      const buyable = !owned && available && afford;
-
+      const price = item.price();
+      const afford = state.points >= price;
       const btn = document.createElement('button');
-      btn.className = 'shop-item ' +
-        (owned ? 'owned' : !available ? 'locked' : !afford ? 'unaffordable' : 'buyable');
-      let priceText;
-      if (owned) priceText = 'Owned';
-      else if (!available) priceText = '🔒 ' + item.price;   // lock glyph
-      else priceText = 'Price: ' + item.price;
+      btn.className = 'shop-item ' + (afford ? 'buyable' : 'unaffordable');
       btn.innerHTML =
         '<span class="si-name">' + item.name + '</span>' +
-        '<span class="si-price">' + priceText + '</span>';
-      if (buyable) btn.addEventListener('click', () => buyItem(item));
+        '<span class="si-price">Price: ' + price + '</span>';
+      btn._item = item;
+      btn.addEventListener('click', () => buyItem(item, btn));
       return btn;
+    }
+
+    function renderItemList(list) {
+      list.forEach((item) => {
+        if (!item.requires()) return;              // hidden until prerequisite met
+        if (item.oneTime && item.owned()) return;  // already bought → hidden
+        shopItemsEl.appendChild(makeItemCard(item));
+      });
     }
 
     function renderShop() {
@@ -644,29 +699,54 @@
         shopTabsEl.appendChild(b);
       });
 
-      // Sub-tabs + items
       shopSubsEl.innerHTML = '';
       shopItemsEl.innerHTML = '';
 
-      if (activeTab === 'evolution') {
-        SHOP.evolution.forEach((it) => shopItemsEl.appendChild(makeItemCard(it)));
-      } else if (activeTab === 'shapes') {
-        const sub = document.createElement('button');
-        sub.className = 'shop-subtab-btn active';
-        sub.textContent = 'Circles';
-        shopSubsEl.appendChild(sub);
-        SHOP.circles.forEach((it) => shopItemsEl.appendChild(makeItemCard(it)));
+      if (activeTab === 'shapes') {
+        const subs = SHAPE_SUBS.filter((s) => s.available());
+        if (!subs.some((s) => s.id === activeSub)) activeSub = 'circles';
+        subs.forEach((s) => {
+          const sb = document.createElement('button');
+          sb.className = 'shop-subtab-btn' + (s.id === activeSub ? ' active' : '');
+          sb.textContent = s.label;
+          sb.addEventListener('click', () => { activeSub = s.id; renderShop(); });
+          shopSubsEl.appendChild(sb);
+        });
+        if (activeSub === 'circles') {
+          renderItemList(SHOP.circles);
+        } else {
+          shopItemsEl.innerHTML = '<div class="shop-empty">Nothing here yet&hellip;</div>';
+        }
+      } else if (activeTab === 'evolution') {
+        shopItemsEl.innerHTML = '<div class="shop-empty">Nothing here yet&hellip;</div>';
       } else if (activeTab === 'special') {
         shopItemsEl.innerHTML = '<div class="shop-empty">Locked</div>';
       }
     }
 
-    function refresh() {
+    function syncCounter() {
       counterNum.textContent = state.points;
       counterNum.classList.remove('pulse');
-      void counterNum.offsetWidth;                    // reflow to restart the pulse
+      void counterNum.offsetWidth;      // reflow to restart the pulse
       counterNum.classList.add('pulse');
-      renderShop();
+    }
+
+    // Cheap update as points change: just re-color the buy/can't-afford states.
+    function syncAffordability() {
+      shopItemsEl.querySelectorAll('.shop-item').forEach((card) => {
+        const item = card._item;
+        if (!item || card.classList.contains('removing')) return;
+        const afford = state.points >= item.price();
+        card.classList.toggle('buyable', afford);
+        card.classList.toggle('unaffordable', !afford);
+      });
+    }
+
+    function onPointsChanged() {
+      syncCounter();
+      const unlocked = state.totalEarned >= UNLOCK_AT;
+      if (unlocked && shopInner.classList.contains('hidden')) renderShop();  // first unlock
+      else syncAffordability();
     }
 
     // --- Drawer toggle ---
@@ -692,15 +772,17 @@
       state.points += 10;
       state.totalEarned += 10;
       save();
-      refresh();
+      onPointsChanged();
     });
 
     // --- Boot ---
     applyDrawer();
-    refresh();
+    syncCounter();
+    renderShop();
     requestAnimationFrame(animate);
     setInterval(() => {
-      if (Math.random() < spawnChanceNow()) spawnCircle();
+      if (Math.random() < spawnChanceNow()) spawnShape('circle');
+      if (state.squareUnlocked && Math.random() < SQUARE_SPAWN) spawnShape('square');
     }, 1000);
   </script>
 </body>
