@@ -157,14 +157,23 @@
       box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.95), inset 0 0 0 5px #6f6f6f,
                   inset 0 0 0 8px rgba(255, 255, 255, 0.95), inset 0 0 0 10px #6f6f6f;
     }
-    /* Triangle — filled gray triangle (no border/ring) */
+    /* Triangle — an SVG (bordered, soft corners) that slowly spins as it floats */
     .shape.triangle {
+      background: none;
       border: none;
       border-radius: 0;
-      background: linear-gradient(135deg, #b2b2b2, #7d7d7d);
-      clip-path: polygon(50% 4%, 96% 96%, 4% 96%);
-      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+      box-shadow: none;
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
     }
+    .shape.triangle svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      transform-origin: 50% 50%;
+      animation: spin 8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
     /* Green bonus circle — grants a points multiplier when clicked */
     .shape.green {
       background: radial-gradient(circle at 35% 30%, #7ee0a0, #46c878 60%, #2f9e58);
@@ -421,6 +430,15 @@
 
   <h1>Shapes</h1>
 
+  <!-- Shared gradient for the triangle SVG fill -->
+  <svg width="0" height="0" aria-hidden="true" style="position:absolute"><defs>
+    <radialGradient id="triGrad" cx="35%" cy="30%" r="75%">
+      <stop offset="0%"   stop-color="#bcbcbc"/>
+      <stop offset="60%"  stop-color="#9c9c9c"/>
+      <stop offset="100%" stop-color="#808080"/>
+    </radialGradient>
+  </defs></svg>
+
   <div class="stage">
     <button class="restart-btn" id="restart" title="Erase all progress and start over">&#8635; Restart</button>
 
@@ -460,7 +478,8 @@
     const CIRCLE_DOUBLE_SIZE = 32; const CIRCLE_DOUBLE_VALUE = 500;
     const SQUARE_DOUBLE_SIZE = 42; const SQUARE_DOUBLE_VALUE = 1500;
     const DOUBLE_CHANCE = 0.05;   // chance ANY circle/square spawns double-ringed (needs Upgrade Growth)
-    const TRIANGLE_SIZE = 30; const TRIANGLE_VALUE = 2500; const TRIANGLE_SPAWN = 0.10;
+    const TRIANGLE_SIZE = 30; const TRIANGLE_VALUE = 2500;
+    const TRIANGLE_BIG_SIZE = 42; const TRIANGLE_BIG_VALUE = 7500;
     const CIRCLE_LIFE  = 30000;  // ms fully visible before the fade begins
     const FADE_MS      = 4500;   // must match .shape.fading transition duration
     const UNLOCK_AT    = 10;     // total points earned to unlock the shop
@@ -471,6 +490,8 @@
     const CIRCLE_GROWTH_TABLE = [10, 13, 15, 17, 19, 20, 21, 22, 23, 24];                             // cap 25
     const SQUARE_SPAWN_TABLE  = [5, 7, 8, 9, 10, 11, 12, 13, 14];                                     // cap 15
     const SQUARE_GROWTH_TABLE = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14];                                  // cap 15
+    const TRI_SPAWN_TABLE     = [5, 7, 9, 10, 11, 12, 13, 14];                                        // cap 15
+    const TRI_GROWTH_TABLE    = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14];                                  // cap 15
 
     const DEFAULT_STATE = {
       points: 0,
@@ -491,6 +512,9 @@
       arenaExpanded: false,
       // triangles + special
       triangleUnlocked: false,
+      triangleGrowthUnlocked: false,
+      triangleSpawnLevel: 0,
+      triangleGrowthLevel: 0,
       multipliersUpgraded: false,
     };
 
@@ -514,8 +538,11 @@
           circleGrowthUpgraded: !!p.circleGrowthUpgraded,
           squareGrowthUpgraded: !!p.squareGrowthUpgraded,
           arenaExpanded:        !!p.arenaExpanded,
-          triangleUnlocked:     !!p.triangleUnlocked,
-          multipliersUpgraded:  !!p.multipliersUpgraded,
+          triangleUnlocked:       !!p.triangleUnlocked,
+          triangleGrowthUnlocked: !!p.triangleGrowthUnlocked,
+          triangleSpawnLevel:     Number(p.triangleSpawnLevel)  || 0,
+          triangleGrowthLevel:    Number(p.triangleGrowthLevel) || 0,
+          multipliersUpgraded:    !!p.multipliersUpgraded,
         };
       } catch (e) {
         return { ...DEFAULT_STATE };
@@ -539,6 +566,9 @@
     function squareSpawnChance() { return tableRate(SQUARE_SPAWN_TABLE,  state.squareSpawnLevel,  15) / 100; }
     function squareBigChance()   { return state.squareGrowthUnlocked
                                      ? tableRate(SQUARE_GROWTH_TABLE, state.squareGrowthLevel, 15) / 100 : 0; }
+    function triangleSpawnChance() { return tableRate(TRI_SPAWN_TABLE, state.triangleSpawnLevel, 15) / 100; }
+    function triangleBigChance()   { return state.triangleGrowthUnlocked
+                                     ? tableRate(TRI_GROWTH_TABLE, state.triangleGrowthLevel, 15) / 100 : 0; }
 
     // --- Elements ---
     const arena       = document.getElementById('arena');
@@ -566,13 +596,30 @@
       }
     }
 
+    // Triangle art: filled gray polygon with a gray border; ringed variant adds
+    // an inner white outline. Inscribed in a centered circle so it never clips
+    // as it spins. Fill uses the shared #triGrad gradient.
+    function triangleSvg(ring) {
+      const inner = ring
+        ? '<polygon points="20,12.5 28.4,26.5 11.6,26.5" fill="none" stroke="#ffffff" ' +
+          'stroke-width="2.4" stroke-linejoin="round" opacity="0.92"/>'
+        : '';
+      return '<svg viewBox="0 0 40 40" width="100%" height="100%">' +
+        '<polygon points="20,4.5 33.6,27.5 6.4,27.5" fill="url(#triGrad)" ' +
+        'stroke="#5f5f5f" stroke-width="3" stroke-linejoin="round"/>' + inner + '</svg>';
+    }
+
     function spawnShape(kind) {
       const rect = arena.getBoundingClientRect();
       const W = rect.width, H = rect.height;
 
-      let size, value, cls;
+      let size, value, cls, html = '';
       if (kind === 'triangle') {
-        size = TRIANGLE_SIZE; value = TRIANGLE_VALUE; cls = 'shape triangle';
+        const isBig = Math.random() < triangleBigChance();
+        size = isBig ? TRIANGLE_BIG_SIZE : TRIANGLE_SIZE;
+        value = isBig ? TRIANGLE_BIG_VALUE : TRIANGLE_VALUE;
+        cls = 'shape triangle' + (isBig ? ' big' : '');
+        html = triangleSvg(isBig);
       } else if (kind === 'square') {
         if (state.squareGrowthUpgraded && Math.random() < DOUBLE_CHANCE) {   // 5% of any square
           size = SQUARE_DOUBLE_SIZE; value = SQUARE_DOUBLE_VALUE; cls = 'shape square big double';
@@ -595,6 +642,7 @@
       const st = edgeStart(W, H, size);
       const el = document.createElement('div');
       el.className = cls;
+      if (html) el.innerHTML = html;
       el.style.width  = size + 'px';
       el.style.height = size + 'px';
       el.style.left = st.x + 'px';
@@ -817,7 +865,25 @@
           owned: () => state.squareGrowthUpgraded,
           buy: () => { state.squareGrowthUpgraded = true; } },
       ],
-      triangles: [],   // no upgrades yet
+      triangles: [
+        { id: 'tri_unlock_growth', name: 'Unlock Growth', oneTime: true,
+          price: () => 100000,
+          requires: () => true,
+          owned: () => state.triangleGrowthUnlocked,
+          buy: () => { state.triangleGrowthUnlocked = true; } },
+
+        { id: 'tri_spawn_rate', name: 'Upgrade Spawn Rate', oneTime: false,
+          price: () => Math.round(75000 * Math.pow(1.5, state.triangleSpawnLevel)),
+          requires: () => true,
+          owned: () => false,
+          buy: () => { state.triangleSpawnLevel += 1; } },
+
+        { id: 'tri_growth_chance', name: 'Upgrade Growth Chance', oneTime: false,
+          price: () => Math.round(100000 * Math.pow(1.6, state.triangleGrowthLevel)),
+          requires: () => state.triangleGrowthUnlocked,
+          owned: () => false,
+          buy: () => { state.triangleGrowthLevel += 1; } },
+      ],
       special: [
         { id: 'upgrade_multipliers', name: 'Upgrade Multipliers', oneTime: true,
           price: () => 50000,
@@ -1006,7 +1072,7 @@
     setInterval(() => {
       if (Math.random() < circleSpawnChance()) spawnShape('circle');
       if (state.squareUnlocked && Math.random() < squareSpawnChance()) spawnShape('square');
-      if (state.triangleUnlocked && Math.random() < TRIANGLE_SPAWN) spawnShape('triangle');
+      if (state.triangleUnlocked && Math.random() < triangleSpawnChance()) spawnShape('triangle');
       if (Math.random() < GREEN_SPAWN) spawnGreen();
     }, 1000);
   </script>
