@@ -945,34 +945,96 @@
 
   function startMove(b, kind) {
     var mv = { kind: kind, t: 0 };
+
     if (kind === 'laser') {
-      mv.dur = 2.2;
-      mv.charge = 0.9;
-      mv.x = b.x + b.w / 2;
+      /* it charges, then walks the beam across the whole arena */
+      mv.dur = 5.4;
+      mv.charge = 1.0;
+      mv.dir = (b.x + b.w / 2) < level.worldW / 2 ? 1 : -1;
+      mv.fromX = mv.dir > 0 ? 200 : level.worldW - 200 - b.w;
+      mv.toX   = mv.dir > 0 ? level.worldW - 200 - b.w : 200;
+
     } else if (kind === 'crash') {
-      mv.dur = 3.0;
-      mv.landed = false;
-      mv.targetX = p.x + p.w / 2 - b.w / 2;
+      /* three slams, each one wherever you happen to be standing */
+      mv.dur = 6.6;
+      mv.slams = 3;
+      mv.done = 0;
+      mv.sub = 'move';
+      mv.subT = 0;
+      mv.blasts = [];
+
     } else if (kind === 'spikes') {
-      mv.dur = 3.6;
-      mv.dir = (b.x + b.w / 2) > (p.x + p.w / 2) ? -1 : 1;
-      mv.from = mv.dir > 0 ? -200 : level.worldW + 200;
-      mv.speed = 560;
-      mv.lead = 0.8;
+      /* it slams the floor and spikes erupt outward from the impact,
+         and they stay up — the ground turns against you */
+      mv.dur = 5.6;
+      mv.sub = 'move';
+      mv.subT = 0;
+      mv.beds = null;
+      mv.since = 0;
+      mv.spread = 760;
+
     } else if (kind === 'saws') {
-      mv.dur = 4.4;
-      mv.hold = 0.9;                    // parked at the edge so you can read it
+      /* the blades gather around it first, then it throws them at you */
+      mv.dur = 8.6;
+      mv.orbit = 1.7;
+      mv.gather = 0.5;
       mv.dir = Math.random() < 0.5 ? 1 : -1;
-      mv.from = mv.dir > 0 ? -80 : level.worldW + 80;
-      mv.speed = 620;
-      mv.gapY = 150 + Math.random() * 230;
-      mv.gapH = 130;
+      mv.speed = 380;
+      mv.gapY = 170 + Math.random() * 200;
+      mv.gapH = 150;
+      mv.from = mv.dir > 0 ? -90 : level.worldW + 90;
+      mv.slots = [];
+      for (var y = 470; y > 90; y -= 58) mv.slots.push(y);
+
     } else if (kind === 'bombs') {
       mv.dur = 5.2;
       mv.dropped = 0;
       mv.blueDropped = false;
     }
     b.moves.push(mv);
+  }
+
+  /* Which saw slots are solid blades (the gap is the way through). */
+  function sawSlotBlocked(mv, y) {
+    return !(y > mv.gapY - mv.gapH / 2 && y < mv.gapY + mv.gapH / 2);
+  }
+
+  /* Where a saw sits during the orbit phase. */
+  function orbitSaw(b, mv, idx, count) {
+    var a = state.t * 2.2 + (idx / count) * Math.PI * 2;
+    var r = 74 + Math.sin(state.t * 3) * 8;
+    return { x: b.x + b.w / 2 + Math.cos(a) * r,
+             y: b.y + b.h / 2 + Math.sin(a) * r * 0.62 };
+  }
+
+  /* How far a bed of the spike eruption is out, 0..1. Beds stay up once
+     they've risen — they only go down when the attack ends. */
+  function bedOut(mv, bed) {
+    if (!mv.beds) return 0;
+    var age = mv.since - bed.upAt;
+    if (age <= 0) return 0;
+    var rise = Math.min(1, age / 0.18);
+    var left = mv.dur - mv.t;
+    if (left < 0.6) rise *= Math.max(0, left / 0.6);
+    return rise;
+  }
+
+  /* A bed about to erupt shows a nub first. */
+  function bedWarn(mv, bed) {
+    if (!mv.beds) return 0;
+    var age = mv.since - bed.upAt;
+    if (age > 0 || age < -0.4) return 0;
+    return 1 - (-age / 0.4);
+  }
+
+  function eruptFrom(mv, originX) {
+    mv.beds = [];
+    mv.since = 0;
+    var BED = 110;
+    for (var x = -60; x < level.worldW + 60; x += BED) {
+      mv.beds.push({ x: x, w: BED,
+                     upAt: Math.abs(x + BED / 2 - originX) / mv.spread });
+    }
   }
 
   /* 33% of the time it drops bombs. Otherwise an attack, and sometimes
@@ -1027,61 +1089,117 @@
   }
 
   function runMove(b, mv, dt) {
-    var i;
+    var i, y;
 
     if (mv.kind === 'laser') {
-      if (mv.t >= mv.charge) {
-        var stop = beamFloor(mv.x, b.y + b.h);
-        var beam = { x: mv.x - 17, y: b.y + b.h, w: 34, h: stop - (b.y + b.h) };
+      if (mv.t < mv.charge) {
+        /* slide to the starting side while it winds up */
+        b.x += (mv.fromX - b.x) * Math.min(1, dt * 4);
+        b.y += (b.hover - b.y) * Math.min(1, dt * 4);
+      } else {
+        var k = Math.min(1, (mv.t - mv.charge) / (mv.dur - mv.charge));
+        b.x = mv.fromX + (mv.toX - mv.fromX) * k;
+        var bx = b.x + b.w / 2;
+        var stop = beamFloor(bx, b.y + b.h);
+        var beam = { x: bx - 17, y: b.y + b.h, w: 34, h: stop - (b.y + b.h) };
         if (beam.h > 0 && hits(p, beam)) { die(); return; }
       }
 
     } else if (mv.kind === 'crash') {
-      if (mv.t < 0.55) {
-        b.x += (mv.targetX - b.x) * Math.min(1, dt * 5);
-        b.y += (70 - b.y) * Math.min(1, dt * 5);
-      } else if (mv.t < 0.85) {
-        /* hangs there a moment — this is your cue to move */
-      } else if (!mv.landed) {
+      mv.subT += dt;
+
+      if (mv.sub === 'move') {
+        b.x += ((p.x + p.w / 2 - b.w / 2) - b.x) * Math.min(1, dt * 6);
+        b.y += (70 - b.y) * Math.min(1, dt * 6);
+        if (mv.subT > 0.5) { mv.sub = 'hang'; mv.subT = 0; }
+
+      } else if (mv.sub === 'hang') {
+        if (mv.subT > 0.3) { mv.sub = 'drop'; mv.subT = 0; }
+
+      } else if (mv.sub === 'drop') {
         b.y += CRASH_SPEED * dt;
         var floorY = beamFloor(b.x + b.w / 2, b.y);
+        if (hits(p, bossBox(b))) { die(); return; }
         if (b.y + b.h >= floorY) {
           b.y = floorY - b.h;
-          mv.landed = true;
-          mv.landY = floorY;
-          mv.shockT = 0;
-          burst(b.x + b.w / 2, floorY, '#ff5f7e', 40, 1.6);
-          state.flash = 0.5;
+          mv.blasts.push({ x: b.x + b.w / 2, y: floorY, t: 0 });
+          burst(b.x + b.w / 2, floorY, '#ff5f7e', 46, 1.8);
+          state.flash = 0.55;
+          mv.done++;
+          mv.sub = mv.done >= mv.slams ? 'over' : 'recover';
+          mv.subT = 0;
         }
-        if (hits(p, bossBox(b))) { die(); return; }
+
+      } else if (mv.sub === 'recover') {
+        b.y += (b.hover + 40 - b.y) * Math.min(1, dt * 5);
+        if (mv.subT > 0.5) { mv.sub = 'move'; mv.subT = 0; }
+
       } else {
-        mv.shockT += dt;
-        if (mv.shockT < 0.5) {
-          var reach = mv.shockT * 620;
-          var left  = { x: b.x - reach, y: mv.landY - 22, w: reach, h: 22 };
-          var right = { x: b.x + b.w,   y: mv.landY - 22, w: reach, h: 22 };
-          if (hits(p, left) || hits(p, right)) { die(); return; }
-        }
-        if (mv.t > mv.dur - 0.9) b.y += (b.hover - b.y) * Math.min(1, dt * 3);
+        b.y += (b.hover - b.y) * Math.min(1, dt * 3);
+      }
+
+      /* every slam throws a blast out along whatever it hit */
+      for (i = mv.blasts.length - 1; i >= 0; i--) {
+        var bl = mv.blasts[i];
+        bl.t += dt;
+        if (bl.t > 0.6) { mv.blasts.splice(i, 1); continue; }
+        var reach = bl.t * 700;
+        var left  = { x: bl.x - reach, y: bl.y - 34, w: reach, h: 34 };
+        var right = { x: bl.x,         y: bl.y - 34, w: reach, h: 34 };
+        if (hits(p, left) || hits(p, right)) { die(); return; }
       }
 
     } else if (mv.kind === 'spikes') {
-      if (mv.t >= mv.lead) {
-        var front = mv.from + mv.dir * mv.speed * (mv.t - mv.lead);
-        mv.front = front;
-        var band = { x: front - 120, y: GROUND - 44, w: 240, h: 44 };
-        if (hits(p, band)) { die(); return; }
+      mv.subT += dt;
+
+      if (mv.sub === 'move') {
+        b.x += ((p.x + p.w / 2 - b.w / 2) - b.x) * Math.min(1, dt * 5);
+        b.y += (80 - b.y) * Math.min(1, dt * 5);
+        if (mv.subT > 0.6) { mv.sub = 'hang'; mv.subT = 0; }
+
+      } else if (mv.sub === 'hang') {
+        if (mv.subT > 0.35) { mv.sub = 'drop'; mv.subT = 0; }
+
+      } else if (mv.sub === 'drop') {
+        b.y += CRASH_SPEED * dt;
+        if (hits(p, bossBox(b))) { die(); return; }
+        if (b.y + b.h >= GROUND) {
+          b.y = GROUND - b.h;
+          mv.sub = 'erupt';
+          mv.subT = 0;
+          eruptFrom(mv, b.x + b.w / 2);
+          burst(b.x + b.w / 2, GROUND, '#ff5f7e', 50, 1.9);
+          state.flash = 0.6;
+        }
+
+      } else {
+        mv.since += dt;
+        if (mv.subT > 0.9) b.y += (b.hover - b.y) * Math.min(1, dt * 2.5);
+        for (i = 0; i < mv.beds.length; i++) {
+          var bd = mv.beds[i];
+          var out = bedOut(mv, bd);
+          if (out <= 0.05) continue;
+          var hz = { x: bd.x, y: GROUND - 44 * out, w: bd.w, h: 44 * out };
+          if (hits(p, hz)) { die(); return; }
+        }
       }
 
     } else if (mv.kind === 'saws') {
-      if (mv.t >= mv.hold) {
-        mv.colX = mv.from + mv.dir * mv.speed * (mv.t - mv.hold);
+      if (mv.t < mv.orbit) {
+        /* circling the boss — a warning, not yet a weapon */
+        mv.colX = null;
+
+      } else if (mv.t < mv.orbit + mv.gather) {
+        mv.colX = null;
+        mv.gathering = (mv.t - mv.orbit) / mv.gather;
+
       } else {
-        mv.colX = mv.from;
-      }
-      for (var y = 470; y > 90; y -= 58) {
-        if (y > mv.gapY - mv.gapH / 2 && y < mv.gapY + mv.gapH / 2) continue;
-        if (circleHitsBox(mv.colX, y, 24, p)) { die(); return; }
+        mv.colX = mv.from + mv.dir * mv.speed * (mv.t - mv.orbit - mv.gather);
+        for (i = 0; i < mv.slots.length; i++) {
+          y = mv.slots[i];
+          if (!sawSlotBlocked(mv, y)) continue;
+          if (circleHitsBox(mv.colX, y, 24, p)) { die(); return; }
+        }
       }
 
     } else if (mv.kind === 'bombs') {
@@ -1758,34 +1876,37 @@
       var mv = b.moves[i];
 
       if (mv.kind === 'laser') {
-        var stop = beamFloor(mv.x, b.y + b.h);
+        var bx = b.x + b.w / 2;
+        var stop = beamFloor(bx, b.y + b.h);
         if (mv.t < mv.charge) {
           var chg = mv.t / mv.charge;
           ctx.save();
-          ctx.globalAlpha = 0.25 + 0.45 * chg;
+          ctx.globalAlpha = 0.25 + 0.5 * chg;
           ctx.strokeStyle = '#ffd166';
           ctx.setLineDash([9, 9]);
-          ctx.lineWidth = 2 + chg * 3;
+          ctx.lineWidth = 2 + chg * 4;
           ctx.beginPath();
-          ctx.moveTo(mv.x, b.y + b.h);
-          ctx.lineTo(mv.x, stop);
+          ctx.moveTo(bx, b.y + b.h);
+          ctx.lineTo(bx, stop);
           ctx.stroke();
           ctx.restore();
         } else {
           var pulse = 0.75 + Math.sin(state.t * 40) * 0.25;
           ctx.save();
           ctx.globalAlpha = pulse;
-          ctx.fillStyle = '#ff5f7e';
-          ctx.shadowColor = '#ff5f7e';
-          ctx.shadowBlur = 26;
-          ctx.fillRect(mv.x - 17, b.y + b.h, 34, stop - (b.y + b.h));
+          ctx.fillStyle = '#ff2d55';
+          ctx.shadowColor = '#ff2d55';
+          ctx.shadowBlur = 30;
+          ctx.fillRect(bx - 17, b.y + b.h, 34, stop - (b.y + b.h));
           ctx.fillStyle = '#fff';
-          ctx.fillRect(mv.x - 6, b.y + b.h, 12, stop - (b.y + b.h));
+          ctx.fillRect(bx - 6, b.y + b.h, 12, stop - (b.y + b.h));
           ctx.restore();
+          ctx.fillStyle = 'rgba(255,45,85,0.5)';       // scorch where it lands
+          ctx.fillRect(bx - 26, stop - 5, 52, 5);
         }
 
       } else if (mv.kind === 'crash') {
-        if (mv.t >= 0.55 && mv.t < 0.85) {
+        if (mv.sub === 'hang') {
           var down = beamFloor(b.x + b.w / 2, b.y);
           ctx.save();
           ctx.globalAlpha = 0.3 + 0.4 * Math.sin(state.t * 30);
@@ -1793,50 +1914,94 @@
           ctx.fillRect(b.x, b.y + b.h, b.w, down - (b.y + b.h));
           ctx.restore();
         }
-        if (mv.landed && mv.shockT < 0.5) {
-          var reach = mv.shockT * 620;
+        for (var q = 0; q < mv.blasts.length; q++) {
+          var bl = mv.blasts[q];
+          var reach = bl.t * 700;
+          var fade = 1 - bl.t / 0.6;
           ctx.save();
-          ctx.globalAlpha = 1 - mv.shockT / 0.5;
-          ctx.fillStyle = '#ff5f7e';
-          ctx.shadowColor = '#ff5f7e';
-          ctx.shadowBlur = 18;
-          ctx.fillRect(b.x - reach, mv.landY - 22, reach, 22);
-          ctx.fillRect(b.x + b.w, mv.landY - 22, reach, 22);
+          ctx.globalAlpha = Math.max(0, fade);
+          ctx.fillStyle = '#ff2d55';
+          ctx.shadowColor = '#ff2d55';
+          ctx.shadowBlur = 24;
+          ctx.fillRect(bl.x - reach, bl.y - 34, reach, 34);
+          ctx.fillRect(bl.x, bl.y - 34, reach, 34);
+          /* and a ring off the impact point */
+          ctx.globalAlpha = Math.max(0, fade) * 0.7;
+          ctx.strokeStyle = '#ffd166';
+          ctx.lineWidth = 6 * fade + 2;
+          ctx.beginPath();
+          ctx.arc(bl.x, bl.y, 30 + bl.t * 300, Math.PI, Math.PI * 2);
+          ctx.stroke();
           ctx.restore();
         }
 
       } else if (mv.kind === 'spikes') {
-        if (mv.t < mv.lead) {
+        if (mv.sub === 'hang') {
           ctx.save();
-          ctx.globalAlpha = 0.35 + 0.4 * Math.sin(state.t * 20);
+          ctx.globalAlpha = 0.35 + 0.4 * Math.sin(state.t * 30);
           ctx.fillStyle = '#ffd166';
-          ctx.fillRect(-60, GROUND - 6, level.worldW + 120, 6);
+          ctx.fillRect(b.x, b.y + b.h, b.w, GROUND - (b.y + b.h));
           ctx.restore();
-        } else if (mv.front !== undefined) {
-          ctx.fillStyle = '#ff5f7e';
-          ctx.shadowColor = '#ff5f7e';
-          ctx.shadowBlur = 16;
-          for (var sx = mv.front - 120; sx < mv.front + 120; sx += 40) {
-            ctx.beginPath();
-            ctx.moveTo(sx, GROUND);
-            ctx.lineTo(sx + 20, GROUND - 44);
-            ctx.lineTo(sx + 40, GROUND);
-            ctx.closePath();
-            ctx.fill();
+        }
+        if (mv.beds) {
+          for (var q = 0; q < mv.beds.length; q++) {
+            var bd = mv.beds[q];
+            var warn = bedWarn(mv, bd);
+            if (warn > 0) {
+              ctx.save();
+              ctx.globalAlpha = warn;
+              ctx.fillStyle = '#ffd166';
+              ctx.fillRect(bd.x + 2, GROUND - 5, bd.w - 4, 5);
+              ctx.restore();
+            }
+            var out = bedOut(mv, bd);
+            if (out <= 0.02) continue;
+            var hgt = 44 * out;
+            ctx.fillStyle = '#ff2d55';
+            ctx.shadowColor = '#ff2d55';
+            ctx.shadowBlur = 14;
+            for (var sx = bd.x; sx < bd.x + bd.w - 1; sx += bd.w / 3) {
+              ctx.beginPath();
+              ctx.moveTo(sx, GROUND);
+              ctx.lineTo(sx + bd.w / 6, GROUND - hgt);
+              ctx.lineTo(sx + bd.w / 3, GROUND);
+              ctx.closePath();
+              ctx.fill();
+            }
+            ctx.shadowBlur = 0;
           }
-          ctx.shadowBlur = 0;
         }
 
-      } else if (mv.kind === 'saws' && mv.colX !== undefined) {
-        ctx.save();
-        if (mv.t < mv.hold) ctx.globalAlpha = 0.45 + 0.3 * Math.sin(state.t * 16);
-        for (var y = 470; y > 90; y -= 58) {
-          if (y > mv.gapY - mv.gapH / 2 && y < mv.gapY + mv.gapH / 2) continue;
+      } else if (mv.kind === 'saws') {
+        var blades = [];
+        if (mv.colX === null) {
+          /* orbiting, or streaking out to the edge */
+          var live = [];
+          for (var s = 0; s < mv.slots.length; s++) {
+            if (sawSlotBlocked(mv, mv.slots[s])) live.push(mv.slots[s]);
+          }
+          for (var s = 0; s < live.length; s++) {
+            var o = orbitSaw(b, mv, s, live.length);
+            if (mv.gathering !== undefined && mv.t >= mv.orbit) {
+              var g = mv.gathering;
+              blades.push({ x: o.x + (mv.from - o.x) * g,
+                            y: o.y + (live[s] - o.y) * g });
+            } else {
+              blades.push(o);
+            }
+          }
+        } else {
+          for (var s = 0; s < mv.slots.length; s++) {
+            if (!sawSlotBlocked(mv, mv.slots[s])) continue;
+            blades.push({ x: mv.colX, y: mv.slots[s] });
+          }
+        }
+        for (var s = 0; s < blades.length; s++) {
           ctx.save();
-          ctx.translate(mv.colX, y);
+          ctx.translate(blades[s].x, blades[s].y);
           ctx.rotate(state.t * 9);
-          ctx.fillStyle = '#ff5f7e';
-          ctx.shadowColor = '#ff5f7e';
+          ctx.fillStyle = '#ff2d55';
+          ctx.shadowColor = '#ff2d55';
           ctx.shadowBlur = 14;
           ctx.beginPath();
           for (var k = 0; k < 10; k++) {
@@ -1849,7 +2014,6 @@
           ctx.fill();
           ctx.restore();
         }
-        ctx.restore();
       }
     }
 
@@ -1857,17 +2021,17 @@
     ctx.save();
     ctx.translate(b.x + b.w / 2, b.y + b.h / 2);
     var float = Math.sin(state.t * 2.2) * 3;
-    ctx.fillStyle = b.flash > 0 ? '#ffffff' : (b.dead ? '#3d4a72' : '#c7a0ff');
-    ctx.shadowColor = '#c7a0ff';
-    ctx.shadowBlur = 26;
+    ctx.fillStyle = b.flash > 0 ? '#ffffff' : (b.dead ? '#4a2030' : '#e01e3c');
+    ctx.shadowColor = '#ff2d55';
+    ctx.shadowBlur = 30;
     rr(-b.w / 2, -b.h / 2 + float, b.w, b.h, 12);
     ctx.fill();
     ctx.shadowBlur = 0;
 
-    ctx.fillStyle = '#1a1030';
+    ctx.fillStyle = '#2a0410';
     rr(-b.w / 2 + 9, -b.h / 2 + 10 + float, b.w - 18, b.h - 22, 7);
     ctx.fill();
-    ctx.fillStyle = b.dead ? '#56658c' : '#ff5f7e';
+    ctx.fillStyle = b.dead ? '#56658c' : '#ffd166';
     ctx.fillRect(-18, -6 + float, 13, 9);
     ctx.fillRect(5, -6 + float, 13, 9);
     ctx.restore();
@@ -2293,8 +2457,8 @@
       ctx.fill();
       for (var i = 0; i < bb.maxHp; i++) {
         var seg = (bw - (bb.maxHp - 1) * 6) / bb.maxHp;
-        ctx.fillStyle = i < bb.hp ? '#c7a0ff' : 'rgba(199,160,255,0.16)';
-        if (i < bb.hp) { ctx.shadowColor = '#c7a0ff'; ctx.shadowBlur = 12; }
+        ctx.fillStyle = i < bb.hp ? '#ff2d55' : 'rgba(255,45,85,0.16)';
+        if (i < bb.hp) { ctx.shadowColor = '#ff2d55'; ctx.shadowBlur = 12; }
         else ctx.shadowBlur = 0;
         ctx.fillRect(bx + i * (seg + 6), 64, seg, 10);
       }

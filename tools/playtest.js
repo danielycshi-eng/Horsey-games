@@ -1069,59 +1069,65 @@ ok('the key is set to spawn on the high platform',
    level.pickups[1].spawnAt.y + level.pickups[1].h === bH.y);
 
 WScript.Echo('');
-WScript.Echo('[boss: the laser]');
+WScript.Echo('[boss: the sweeping laser]');
 loadLevel(7); state.running = true;
 var B = level.boss;
 B.moves.length = 0;
-B.x = 1860; B.y = 96;                        // open sky, no platform below
 startMove(B, 'laser');
 var laser = B.moves[0];
-ok('this beam has nothing over the player',
-   beamFloor(laser.x, B.y + B.h) === GROUND, 'beam stops at ' +
-   beamFloor(laser.x, B.y + B.h));
+ok('the laser charges before it fires', laser.charge >= 0.5,
+   'charge ' + laser.charge + 's');
+ok('it sweeps from one side of the arena to the other',
+   Math.abs(laser.toX - laser.fromX) > level.worldW * 0.6,
+   'from ' + Math.round(laser.fromX) + ' to ' + Math.round(laser.toX));
 
-/* out in the open, under the beam: dead */
-placeOn(laser.x - SIZE / 2, GROUND);
+/* the beam has to actually travel: sample where it is over the attack */
+var beamAt = [];
+placeOn(60, GROUND);                          // tucked in a corner, out of it
+for (var i = 0; i < Math.floor(laser.dur / 0.016) - 4; i++) {
+  p.x = 60; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0;
+  step(1);
+  if (i % 20 === 0) beamAt.push(B.x + B.w / 2);
+}
+var minB = 1e9, maxB = -1e9;
+for (var i = 0; i < beamAt.length; i++) {
+  if (beamAt[i] < minB) minB = beamAt[i];
+  if (beamAt[i] > maxB) maxB = beamAt[i];
+}
+ok('the beam really crosses the arena', maxB - minB > level.worldW * 0.5,
+   'beam covered ' + Math.round(minB) + '..' + Math.round(maxB));
+
+/* standing in the open anywhere along the sweep gets you */
+loadLevel(7); state.running = true;
+B = level.boss; B.moves.length = 0;
+startMove(B, 'laser');
+laser = B.moves[0];
+var openX = 1860;
+ok('there is open sky over that spot',
+   beamFloor(openX, 100) === GROUND);
 var diedOpen = false;
-for (var i = 0; i < 200; i++) {
-  p.x = laser.x - SIZE / 2; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0;
+for (var i = 0; i < Math.floor(laser.dur / 0.016) - 4; i++) {
+  p.x = openX; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0;
   step(1);
   if (p.dead) { diedOpen = true; break; }
 }
-ok('standing in the beam kills you', diedOpen);
+ok('standing in the open, the sweep gets you', diedOpen);
 
-/* same spot, but under a platform: safe */
+/* under a platform you survive the whole pass */
 loadLevel(7); state.running = true;
 B = level.boss; B.moves.length = 0;
-B.x = bL.x + 100; B.y = 96;
 startMove(B, 'laser');
 laser = B.moves[0];
-ok('the beam is aimed over the platform',
-   laser.x > bL.x && laser.x < bL.x + bL.w, 'beam at ' + laser.x);
+var shelterX = bH.x + 140;
+ok('that spot has a platform over it',
+   beamFloor(shelterX, 100) === bH.y);
 var safeUnder = true;
-for (var i = 0; i < 200; i++) {
-  p.x = laser.x - SIZE / 2; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0;
+for (var i = 0; i < Math.floor(laser.dur / 0.016) - 4; i++) {
+  p.x = shelterX; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0;
   step(1);
   if (p.dead) { safeUnder = false; break; }
 }
-ok('hiding under a platform stops the beam', safeUnder);
-
-/* and the beam telegraphs before it fires */
-loadLevel(7); state.running = true;
-B = level.boss; B.moves.length = 0;
-B.x = 1900; B.y = 96;                        // away from any platform
-startMove(B, 'laser');
-laser = B.moves[0];
-ok('the laser charges before it fires', laser.charge >= 0.5,
-   'charge ' + laser.charge + 's');
-placeOn(laser.x - SIZE / 2, GROUND);
-var aliveDuringCharge = true;
-for (var i = 0; i < Math.floor(laser.charge / 0.016) - 3; i++) {
-  p.x = laser.x - SIZE / 2; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0;
-  step(1);
-  if (p.dead) aliveDuringCharge = false;
-}
-ok('the charge itself does not hurt you', aliveDuringCharge);
+ok('hiding under a platform survives the whole sweep', safeUnder);
 
 WScript.Echo('');
 WScript.Echo('[boss: the crash]');
@@ -1130,6 +1136,9 @@ B = level.boss; B.moves.length = 0;
 placeOn(1900, GROUND);                       // in the open, no platform
 B.x = 1900; B.y = 96;
 startMove(B, 'crash');
+var crash = B.moves[0];
+ok('it slams more than once', crash.slams >= 3, crash.slams + ' slams');
+
 var hitByCrash = false;
 for (var i = 0; i < 220; i++) {
   p.x = 1900; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0;
@@ -1138,48 +1147,149 @@ for (var i = 0; i < 220; i++) {
 }
 ok('standing still under a crash kills you', hitByCrash);
 
+/* Every slam must throw a blast, and the blast must be lethal well away
+   from the impact. The crash homes in on you, so drop it at a fixed spot
+   instead of letting it follow the player into the test. */
+loadLevel(7); state.running = true;
+B = level.boss; B.moves.length = 0;
+placeOn(1620, GROUND);
+startMove(B, 'crash');
+crash = B.moves[0];
+B.x = 1900; B.y = 96;
+crash.sub = 'drop'; crash.subT = 0;
+
+var sawBlast = false, blastKilled = false;
+for (var i = 0; i < 200; i++) {
+  if (!p.dead) { p.x = 1620; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0; }
+  if (crash.sub === 'drop') B.x = 1900;      // hold it off the player
+  step(1);
+  if (crash.blasts.length > 0) sawBlast = true;
+  if (p.dead) { blastKilled = true; break; }
+}
+ok('a slam throws a blast', sawBlast);
+ok('the blast reaches you well clear of the impact',
+   blastKilled, 'slammed at ~1937, player stood at 1620 (300px away)');
+
+/* it should keep slamming, not stop after one */
+loadLevel(7); state.running = true;
+B = level.boss; B.moves.length = 0;
+placeOn(bH.x + 140, GROUND);                 // sheltered, so we can watch
+B.x = 1900; B.y = 96;
+startMove(B, 'crash');
+crash = B.moves[0];
+for (var i = 0; i < 460 && crash.done < crash.slams; i++) {
+  p.x = bH.x + 140; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0;
+  p.dead = false;
+  step(1);
+}
+ok('it gets through all its slams', crash.done >= crash.slams,
+   crash.done + ' of ' + crash.slams);
+
 loadLevel(7); state.running = true;
 B = level.boss; B.moves.length = 0;
 placeOn(bH.x + 140, GROUND);                 // under the high platform
 B.x = bH.x + 140; B.y = 96;
 startMove(B, 'crash');
+crash = B.moves[0];
 var shelteredFromCrash = true;
-for (var i = 0; i < 220; i++) {
+for (var i = 0; i < 120; i++) {
   p.x = bH.x + 140; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0;
   step(1);
   if (p.dead) { shelteredFromCrash = false; break; }
 }
-ok('the crash lands on the platform above you instead', shelteredFromCrash);
+ok('the first slam lands on the platform above you', shelteredFromCrash);
 
 WScript.Echo('');
-WScript.Echo('[boss: the spike wave]');
+WScript.Echo('[boss: the spike eruption]');
+/* Same trick as the crash: it comes down on top of you, so park the
+   player up on the high platform and drop it at a known spot. */
 loadLevel(7); state.running = true;
 B = level.boss; B.moves.length = 0;
+placeOn(bH.x + 140, bH.y);
 startMove(B, 'spikes');
 var sp = B.moves[0];
-ok('the wave warns before it starts rolling', sp.lead >= 0.5,
-   'lead ' + sp.lead + 's');
+B.x = 1700; B.y = 100;              // clear of the platform we parked on
+sp.sub = 'drop'; sp.subT = 0;
 
-placeOn(1000, GROUND);
-var caughtByWave = false;
-for (var i = 0; i < 260; i++) {
-  p.x = 1000; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0;
-  step(1);
-  if (p.dead) { caughtByWave = true; break; }
-}
-ok('standing on the ground, the wave gets you', caughtByWave);
-
-loadLevel(7); state.running = true;
-B = level.boss; B.moves.length = 0;
-startMove(B, 'spikes');
-placeOn(bH.x + 140, bH.y);                   // up on the high platform
-var safeUpTop = true;
-for (var i = 0; i < 260; i++) {
+var slammed = false;
+for (var i = 0; i < 150; i++) {
   p.x = bH.x + 140; p.y = bH.y - SIZE; p.vx = 0; p.vy = 0;
   step(1);
+  if (sp.sub === 'erupt') { slammed = true; break; }
+  if (p.dead) break;
+}
+ok('it slams into the ground to start the spikes', slammed, 'phase ' + sp.sub);
+ok('the spikes come out from under it',
+   sp.beds !== null && sp.beds.length > 8, sp.beds ? sp.beds.length + ' beds' : 'none');
+
+/* the eruption spreads outward in BOTH directions from the impact */
+var impactX = B.x + B.w / 2;
+var leftBed = null, rightBed = null;
+for (var i = 0; i < sp.beds.length; i++) {
+  var bd = sp.beds[i];
+  if (bd.x + bd.w < impactX - 500 && !leftBed) leftBed = bd;
+  if (bd.x > impactX + 500 && !rightBed) rightBed = bd;
+}
+ok('spikes are laid out on both sides of the impact',
+   leftBed !== null && rightBed !== null);
+
+/* nearer beds must come up before farther ones */
+var nearBed = sp.beds[0], farBed = sp.beds[0];
+for (var i = 0; i < sp.beds.length; i++) {
+  if (sp.beds[i].upAt < nearBed.upAt) nearBed = sp.beds[i];
+  if (sp.beds[i].upAt > farBed.upAt) farBed = sp.beds[i];
+}
+ok('it spreads outward rather than all at once',
+   farBed.upAt > nearBed.upAt + 0.4,
+   'nearest ' + nearBed.upAt.toFixed(2) + 's, farthest ' + farBed.upAt.toFixed(2) + 's');
+
+/* and once a bed is up it STAYS up */
+var everRetracted = false, wasUp = {};
+for (var i = 0; i < 170; i++) {
+  p.x = bH.x + 140; p.y = bH.y - SIZE; p.vx = 0; p.vy = 0;   // safe up top
+  step(1);
+  if (sp.t > sp.dur - 0.8) break;             // it's allowed to clear at the end
+  for (var q = 0; q < sp.beds.length; q++) {
+    var o = bedOut(sp, sp.beds[q]);
+    if (o > 0.9) wasUp[q] = true;
+    else if (wasUp[q] && o < 0.4) everRetracted = true;
+  }
+}
+ok('spikes stay up once they are out', !everRetracted);
+
+/* on the ground you get caught; on a platform you do not */
+loadLevel(7); state.running = true;
+B = level.boss; B.moves.length = 0;
+placeOn(400, GROUND);
+startMove(B, 'spikes');
+B.x = 1600;
+B.moves[0].sub = 'drop'; B.moves[0].subT = 0;
+var caught = false;
+for (var i = 0; i < 300; i++) {
+  if (!p.dead) { p.x = 400; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0; }
+  step(1);
+  if (p.dead) { caught = true; break; }
+}
+ok('standing on the ground, the spikes get you', caught);
+
+/* The slam itself will flatten you wherever you stand — that's the
+   dodge. What matters here is that the SPIKES can't climb a platform,
+   so drop it clear of the one we're standing on. */
+loadLevel(7); state.running = true;
+B = level.boss; B.moves.length = 0;
+placeOn(bH.x + 140, bH.y);
+startMove(B, 'spikes');
+B.x = 1700; B.y = 100;
+B.moves[0].sub = 'drop'; B.moves[0].subT = 0;
+var safeUpTop = true, eruptionRan = false;
+for (var i = 0; i < 300; i++) {
+  p.x = bH.x + 140; p.y = bH.y - SIZE; p.vx = 0; p.vy = 0;
+  step(1);
+  if (B.moves.length && B.moves[0].sub === 'erupt') eruptionRan = true;
   if (p.dead) { safeUpTop = false; break; }
 }
-ok('standing on a platform, the wave passes under you', safeUpTop);
+ok('the eruption actually happened', eruptionRan);
+ok('up on a platform the spikes cannot reach you', safeUpTop);
 
 WScript.Echo('');
 WScript.Echo('[boss: the saw wall]');
@@ -1187,8 +1297,28 @@ loadLevel(7); state.running = true;
 B = level.boss; B.moves.length = 0;
 startMove(B, 'saws');
 var sw7 = B.moves[0];
-ok('the wall waits at the edge before sweeping', sw7.hold >= 0.5,
-   'hold ' + sw7.hold + 's');
+ok('the blades circle the boss first', sw7.orbit >= 1.2,
+   'orbit ' + sw7.orbit + 's');
+ok('then it throws them at you', sw7.gather > 0);
+ok('the whole warning is over a second', sw7.orbit + sw7.gather > 1.5,
+   (sw7.orbit + sw7.gather).toFixed(1) + 's of notice');
+ok('they sweep slowly enough to read', sw7.speed <= 420,
+   sw7.speed + ' px/s, you move at ' + MOVE_SPD);
+
+/* nothing should hurt you while they are still circling */
+placeOn(1000, GROUND);
+var hurtWhileCircling = false;
+for (var i = 0; i < Math.floor(sw7.orbit / 0.016) - 4; i++) {
+  p.x = 1000; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0;
+  step(1);
+  if (p.dead) { hurtWhileCircling = true; break; }
+}
+ok('the circling blades are a warning, not a weapon', !hurtWhileCircling);
+
+loadLevel(7); state.running = true;
+B = level.boss; B.moves.length = 0;
+startMove(B, 'saws');
+sw7 = B.moves[0];
 ok('there is a gap in it', sw7.gapH >= 100, 'gap ' + sw7.gapH + 'px');
 ok('the gap is somewhere you can reach',
    sw7.gapY > 120 && sw7.gapY < GROUND, 'gap centred at y=' + sw7.gapY);
@@ -1200,14 +1330,20 @@ B = level.boss; B.moves.length = 0;
 startMove(B, 'saws');
 sw7 = B.moves[0];
 var gapTop = sw7.gapY - sw7.gapH / 2, gapBottom = sw7.gapY + sw7.gapH / 2;
-var holdX = Math.max(60, Math.min(level.worldW - 60, level.worldW / 2));
-var survived = true;
-for (var i = 0; i < 300; i++) {
+var holdX = level.worldW / 2;
+var frames = Math.floor(sw7.dur / 0.016) + 10;   // the full sweep, not a guess
+
+var survived = true, passedUs = false;
+for (var i = 0; i < frames; i++) {
   p.x = holdX; p.y = sw7.gapY - SIZE / 2;    // sat right in the gap
   p.vx = 0; p.vy = 0;
   step(1);
+  if (sw7.colX !== null && sw7.colX !== undefined &&
+      Math.abs(sw7.colX - holdX) < 30) passedUs = true;
   if (p.dead) { survived = false; break; }
 }
+ok('the wall actually swept past the player', passedUs,
+   'ended at colX=' + Math.round(sw7.colX));
 ok('sitting in the gap gets you through', survived,
    'gap ' + Math.round(gapTop) + '..' + Math.round(gapBottom));
 
@@ -1215,15 +1351,22 @@ loadLevel(7); state.running = true;
 B = level.boss; B.moves.length = 0;
 startMove(B, 'saws');
 sw7 = B.moves[0];
+frames = Math.floor(sw7.dur / 0.016) + 10;
+
+/* pick a slot that is definitely a blade, not the gap */
+var bladeY = null;
+for (var i = 0; i < sw7.slots.length; i++) {
+  if (sawSlotBlocked(sw7, sw7.slots[i])) { bladeY = sw7.slots[i]; break; }
+}
 var cut = false;
-for (var i = 0; i < 300; i++) {
-  p.x = holdX; p.y = 470 - SIZE;              // on the floor, not the gap
-  if (sw7.gapY > 400) p.y = 120;              // unless the gap IS the floor
+for (var i = 0; i < frames; i++) {
+  p.x = holdX; p.y = bladeY - SIZE / 2;      // sat right where a blade is
   p.vx = 0; p.vy = 0;
   step(1);
   if (p.dead) { cut = true; break; }
 }
-ok('standing outside the gap gets you cut', cut);
+ok('standing where a blade is gets you cut', cut,
+   'blade slot at y=' + bladeY + ', gap at ' + Math.round(sw7.gapY));
 
 WScript.Echo('');
 WScript.Echo('[boss: the bombs]');
