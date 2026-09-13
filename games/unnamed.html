@@ -230,6 +230,7 @@
                 home: { x: 2822, y: 358 } },
       door: { x: 3450, y: 300, w: 60, h: 140, needs: 'apple' },
 
+      enemy: null,
       saws: [],
       arrows: [[1180, 330], [1250, 268]],
       hints: [
@@ -268,6 +269,7 @@
                 home: { x: 1960, y: 274 } },
       door: { x: 2300, y: 170, w: 60, h: 130, needs: 'key' },
 
+      enemy: null,
       saws: [],
       arrows: [],
       hints: []          // no labels: they can remember how to pick things up
@@ -304,6 +306,7 @@
         { x: 1640, y0: 290, y1: 500, r: 26, period: 2.6, phase: 0.25 }
       ],
 
+      enemy: null,
       pickup: null,
       door: { x: 1900, y: 250, w: 60, h: 130, needs: null },
 
@@ -312,7 +315,54 @@
     };
   }
 
-  var BUILDERS = [buildTutorial, buildRoomOne, buildRoomTwo];
+  /* Room Three. Platforms up to an arena where a small red cube lives.
+     It chases you and hangs on: two seconds of contact and you're gone.
+     Three hits kill it, and it drops the key to the next room. */
+  function buildRoomThree() {
+    return {
+      name: 'Room Three',
+      worldW: 2700,
+      start: { x: 80, y: GROUND - SIZE },
+      fallY: 620,
+
+      solids: [
+        { x: -60,  y: GROUND, w: 560, h: 160 },   // start:  -60 .. 500
+        { x: 580,  y: 380,    w: 220, h: 26  },   // step up
+        { x: 880,  y: 320,    w: 240, h: 26  },   // step up
+        { x: 1200, y: 380,    w: 260, h: 26  },   // step down
+        { x: 1540, y: GROUND, w: 620, h: 160 },   // the arena: 1540 .. 2160
+        { x: 2240, y: 380,    w: 300, h: 26  }    // the way out
+      ],
+      hazards: [],
+      saws: [],
+
+      /* It never leaves the arena, so the fight can't spill into the
+         platforming and you always have somewhere to retreat to. */
+      enemy: {
+        x: 1950, y: GROUND - 22, w: 22, h: 22,
+        vx: 0, vy: 0,
+        hp: 3, maxHp: 3,
+        speed: 118,
+        face: -1,
+        flash: 0,
+        dead: false,
+        onGround: false,
+        home: { x: 1540, w: 620 }
+      },
+
+      /* Hidden until the cube drops it. */
+      pickup: { kind: 'key', x: 1950, y: 380, w: 30, h: 26, hidden: true,
+                home: { x: 1950, y: 380 } },
+      door: { x: 2400, y: 250, w: 60, h: 130, needs: 'key' },
+
+      arrows: [],
+      hints: []
+    };
+  }
+
+  var BUILDERS = [buildTutorial, buildRoomOne, buildRoomTwo, buildRoomThree];
+
+  var GRAB_MAX = 2;              // seconds of being held before you die
 
   /* ============================================================
      STATE
@@ -337,6 +387,7 @@
     buffer: 0,
     picked: false,          // the room's pickup has been in your hands
     complete: false,
+    grab: 0,               // how long the red cube has had hold of you
     flash: 0,
     saveT: 0,
     titleT: 0,              // room-name card countdown
@@ -370,6 +421,7 @@
 
     state.picked = false;
     state.complete = false;
+    state.grab = 0;
     state.coyote = 0;
     state.buffer = 0;
     state.saveT = 0;
@@ -472,6 +524,7 @@
       p.holding = null;
       return;
     }
+    if (item.hidden) return;
     if (!item.held && near(p, item, 58)) {
       item.held = true;
       p.holding = item.kind;
@@ -687,6 +740,7 @@
       if (!p.swung) {
         var hb = { x: p.face > 0 ? p.x + p.w - 4 : p.x - 34,
                    y: p.y - 2, w: 38, h: p.h + 4 };
+        hitEnemy(hb);
         if (sc && sc.hp > 0 && hits(hb, sc)) {
           sc.hp--;
           sc.flash = 0.16;
@@ -717,9 +771,32 @@
         item.y = p.y - item.h - 8;
       } else if (item.grounded === false) {
         item.vy += GRAVITY * dt;
+        var wasBottom = item.y + item.h;
         item.y += item.vy * dt;
-        var floor = restingFloor(item);
-        if (item.y >= floor) { item.y = floor; item.vy = 0; item.grounded = true; }
+        var nowBottom = item.y + item.h;
+
+        /* Sweep the fall rather than testing the item's current spot:
+           a key that spawns already overlapping the floor would never
+           find it otherwise, and drops straight through the world. */
+        if (item.vy > 0) {
+          for (var k = 0; k < level.solids.length; k++) {
+            var so = level.solids[k];
+            if (item.x + item.w <= so.x || item.x >= so.x + so.w) continue;
+            if (wasBottom <= so.y && nowBottom >= so.y) {
+              item.y = so.y - item.h;
+              item.vy = 0;
+              item.grounded = true;
+              break;
+            }
+          }
+        }
+        /* last resort: if it somehow escapes, put it back where it fell */
+        if (item.y > level.fallY) {
+          item.x = item.home.x;
+          item.y = item.home.y;
+          item.vy = 0;
+          item.grounded = true;
+        }
       }
     }
 
@@ -732,6 +809,15 @@
       sw.cy = sawY(sw);
       if (circleHitsBox(sw.x, sw.cy, sw.r - 4, p)) { die(); return; }
     }
+
+    /* --- the red cube's grip: two seconds of contact and you're gone.
+           Break away and the meter bleeds back down, slowly. --- */
+    updateEnemy(dt);
+    var e = level.enemy;
+    if (e && !e.dead && hits(p, e)) state.grab += dt;
+    else state.grab = Math.max(0, state.grab - dt * 0.6);
+    if (state.grab >= GRAB_MAX) { die(); return; }
+
     if (p.y > level.fallY) { die(); return; }
 
     /* --- the door out --- */
@@ -750,16 +836,76 @@
     cam.x += (target - cam.x) * Math.min(1, dt * 9);
   }
 
-  /* Where a dropped item lands: the top of whatever is under it. */
-  function restingFloor(item) {
-    var best = level.fallY;
+  /* ============================================================
+     THE RED CUBE
+     Walks the arena, comes at you, and hangs on. It can't leave its
+     platform, so there's always somewhere to back off to.
+     ============================================================ */
+  function updateEnemy(dt) {
+    var e = level.enemy;
+    if (!e || e.dead) return;
+
+    if (e.flash > 0) e.flash -= dt;
+
+    /* chase, unless knockback is still carrying it */
+    if (Math.abs(e.vx) < 40) {
+      var toward = (p.x + p.w / 2) - (e.x + e.w / 2);
+      e.face = toward < 0 ? -1 : 1;
+      e.vx = e.face * e.speed;
+    } else {
+      e.vx -= e.vx * Math.min(1, dt * 3.5);
+    }
+
+    e.x += e.vx * dt;
+
+    /* it stays on its own platform, knockback included */
+    if (e.x < e.home.x) { e.x = e.home.x; e.vx = 0; }
+    if (e.x + e.w > e.home.x + e.home.w) { e.x = e.home.x + e.home.w - e.w; e.vx = 0; }
+
+    e.vy += GRAVITY * dt;
+    if (e.vy > MAX_FALL) e.vy = MAX_FALL;
+    e.y += e.vy * dt;
+
+    e.onGround = false;
     for (var i = 0; i < level.solids.length; i++) {
       var s = level.solids[i];
-      if (item.x + item.w < s.x || item.x > s.x + s.w) continue;
-      if (s.y < item.y + item.h) continue;
-      if (s.y - item.h < best) best = s.y - item.h;
+      if (!hits(e, s)) continue;
+      if (e.vy > 0) { e.y = s.y - e.h; e.onGround = true; }
+      else if (e.vy < 0) { e.y = s.y + s.h; }
+      e.vy = 0;
     }
-    return best;
+  }
+
+  /* Three hits and it's done. */
+  function hitEnemy(hb) {
+    var e = level.enemy;
+    if (!e || e.dead || !hits(hb, e)) return;
+
+    e.hp--;
+    e.flash = 0.18;
+    e.vx = p.face * 300;               // knocked back, so one swing isn't three
+    e.vy = -260;
+    burst(e.x + e.w / 2, e.y + e.h / 2, '#ff5f7e', 16);
+
+    if (e.hp <= 0) {
+      e.dead = true;
+      burst(e.x + e.w / 2, e.y + e.h / 2, '#ff5f7e', 40, 1.5);
+      dropKey();
+    }
+  }
+
+  function dropKey() {
+    var it = level.pickup;
+    var e = level.enemy;
+    if (!it) return;
+    it.hidden = false;
+    it.x = e.x + e.w / 2 - it.w / 2;
+    it.y = e.y + e.h - it.h;      // flush with its feet, not its head
+    it.home = { x: it.x, y: e.y + e.h - it.h };
+    it.held = false;
+    it.grounded = false;
+    it.vy = -200;
+    burst(it.x + it.w / 2, it.y, '#ffd166', 22, 1.2);
   }
 
   /* ============================================================
@@ -961,9 +1107,32 @@
     }
   }
 
+  function drawEnemy() {
+    var e = level.enemy;
+    if (!e || e.dead) return;
+
+    ctx.save();
+    ctx.translate(e.x + e.w / 2, e.y + e.h / 2);
+    ctx.fillStyle = e.flash > 0 ? '#ffffff' : '#ff5f7e';
+    ctx.shadowColor = '#ff5f7e';
+    ctx.shadowBlur = 18;
+    rr(-e.w / 2, -e.h / 2, e.w, e.h, 5);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#3a0713';
+    ctx.fillRect(e.face > 0 ? 0 : -5, -4, 4, 6);      // two mean little eyes
+    ctx.fillRect(e.face > 0 ? -6 : 2, -4, 4, 6);
+    ctx.restore();
+
+    for (var i = 0; i < e.maxHp; i++) {               // hit pips
+      ctx.fillStyle = i < e.hp ? '#ff5f7e' : 'rgba(255,95,126,0.18)';
+      ctx.fillRect(e.x - 3 + i * 10, e.y - 12, 7, 4);
+    }
+  }
+
   function drawPickup() {
     var it = level.pickup;
-    if (!it) return;
+    if (!it || it.hidden) return;
     var bob = it.held ? 0 : Math.sin(state.t * 3) * 3;
     ctx.save();
     ctx.translate(it.x + it.w / 2, it.y + it.h / 2 + bob);
@@ -1093,6 +1262,18 @@
     ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(191,240,255,0.75)';
     ctx.fillText(state.name, cx, p.y - 10);
+
+    /* how much longer you can stand being held */
+    if (state.grab > 0.05) {
+      var f = Math.min(1, state.grab / GRAB_MAX);
+      ctx.fillStyle = 'rgba(5,7,15,0.7)';
+      ctx.fillRect(cx - 22, p.y - 26, 44, 6);
+      ctx.fillStyle = '#ff5f7e';
+      ctx.shadowColor = '#ff5f7e';
+      ctx.shadowBlur = 10;
+      ctx.fillRect(cx - 22, p.y - 26, 44 * f, 6);
+      ctx.shadowBlur = 0;
+    }
   }
 
   function drawParticles() {
@@ -1134,6 +1315,13 @@
       ctx.restore();
     }
 
+    /* the screen closes in while the cube has you */
+    if (state.grab > 0.05) {
+      var g = Math.min(1, state.grab / GRAB_MAX);
+      ctx.fillStyle = 'rgba(255,95,126,' + (g * 0.22) + ')';
+      ctx.fillRect(0, 0, W, H);
+    }
+
     if (state.flash > 0) {
       ctx.fillStyle = 'rgba(255,95,126,' + (state.flash * 0.45) + ')';
       ctx.fillRect(0, 0, W, H);
@@ -1155,6 +1343,7 @@
     drawArrows();
     drawDoor();
     drawScarecrow();
+    drawEnemy();
     drawPickup();
     drawHints();
     drawPlayer();

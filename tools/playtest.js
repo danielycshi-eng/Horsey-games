@@ -462,6 +462,127 @@ letGo();
 ok('walking into the door ends the room', out);
 
 /* ==================================================================
+   ROOM THREE — the red cube
+   ================================================================== */
+WScript.Echo('');
+WScript.Echo('[room three: the cube]');
+loadLevel(3); state.running = true;
+ok('the room loads', level.name === 'Room Three');
+ok('the cube is smaller than you', level.enemy.w < SIZE && level.enemy.h < SIZE);
+ok('the key starts hidden', level.pickup.hidden === true);
+ok('the door wants the key', level.door.needs === 'key');
+
+/* it should come at you */
+placeOn(1600, GROUND);
+var startGap = Math.abs(level.enemy.x - p.x);
+step(40);
+ok('the cube chases you', Math.abs(level.enemy.x - p.x) < startGap,
+   'gap went ' + Math.round(startGap) + ' -> ' + Math.round(Math.abs(level.enemy.x - p.x)));
+
+/* it must not wander out of the arena */
+loadLevel(3); state.running = true;
+placeOn(300, GROUND);                      // stand far away, off its platform
+step(400);
+ok('the cube never leaves its arena',
+   level.enemy.x >= level.enemy.home.x - 1 &&
+   level.enemy.x + level.enemy.w <= level.enemy.home.x + level.enemy.home.w + 1,
+   'cube at ' + Math.round(level.enemy.x));
+
+/* two seconds of contact kills you */
+loadLevel(3); state.running = true;
+placeOn(level.enemy.x - 4, GROUND);
+var heldFor = 0;
+for (var i = 0; i < 400; i++) {
+  p.x = level.enemy.x - 4;                 // pinned against it
+  step(1);
+  heldFor += 0.016;
+  if (p.dead) break;
+}
+ok('two seconds in its grip kills you', p.dead === true);
+ok('it takes about two seconds, not instantly',
+   heldFor > 1.6 && heldFor < 2.6, 'died after ' + heldFor.toFixed(2) + 's');
+
+/* a brush past should NOT kill you */
+loadLevel(3); state.running = true;
+placeOn(level.enemy.x - 4, GROUND);
+step(30);                                  // ~0.5s of contact
+var meterAfterTouch = state.grab;
+p.x = 1560;                                // break away
+step(120);                                 // ~2s clear
+ok('breaking away bleeds the meter back down',
+   state.grab < meterAfterTouch && !p.dead,
+   'meter ' + meterAfterTouch.toFixed(2) + ' -> ' + state.grab.toFixed(2));
+
+WScript.Echo('');
+WScript.Echo('[room three: the fight]');
+loadLevel(3); state.running = true;
+ok('the cube has three hit points', level.enemy.hp === 3);
+
+var swings = 0;
+for (var i = 0; i < 60 && !level.enemy.dead; i++) {
+  /* stand just off its side and swing */
+  p.x = level.enemy.x - SIZE - 2;
+  p.y = level.enemy.y + level.enemy.h - SIZE;
+  p.face = 1;
+  state.grab = 0;                          // isolate the fight from the grip
+  release('KeyI'); tap('KeyI');
+  if (p.atk > 0) swings++;
+  step(24);                                // past the 0.32s swing cooldown
+}
+ok('three swings kill it', level.enemy.dead === true,
+   'hp=' + level.enemy.hp + ' after ' + swings + ' swings');
+ok('it took exactly three', swings === 3, swings + ' swings');
+ok('killing it drops the key', level.pickup.hidden === false);
+
+step(60);                                  // let the key fall
+ok('the key lands on something solid',
+   level.pickup.grounded === true && level.pickup.y + level.pickup.h <= GROUND + 1,
+   'key at y=' + level.pickup.y);
+ok('the key drops inside the arena',
+   level.pickup.x > level.enemy.home.x &&
+   level.pickup.x < level.enemy.home.x + level.enemy.home.w,
+   'key x=' + level.pickup.x);
+
+/* one swing must not count as three */
+loadLevel(3); state.running = true;
+p.x = level.enemy.x - SIZE - 2;
+p.y = level.enemy.y + level.enemy.h - SIZE;
+p.face = 1;
+tap('KeyI');
+for (var i = 0; i < 12; i++) { state.grab = 0; step(1); }
+ok('a single swing only lands once', level.enemy.hp === 2, 'hp=' + level.enemy.hp);
+
+WScript.Echo('');
+WScript.Echo('[room three: the way out]');
+loadLevel(3); state.running = true;
+placeOn(level.door.x - 40, 380);
+step(6);
+ok('the door stays shut with the cube alive', state.complete === false);
+
+level.enemy.hp = 1;                        // finish it off
+p.x = level.enemy.x - SIZE - 2;
+p.y = level.enemy.y + level.enemy.h - SIZE;
+p.face = 1;
+tap('KeyI');
+for (var i = 0; i < 40; i++) { state.grab = 0; step(1); }
+ok('the cube dies on the last hit', level.enemy.dead === true);
+
+p.x = level.pickup.x - 10;
+p.y = level.pickup.y;
+tap('KeyB');
+ok('you can pick the dropped key up', p.holding === 'key', 'holding=' + p.holding);
+
+placeOn(level.door.x - 40, 380);
+hold('ArrowRight');
+var out3 = false;
+for (var i = 0; i < 120; i++) {
+  step(1);
+  if (state.complete) { out3 = true; break; }
+}
+letGo();
+ok('the key opens the door', out3);
+
+/* ==================================================================
    SAVE / CONTINUE
    ================================================================== */
 WScript.Echo('');
