@@ -4,9 +4,14 @@
  *   games.html   <script src="gate.js" data-gate="site"></script>
  *   games/x.html <script src="../gate.js" data-gate="x"></script>
  *
- * The code is asked for on EVERY page load — nothing is remembered, so
- * leaving a game and coming back means typing it again. That is deliberate:
- * people only get to play what they were given the code for.
+ * A GAME's code is asked for on every single page load — nothing is
+ * remembered, so leaving a game and coming back means typing it again.
+ * That is deliberate: people only get to play what they were given the
+ * code for.
+ *
+ * The SITE code is the one exception. Once you're through the front door
+ * it stays open for the rest of the browser session, because re-typing it
+ * every time you walk back to the games list is just annoying.
  */
 (function () {
   var CODES = {
@@ -44,6 +49,20 @@
   var back = script.getAttribute('data-gate-back') ||
              (id === 'site' ? 'index.html' : '../games.html');
 
+  /* The front door stays open for the session; game doors never do. */
+  var SITE_KEY = 'hg_site_ok';
+
+  function siteUnlocked() {
+    try { return sessionStorage.getItem(SITE_KEY) === 'yes'; }
+    catch (e) { return false; }
+  }
+
+  function rememberSite() {
+    try { sessionStorage.setItem(SITE_KEY, 'yes'); } catch (e) {}
+  }
+
+  if (id === 'site' && siteUnlocked()) return;
+
   /* Hide the page immediately so nothing flashes before the gate paints. */
   document.documentElement.classList.add('hg-locked');
 
@@ -76,6 +95,7 @@
 
     function submit() {
       if (input.value.trim().toUpperCase() === CODES[id].toUpperCase()) {
+        if (id === 'site') rememberSite();
         overlay.remove();
         document.documentElement.classList.remove('hg-locked');
         window.dispatchEvent(new Event('resize'));

@@ -116,14 +116,6 @@
       border-color: #4ec3ff;
     }
 
-    .who {
-      margin-top: 0.55rem;
-      color: #56658c;
-      font-size: 0.72rem;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-    }
-
     .keys {
       margin-top: 2rem;
       color: #56658c;
@@ -144,7 +136,6 @@
 
       <div class="panel hide" id="menuPanel">
         <button id="continueBtn" class="tbtn" type="button">Continue Game</button>
-        <div class="who" id="continueWho"></div>
         <button id="newBtn" class="tbtn ghost" type="button">New Game</button>
       </div>
 
@@ -289,14 +280,6 @@
     try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
   }
 
-  /* A word for how far along a save is, shown under Continue. */
-  function describeSave(s) {
-    if (s.applePicked) return 'Carrying the apple';
-    if (s.barrierOpen) return 'Past the scarecrow';
-    if (s.x > pit.x + pit.w) return 'Past the gap';
-    if (s.x > 820) return 'At the ledge';
-    return 'Just started';
-  }
 
   /* ============================================================
      INPUT
@@ -941,7 +924,6 @@
   var menuPanel   = document.getElementById('menuPanel');
   var namePanel   = document.getElementById('namePanel');
   var continueBtn = document.getElementById('continueBtn');
-  var continueWho = document.getElementById('continueWho');
   var newBtn      = document.getElementById('newBtn');
   var nameInput   = document.getElementById('nameInput');
   var beginBtn    = document.getElementById('beginBtn');
@@ -1014,11 +996,10 @@
   var backLink = document.querySelector('.back-link');
   if (backLink) backLink.addEventListener('click', saveGame);
 
-  var existing = readSave();
-  if (existing) {
+  /* Two unlabelled buttons. Working out which is which is the player's job. */
+  if (readSave()) {
     menuPanel.classList.remove('hide');
     namePanel.classList.add('hide');
-    continueWho.textContent = (existing.name || 'HERO') + ' · ' + describeSave(existing);
   }
 
   requestAnimationFrame(frame);
