@@ -493,13 +493,16 @@
       };
     }
 
-    /* A travelling wave: each bed lags the one before it, so the spikes
-       roll along the floor instead of all firing at once. */
+    /* One unbroken carpet of spikes, end to end, running under the
+       spawn ledge as well — the ledge is the only safe floor in the
+       room. Each bed lags the one before it, so the whole thing rolls
+       past as a travelling wave and you move with the troughs. */
     var waves = [];
-    for (var i = 0; i < 14; i++) {
+    var BED = 120;
+    for (var i = 0; i * BED - 60 < 3760; i++) {
       waves.push({
-        x: 420 + i * 200, w: 120, h: 70,
-        period: 2.8, phase: (i * 0.16) % 1
+        x: -60 + i * BED, w: BED, h: 56,
+        period: 2.8, phase: (i * 0.26) % 1
       });
     }
 
@@ -526,9 +529,10 @@
         sawOn(platA, 3.0, 0.00),
         sawOn(platB, 2.6, 0.35),
         sawOn(platC, 2.2, 0.70),
-        /* and one patrolling the floor, riding on top of it */
-        { x0: 600, x1: 3200, y0: GROUND - 26, y1: GROUND - 26,
-          r: 26, period: 9.0, phase: 0.0 }
+        /* and one patrolling the floor the whole length of the room,
+           from under the spawn ledge to the door */
+        { x0: 30, x1: 3560, y0: GROUND - 26, y1: GROUND - 26,
+          r: 26, period: 12.0, phase: 0.0 }
       ],
 
       enemies: reds,
@@ -763,7 +767,7 @@
      They spend longer down than up, so there's always a way through. */
   function waveOut(wv) {
     var u = (1 - Math.cos((state.t / wv.period + wv.phase) * Math.PI * 2)) / 2;
-    return Math.max(0, (u - 0.35) / 0.65);
+    return Math.max(0, (u - 0.5) / 0.5);
   }
 
   function waveBox(wv) {

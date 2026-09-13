@@ -882,13 +882,72 @@ ok('you spawn on a ledge, not in the spikes',
    ledge6 !== null && level.start.y + SIZE === ledge6.y,
    'start y=' + level.start.y);
 
-/* the spawn ledge must be clear of every spike bed */
-var spawnSafe = true;
+/* the spikes are one unbroken carpet, under the ledge included */
+var gapFound = '';
+for (var i = 0; i < level.waves.length - 1; i++) {
+  if (Math.abs((level.waves[i].x + level.waves[i].w) - level.waves[i + 1].x) > 0.01) {
+    gapFound = 'gap after bed ' + i;
+  }
+}
+ok('the spikes run with no gaps between beds', gapFound === '', gapFound);
+
+var first6 = level.waves[0];
+var last6 = level.waves[level.waves.length - 1];
+ok('they start before the ledge and reach past the door',
+   first6.x <= ledge6.x && last6.x + last6.w >= level.door.x + level.door.w,
+   'carpet ' + first6.x + '..' + (last6.x + last6.w) +
+   ', ledge at ' + ledge6.x + ', door at ' + level.door.x);
+
+var underLedge = false;
 for (var i = 0; i < level.waves.length; i++) {
   var wv = level.waves[i];
-  if (wv.x < ledge6.x + ledge6.w + 40 && wv.x + wv.w > ledge6.x - 40) spawnSafe = false;
+  if (wv.x < ledge6.x + ledge6.w && wv.x + wv.w > ledge6.x) underLedge = true;
 }
-ok('no spikes under the spawn ledge', spawnSafe);
+ok('there are spikes under the ledge too', underLedge);
+
+/* ...and the ledge still clears them at full extension */
+var tallest = 0;
+for (var i = 0; i < level.waves.length; i++) {
+  if (level.waves[i].h > tallest) tallest = level.waves[i].h;
+}
+ok('the ledge sits above the spikes at full height',
+   ledge6.y < GROUND - tallest,
+   'ledge top ' + ledge6.y + ' vs spike tips at ' + (GROUND - tallest));
+
+/* a carpet with no troughs would be impassable */
+var narrowest = 1e9;
+for (var t0 = 0; t0 < 3.0; t0 += 0.05) {
+  state.t = t0;
+  var best = 0, run = 0;
+  for (var i = 0; i < level.waves.length; i++) {
+    if (waveOut(level.waves[i]) < 0.05) { run += level.waves[i].w; if (run > best) best = run; }
+    else run = 0;
+  }
+  if (best < narrowest) narrowest = best;
+}
+ok('there is always a trough wide enough to stand in',
+   narrowest >= SIZE + 20, 'narrowest safe run was ' + narrowest + 'px');
+
+ok('a raised bed can be jumped over', tallest < 102,
+   'spikes reach ' + tallest + 'px, one jump is 102px');
+
+/* The carpet has no gaps, so crossing it means jumping raised stretches.
+   If one is ever longer than a double jump carries you, the room is not
+   crossable on foot and the far half is unreachable. */
+var longestUp = 0;
+for (var t0 = 0; t0 < 3.0; t0 += 0.02) {
+  state.t = t0;
+  var run = 0;
+  for (var i = 0; i < level.waves.length; i++) {
+    if (waveOut(level.waves[i]) >= 0.05) {
+      run += level.waves[i].w;
+      if (run > longestUp) longestUp = run;
+    } else run = 0;
+  }
+}
+ok('no raised stretch is longer than a double jump',
+   longestUp <= 300,
+   'longest raised run ' + longestUp + 'px, a double jump carries ~368px');
 
 /* The point of the ledge is that the ROOM doesn't kill you the instant
    you appear. The reds will come for you, and should — so take them out
@@ -901,10 +960,12 @@ ok('the spawn ledge is safe from spikes and saws', !p.dead,
 
 /* the floor saw really does patrol */
 var floorSaw = level.saws[3];
-ok('the floor saw runs along the ground',
+ok('the floor saw runs the whole length of the room',
    floorSaw.y0 === floorSaw.y1 && floorSaw.y0 + floorSaw.r === GROUND &&
-   Math.abs(floorSaw.x1 - floorSaw.x0) > 1000,
-   'from ' + floorSaw.x0 + ' to ' + floorSaw.x1);
+   floorSaw.x0 <= ledge6.x + ledge6.w &&
+   floorSaw.x1 >= level.door.x,
+   'from ' + floorSaw.x0 + ' to ' + floorSaw.x1 +
+   ' (ledge ends ' + (ledge6.x + ledge6.w) + ', door at ' + level.door.x + ')');
 
 /* the wave has to actually rise and fall, and leave gaps */
 var everUp = false, everDown = false;
