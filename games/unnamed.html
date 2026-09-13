@@ -230,6 +230,7 @@
                 home: { x: 2822, y: 358 } },
       door: { x: 3450, y: 300, w: 60, h: 140, needs: 'apple' },
 
+      saws: [],
       arrows: [[1180, 330], [1250, 268]],
       hints: [
         { x: 300,  y: 360, big: '←   →',   small: 'MOVE' },
@@ -267,12 +268,51 @@
                 home: { x: 1960, y: 274 } },
       door: { x: 2300, y: 170, w: 60, h: 130, needs: 'key' },
 
+      saws: [],
       arrows: [],
-      hints: [ { x: 1975, y: 216, big: 'B', small: 'TAKE THE KEY' } ]
+      hints: []          // no labels: they can remember how to pick things up
     };
   }
 
-  var BUILDERS = [buildTutorial, buildRoomOne];
+  /* Room Two. Four jumps across a void, each gap patrolled by a saw
+     that rides up and down through it. Wait for the blade to drop,
+     then go. The last gap is 240px with two saws in it, so it takes
+     a double jump AND a read of both blades. */
+  function buildRoomTwo() {
+    return {
+      name: 'Room Two',
+      worldW: 2200,
+      start: { x: 80, y: 380 - SIZE },
+      fallY: 620,
+
+      solids: [
+        { x: -60,  y: 380, w: 480, h: 26 },   // start:  -60 .. 420
+        { x: 560,  y: 380, w: 200, h: 26 },   // jump 1: gap of 140
+        { x: 900,  y: 380, w: 200, h: 26 },   // jump 2: gap of 140
+        { x: 1240, y: 380, w: 220, h: 26 },   // jump 3: gap of 140
+        { x: 1700, y: 380, w: 340, h: 26 }    // jump 4: gap of 240
+      ],
+      hazards: [],
+
+      /* y0 is the top of the swing, y1 the bottom. At the bottom the
+         blade sits below the platforms and the jump arc is clear. */
+      saws: [
+        { x: 490,  y0: 290, y1: 500, r: 26, period: 2.2, phase: 0.00 },
+        { x: 830,  y0: 290, y1: 500, r: 26, period: 2.0, phase: 0.30 },
+        { x: 1170, y0: 290, y1: 500, r: 26, period: 2.4, phase: 0.60 },
+        { x: 1520, y0: 290, y1: 500, r: 26, period: 2.6, phase: 0.00 },
+        { x: 1640, y0: 290, y1: 500, r: 26, period: 2.6, phase: 0.25 }
+      ],
+
+      pickup: null,
+      door: { x: 1900, y: 250, w: 60, h: 130, needs: null },
+
+      arrows: [],
+      hints: []
+    };
+  }
+
+  var BUILDERS = [buildTutorial, buildRoomOne, buildRoomTwo];
 
   /* ============================================================
      STATE
@@ -334,6 +374,7 @@
     state.buffer = 0;
     state.saveT = 0;
     state.titleT = 2.4;
+    state.t = 0;            // saws restart in the same place every attempt
 
     safeSpot.x = level.start.x;
     safeSpot.y = level.start.y;
@@ -460,6 +501,26 @@
   function hits(a, b) {
     return a.x < b.x + b.w && a.x + a.w > b.x &&
            a.y < b.y + b.h && a.y + a.h > b.y;
+  }
+
+  /* Where a saw sits right now. Phase 0 is the top of its swing. */
+  function sawY(sw) {
+    var u = (state.t / sw.period + sw.phase) * Math.PI * 2;
+    return sw.y0 + (sw.y1 - sw.y0) * (1 - Math.cos(u)) / 2;
+  }
+
+  /* Saws are drawn round, so judge them round — squaring them off
+     would kill you for near misses that visibly cleared the blade. */
+  function circleHitsBox(cx, cy, r, b) {
+    var nx = Math.max(b.x, Math.min(cx, b.x + b.w));
+    var ny = Math.max(b.y, Math.min(cy, b.y + b.h));
+    var dx = cx - nx, dy = cy - ny;
+    return dx * dx + dy * dy < r * r;
+  }
+
+  /* The door only wants a key if the room says so. */
+  function doorReady() {
+    return !level.door.needs || state.picked;
   }
 
   function movePlayer(dt) {
@@ -666,10 +727,15 @@
     for (i = 0; i < level.hazards.length; i++) {
       if (hits(p, level.hazards[i])) { die(); return; }
     }
+    for (i = 0; i < level.saws.length; i++) {
+      var sw = level.saws[i];
+      sw.cy = sawY(sw);
+      if (circleHitsBox(sw.x, sw.cy, sw.r - 4, p)) { die(); return; }
+    }
     if (p.y > level.fallY) { die(); return; }
 
     /* --- the door out --- */
-    if (state.picked && hits(p, level.door)) {
+    if (doorReady() && hits(p, level.door)) {
       state.complete = true;
       burst(level.door.x + level.door.w / 2, level.door.y + 70, '#4ec3ff', 50, 1.8);
       saveGame();
@@ -798,6 +864,50 @@
     }
   }
 
+  function drawSaws() {
+    for (var i = 0; i < level.saws.length; i++) {
+      var sw = level.saws[i];
+      var cy = sawY(sw);
+
+      /* the rail it rides, so you can read the swing before you jump */
+      ctx.strokeStyle = 'rgba(255,95,126,0.16)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(sw.x, sw.y0);
+      ctx.lineTo(sw.x, sw.y1);
+      ctx.stroke();
+
+      ctx.save();
+      ctx.translate(sw.x, cy);
+      ctx.rotate(state.t * 9);
+
+      ctx.fillStyle = '#ff5f7e';
+      ctx.shadowColor = '#ff5f7e';
+      ctx.shadowBlur = 18;
+      var teeth = 10;
+      ctx.beginPath();
+      for (var k = 0; k < teeth; k++) {
+        var a0 = (k / teeth) * Math.PI * 2;
+        var a1 = ((k + 0.5) / teeth) * Math.PI * 2;
+        ctx.lineTo(Math.cos(a0) * sw.r, Math.sin(a0) * sw.r);
+        ctx.lineTo(Math.cos(a1) * (sw.r - 8), Math.sin(a1) * (sw.r - 8));
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      ctx.fillStyle = '#8a93a8';
+      ctx.beginPath();
+      ctx.arc(0, 0, sw.r - 11, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#05070f';
+      ctx.beginPath();
+      ctx.arc(0, 0, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
   function drawBarrier() {
     var b = level.barrier;
     if (!b || b.open) return;
@@ -894,7 +1004,7 @@
 
   function drawDoor() {
     var d = level.door;
-    var ready = state.picked;
+    var ready = doorReady();
     var pulse = 0.6 + Math.sin(state.t * 3) * 0.25;
     ctx.save();
     ctx.globalAlpha = ready ? pulse + 0.25 : 0.3;
@@ -1040,6 +1150,7 @@
     var i;
     for (i = 0; i < level.hazards.length; i++) drawHazard(level.hazards[i]);
     for (i = 0; i < level.solids.length; i++) drawSolid(level.solids[i]);
+    drawSaws();
     drawBarrier();
     drawArrows();
     drawDoor();

@@ -351,6 +351,117 @@ var chain =
 ok('you can get from the start to the door', chain);
 
 /* ==================================================================
+   ROOM TWO — four jumps, each gap patrolled by a saw
+   ================================================================== */
+WScript.Echo('');
+WScript.Echo('[room two: the saws]');
+loadLevel(2); state.running = true;
+ok('the room loads', level.name === 'Room Two');
+ok('five platforms, five saws',
+   level.solids.length === 5 && level.saws.length === 5);
+
+/* every saw must ride through the gap it guards, not over a platform */
+var sawsClear = true, sawDetail = '';
+for (var i = 0; i < level.saws.length; i++) {
+  var sw = level.saws[i];
+  for (var j = 0; j < level.solids.length; j++) {
+    var s = level.solids[j];
+    if (sw.x > s.x - sw.r && sw.x < s.x + s.w + sw.r) {
+      sawsClear = false;
+      sawDetail = 'saw at ' + sw.x + ' overlaps platform ' + s.x + '..' + (s.x + s.w);
+    }
+  }
+}
+ok('every saw hangs in a gap, not over a platform', sawsClear, sawDetail);
+
+/* One attempt at a gap, starting the saws at a given point in their cycle. */
+function crossSawGap(startX, startTop, target, useDouble, t0, jumpAtX) {
+  loadLevel(2);
+  state.running = true;
+  placeOn(startX, startTop);
+  state.t = t0;
+  hold('ArrowRight');
+  var jumped = false, doubled = false;
+  for (var i = 0; i < 300; i++) {
+    if (!jumped && p.x + p.w >= jumpAtX) { tap('Space'); jumped = true; }
+    else if (jumped && !doubled && useDouble && p.vy > -120) {
+      release('Space'); tap('Space'); doubled = true;
+    }
+    step(1);
+    if (p.dead) { letGo(); return 'died'; }
+    if (jumped && p.onGround) {
+      letGo();
+      return (p.y + p.h === target.y &&
+              p.x + SIZE > target.x && p.x < target.x + target.w) ? 'ok' : 'short';
+    }
+  }
+  letGo();
+  return 'stuck';
+}
+
+/* Sweep the whole saw cycle and count how many launch moments work. */
+function sawGapStats(from, target, useDouble) {
+  var res = { ok: 0, died: 0, total: 0 };
+  var edge = from.x + from.w;
+  var startX = Math.max(0, from.x + 10);
+  for (var t0 = 0; t0 < 2.6; t0 += 0.1) {
+    var r = crossSawGap(startX, from.y, target, useDouble, t0, edge - 2);
+    res.total++;
+    if (r === 'ok') res.ok++;
+    else if (r === 'died') res.died++;
+  }
+  return res;
+}
+
+var r2 = level.solids;
+var names = ['jump 1', 'jump 2', 'jump 3'];
+for (var g = 0; g < 3; g++) {
+  var st = sawGapStats(r2[g], r2[g + 1], false);
+  WScript.Echo('        window: ' + st.ok + ' safe, ' + st.died + ' fatal, of ' + st.total);
+  ok(names[g] + ': there is a safe moment to go',
+     st.ok > 0, st.ok + '/' + st.total + ' launches survived');
+  ok(names[g] + ': the saw actually threatens you',
+     st.died > 0, 'nobody ever died - the saw is decorative');
+}
+
+WScript.Echo('');
+WScript.Echo('[room two: jump 4, two saws and a double jump]');
+var g4single = sawGapStats(r2[3], r2[4], false);
+ok('jump 4 CANNOT be done with one jump', g4single.ok === 0,
+   g4single.ok + ' single jumps got across');
+
+var g4double = sawGapStats(r2[3], r2[4], true);
+WScript.Echo('        window: ' + g4double.ok + ' safe, ' + g4double.died + ' fatal, of ' + g4double.total);
+ok('jump 4 can be done with a double jump', g4double.ok > 0,
+   g4double.ok + '/' + g4double.total + ' launches survived');
+ok('both saws are in the last gap',
+   level.saws[3].x > r2[3].x + r2[3].w && level.saws[4].x < r2[4].x,
+   'saws at ' + level.saws[3].x + ' and ' + level.saws[4].x);
+ok('the last gap is the widest', (r2[4].x - (r2[3].x + r2[3].w)) === 240,
+   'gap = ' + (r2[4].x - (r2[3].x + r2[3].w)));
+
+loadLevel(2); state.running = true;
+placeOn(level.saws[0].x - SIZE / 2, 380);   // stand in the saw's path
+p.y = 300;
+state.t = 0;                                 // phase 0 = blade at the top
+step(3);
+ok('touching a saw kills you', p.dead === true);
+
+WScript.Echo('');
+WScript.Echo('[room two: the way out]');
+loadLevel(2); state.running = true;
+ok('the door needs no key here', level.door.needs === null);
+placeOn(level.door.x - 40, 380);
+hold('ArrowRight');
+var out = false;
+for (var i = 0; i < 120; i++) {
+  step(1);
+  if (state.complete) { out = true; break; }
+}
+letGo();
+ok('walking into the door ends the room', out);
+
+/* ==================================================================
    SAVE / CONTINUE
    ================================================================== */
 WScript.Echo('');
