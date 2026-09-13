@@ -50,9 +50,46 @@ function fakeEl() {
   };
 }
 
-var document = { getElementById: fakeEl, addEventListener: noop, readyState: 'complete' };
+var document = {
+  getElementById: fakeEl,
+  querySelector: fakeEl,
+  addEventListener: noop,
+  readyState: 'complete'
+};
 var window = { addEventListener: noop };
 var requestAnimationFrame = noop;
+
+/* in-memory stand-in for localStorage */
+var localStorage = {
+  _d: {},
+  getItem: function (k) { return this._d.hasOwnProperty(k) ? this._d[k] : null; },
+  setItem: function (k, v) { this._d[k] = String(v); },
+  removeItem: function (k) { delete this._d[k]; }
+};
+
+/* WSH's JScript predates JSON; every real browser has it. Implicit global
+   assignment (no var) so there's no hoisting shadow. */
+if (typeof JSON === 'undefined') {
+  JSON = {
+    stringify: function (o) {
+      if (o === null || o === undefined) return 'null';
+      var t = typeof o, i, parts = [];
+      if (t === 'number' || t === 'boolean') return String(o);
+      if (t === 'string') {
+        return '"' + o.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+      }
+      if (o instanceof Array) {
+        for (i = 0; i < o.length; i++) parts.push(JSON.stringify(o[i]));
+        return '[' + parts.join(',') + ']';
+      }
+      for (var k in o) {
+        if (o.hasOwnProperty(k)) parts.push('"' + k + '":' + JSON.stringify(o[k]));
+      }
+      return '{' + parts.join(',') + '}';
+    },
+    parse: function (s) { return eval('(' + s + ')'); }
+  };
+}
 
 /* ---- load the game, unwrapped so its internals become globals ---- */
 var fso = new ActiveXObject('Scripting.FileSystemObject');
@@ -248,6 +285,79 @@ ok('no two props occupy the same space', overlap === '', overlap);
 ok('everything sits inside the world', goal.x + goal.w < WORLD_W);
 ok('the pit is inside the gap between the two grounds',
    pit.x === 1100 && pit.x + pit.w === 1320);
+
+/* ------------------------------------------------------------------
+   8. Save / Continue: exiting must not cost you the tutorial
+   ------------------------------------------------------------------ */
+WScript.Echo('');
+WScript.Echo('[save]');
+
+clearSave();
+ok('a fresh install has nothing to continue', readSave() === null);
+
+nameInput.value = 'ZELDA';
+newGame();
+ok('New Game takes the typed name', state.name === 'ZELDA');
+ok('New Game starts you at the beginning', p.x === START_X);
+ok('New Game writes a save immediately', readSave() !== null);
+
+/* play forward a bit, then "quit" */
+barrier.open = true;
+state.applePicked = true;
+safeSpot.x = 2900;
+safeSpot.y = GROUND - SIZE;
+saveGame();
+
+var s = readSave();
+ok('the save records how far you got',
+   s.x === 2900 && s.barrierOpen === true && s.applePicked === true,
+   'x=' + s.x + ' barrier=' + s.barrierOpen + ' apple=' + s.applePicked);
+
+/* "come back later" */
+resetWorld();
+ok('resetWorld really does wipe progress', barrier.open === false && p.x === START_X);
+
+continueGame();
+ok('Continue restores your name', state.name === 'ZELDA');
+ok('Continue restores where you stood', p.x === 2900, 'p.x=' + p.x);
+ok('Continue restores the opened barrier', barrier.open === true);
+ok('Continue restores the apple flag', state.applePicked === true);
+
+/* New Game over the top of a save must wipe it */
+nameInput.value = 'LINK';
+newGame();
+ok('New Game wipes the old progress',
+   barrier.open === false && state.applePicked === false && p.x === START_X);
+ok('New Game overwrites the save file', readSave().name === 'LINK');
+
+/* Every spot Continue could restore you to must be somewhere you can
+   actually stand. Collect the saved spots across a run at the pit, then
+   drop the player onto each one with no input and see if anyone falls. */
+place(1000);
+hold('ArrowRight');
+var spots = [];
+for (var i = 0; i < 140; i++) {
+  if (p.x + p.w >= pit.x - 2 && p.onGround) tap('Space');
+  step(1);
+  spots.push({ x: safeSpot.x, y: safeSpot.y });
+  if (p.dead) break;
+}
+release('ArrowRight');
+release('Space');
+
+var unsafe = null;
+for (var i = 0; i < spots.length && !unsafe; i++) {
+  p.x = spots[i].x; p.y = spots[i].y;
+  p.vx = 0; p.vy = 0;
+  p.dead = false; p.deadT = 0; p.onGround = false;
+  state.buffer = 0; state.coyote = 0;
+  step(25);
+  if (p.dead || p.y > GROUND) unsafe = spots[i];
+}
+ok('every spot Continue can restore is solid ground',
+   unsafe === null,
+   unsafe ? 'fell from x=' + unsafe.x + ' y=' + unsafe.y : '');
+ok('the run above actually crossed the pit', spots.length > 40, spots.length + ' samples');
 
 WScript.Echo('');
 WScript.Echo('=== ' + passed + ' passed, ' + failed + ' failed ===');

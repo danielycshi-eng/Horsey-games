@@ -80,21 +80,49 @@
       box-shadow: 0 0 18px rgba(78, 195, 255, 0.35);
     }
 
-    #beginBtn {
+    .panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .hide { display: none !important; }
+
+    .tbtn {
       margin-top: 1.1rem;
-      padding: 0.65rem 2.4rem;
+      width: min(78vw, 260px);
+      padding: 0.65rem 1.4rem;
       font-family: inherit;
       font-size: 1rem;
       letter-spacing: 3px;
       color: #05070f;
       font-weight: 700;
       background: #4ec3ff;
-      border: none;
+      border: 2px solid #4ec3ff;
       border-radius: 10px;
       cursor: pointer;
-      transition: background 0.15s, transform 0.1s;
+      transition: background 0.15s, transform 0.1s, border-color 0.15s, color 0.15s;
     }
-    #beginBtn:hover { background: #7fd6ff; transform: scale(1.04); }
+    .tbtn:hover { background: #7fd6ff; border-color: #7fd6ff; transform: scale(1.04); }
+
+    .tbtn.ghost {
+      color: #8ea7d6;
+      background: transparent;
+      border-color: #1d2b5c;
+      font-weight: 600;
+    }
+    .tbtn.ghost:hover {
+      color: #fff;
+      background: transparent;
+      border-color: #4ec3ff;
+    }
+
+    .who {
+      margin-top: 0.55rem;
+      color: #56658c;
+      font-size: 0.72rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
 
     .keys {
       margin-top: 2rem;
@@ -113,8 +141,18 @@
     <div class="screen" id="titleScreen">
       <div class="qmark">???</div>
       <p>A story with no name yet</p>
-      <input id="nameInput" type="text" maxlength="12" placeholder="NAME YOUR HERO" autocomplete="off" spellcheck="false">
-      <button id="beginBtn" type="button">Begin</button>
+
+      <div class="panel hide" id="menuPanel">
+        <button id="continueBtn" class="tbtn" type="button">Continue Game</button>
+        <div class="who" id="continueWho"></div>
+        <button id="newBtn" class="tbtn ghost" type="button">New Game</button>
+      </div>
+
+      <div class="panel" id="namePanel">
+        <input id="nameInput" type="text" maxlength="12" placeholder="NAME YOUR HERO" autocomplete="off" spellcheck="false">
+        <button id="beginBtn" class="tbtn" type="button">Begin</button>
+      </div>
+
       <div class="keys">One life. No checkpoints. Mind the gap.</div>
     </div>
   </div>
@@ -201,11 +239,64 @@
     complete: false,
     completeT: 0,
     flash: 0,
+    saveT: 0,
     t: 0
   };
 
   var cam = { x: 0 };
   var particles = [];
+
+  /* The last patch of solid ground you stood on. This is what gets saved,
+     so Continue never drops you into the pit or into mid-air. */
+  var safeSpot = { x: START_X, y: GROUND - SIZE };
+
+  /* ============================================================
+     SAVE / CONTINUE
+     Progress lives in localStorage so closing the tab doesn't cost
+     you the tutorial. (The passcode gate deliberately remembers
+     nothing — that's separate, and stays that way.)
+     ============================================================ */
+  var SAVE_KEY = 'unnamed_save_v1';
+
+  function readSave() {
+    try {
+      var raw = localStorage.getItem(SAVE_KEY);
+      if (!raw) return null;
+      var s = JSON.parse(raw);
+      if (!s || s.v !== 1 || typeof s.x !== 'number' || typeof s.y !== 'number') return null;
+      return s;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function saveGame() {
+    if (!state.running) return;
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify({
+        v: 1,
+        name: state.name,
+        x: safeSpot.x,
+        y: safeSpot.y,
+        barrierOpen: barrier.open,
+        applePicked: state.applePicked,
+        complete: state.complete
+      }));
+    } catch (e) {}
+  }
+
+  function clearSave() {
+    try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
+  }
+
+  /* A word for how far along a save is, shown under Continue. */
+  function describeSave(s) {
+    if (s.applePicked) return 'Carrying the apple';
+    if (s.barrierOpen) return 'Past the scarecrow';
+    if (s.x > pit.x + pit.w) return 'Past the gap';
+    if (s.x > 820) return 'At the ledge';
+    return 'Just started';
+  }
 
   /* ============================================================
      INPUT
@@ -252,6 +343,7 @@
       p.holding = 'apple';
       state.applePicked = true;
       burst(apple.x + 13, apple.y + 14, '#ff5f7e', 12);
+      saveGame();
     }
   }
 
@@ -433,6 +525,11 @@
 
     movePlayer(dt);
 
+    /* --- remember where it was safe to stand, and checkpoint the save --- */
+    if (p.onGround) { safeSpot.x = p.x; safeSpot.y = p.y; }
+    state.saveT += dt;
+    if (state.saveT > 2) { state.saveT = 0; saveGame(); }
+
     /* --- cube roll, Geometry Dash style --- */
     if (!p.onGround) p.rot += dt * 7.5 * (p.vx >= 0 ? 1 : -1);
     else p.rot += (0 - p.rot) * Math.min(1, dt * 14);
@@ -455,6 +552,7 @@
               scarecrow.everBroken = true;
               barrier.open = true;
               burst(barrier.x + 13, barrier.y + 160, '#4ec3ff', 40, 1.6);
+              saveGame();
             }
           }
         }
@@ -481,6 +579,7 @@
       state.complete = true;
       state.completeT = 0;
       burst(goal.x + 30, goal.y + 70, '#4ec3ff', 50, 1.8);
+      saveGame();
     }
 
     /* --- camera --- */
@@ -839,20 +938,88 @@
      START
      ============================================================ */
   var titleScreen = document.getElementById('titleScreen');
+  var menuPanel   = document.getElementById('menuPanel');
+  var namePanel   = document.getElementById('namePanel');
+  var continueBtn = document.getElementById('continueBtn');
+  var continueWho = document.getElementById('continueWho');
+  var newBtn      = document.getElementById('newBtn');
   var nameInput   = document.getElementById('nameInput');
   var beginBtn    = document.getElementById('beginBtn');
 
-  function begin() {
-    var n = nameInput.value.trim();
-    state.name = n ? n : 'HERO';
-    titleScreen.classList.add('hidden');
-    state.running = true;
+  /* Wipe every trace of a previous run. */
+  function resetWorld() {
+    respawn();
+    barrier.open = false;
+    scarecrow.everBroken = false;
+    scarecrow.hp = scarecrow.maxHp;
+    scarecrow.regen = 0;
+    state.applePicked = false;
+    state.complete = false;
+    state.completeT = 0;
+    state.saveT = 0;
+    safeSpot.x = START_X;
+    safeSpot.y = GROUND - SIZE;
+    particles.length = 0;
+    cam.x = 0;
   }
 
-  beginBtn.addEventListener('click', begin);
+  function enterGame() {
+    titleScreen.classList.add('hidden');
+    state.running = true;
+    saveGame();
+  }
+
+  function newGame() {
+    var n = nameInput.value.trim();
+    state.name = n ? n : 'HERO';
+    clearSave();
+    resetWorld();
+    enterGame();
+  }
+
+  function continueGame() {
+    var s = readSave();
+    if (!s) { showNamePanel(); return; }
+    resetWorld();
+    state.name = s.name || 'HERO';
+    barrier.open = !!s.barrierOpen;
+    scarecrow.everBroken = !!s.barrierOpen;
+    state.applePicked = !!s.applePicked;
+    p.x = s.x;
+    p.y = s.y;
+    safeSpot.x = s.x;
+    safeSpot.y = s.y;
+    cam.x = Math.max(0, Math.min(WORLD_W - W, p.x + p.w / 2 - W / 2));
+    enterGame();
+  }
+
+  function showNamePanel() {
+    menuPanel.classList.add('hide');
+    namePanel.classList.remove('hide');
+    nameInput.value = '';
+    nameInput.focus();
+  }
+
+  continueBtn.addEventListener('click', continueGame);
+  newBtn.addEventListener('click', showNamePanel);
+  beginBtn.addEventListener('click', newGame);
   nameInput.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') { e.preventDefault(); begin(); }
+    if (e.key === 'Enter') { e.preventDefault(); newGame(); }
   });
+
+  /* Don't lose progress on the way out — leaving via the Games link,
+     closing the tab, or the browser backgrounding us all count. */
+  window.addEventListener('pagehide', saveGame);
+  window.addEventListener('beforeunload', saveGame);
+  var backLink = document.querySelector('.back-link');
+  if (backLink) backLink.addEventListener('click', saveGame);
+
+  var existing = readSave();
+  if (existing) {
+    menuPanel.classList.remove('hide');
+    namePanel.classList.add('hide');
+    continueWho.textContent = (existing.name || 'HERO') + ' · ' + describeSave(existing);
+  }
 
   requestAnimationFrame(frame);
 })();
