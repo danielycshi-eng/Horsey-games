@@ -167,6 +167,22 @@ function attempt(startX, startTop, jumpAtX, useDouble, limit) {
   return { r: 'stuck' };
 }
 
+/* Same idea, but anchored to the platform's lip rather than to an
+   arbitrary start — on a wide platform the take-off point that matters
+   is hundreds of pixels from where you begin walking. */
+function canReachFrom(from, target, useDouble) {
+  var edge = from.x + from.w;
+  var startX = Math.max(from.x + 2, edge - 320);
+  for (var jx = edge - 150; jx <= edge + 6; jx += 6) {
+    var r = attempt(startX, from.y, jx, useDouble, 300);
+    if (r.r === 'landed' && r.y === target.y &&
+        r.x + SIZE > target.x && r.x < target.x + target.w) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /* Is there ANY take-off point that gets you from here onto `target`? */
 function canReach(startX, startTop, target, useDouble) {
   for (var jx = startX; jx <= startX + 320; jx += 8) {
@@ -479,14 +495,40 @@ step(40);
 ok('the cube chases you', Math.abs(level.enemy.x - p.x) < startGap,
    'gap went ' + Math.round(startGap) + ' -> ' + Math.round(Math.abs(level.enemy.x - p.x)));
 
-/* it must not wander out of the arena */
+/* every gap is a double jump */
 loadLevel(3); state.running = true;
-placeOn(300, GROUND);                      // stand far away, off its platform
-step(400);
-ok('the cube never leaves its arena',
-   level.enemy.x >= level.enemy.home.x - 1 &&
-   level.enemy.x + level.enemy.w <= level.enemy.home.x + level.enemy.home.w + 1,
-   'cube at ' + Math.round(level.enemy.x));
+var gapsOk = true, gapList = '';
+for (var i = 0; i < level.solids.length - 1; i++) {
+  var gp = level.solids[i + 1].x - (level.solids[i].x + level.solids[i].w);
+  gapList += gp + ' ';
+  if (gp !== 240) gapsOk = false;
+}
+ok('every gap is double-jump distance', gapsOk, 'gaps: ' + gapList);
+
+for (var i = 0; i < level.solids.length - 1; i++) {
+  loadLevel(3); state.running = true;
+  var from = level.solids[i], to = level.solids[i + 1];
+  ok('you can double jump gap ' + (i + 1), canReachFrom(from, to, true));
+}
+
+/* it has to be able to come and get you, wherever you are */
+loadLevel(3); state.running = true;
+placeOn(200, GROUND);                      // as far from its spawn as possible
+var spawnX = level.enemy.x;
+var reached = false, jumps = 0, wasAir = false;
+for (var i = 0; i < 900; i++) {
+  state.grab = 0;                          // don't let it kill us mid-measurement
+  p.x = 200; p.y = GROUND - SIZE;          // stand still and wait
+  p.vx = 0; p.vy = 0;
+  step(1);
+  if (!wasAir && !level.enemy.onGround) { jumps++; wasAir = true; }
+  if (level.enemy.onGround) wasAir = false;
+  if (Math.abs(level.enemy.x - p.x) < 60) { reached = true; break; }
+}
+ok('the cube jumps', jumps > 0, jumps + ' jumps');
+ok('the cube crosses the room to reach you', reached,
+   'started at ' + Math.round(spawnX) + ', got to ' + Math.round(level.enemy.x));
+ok('it never falls out of the world', level.enemy.y < level.fallY);
 
 /* two seconds of contact kills you */
 loadLevel(3); state.running = true;
@@ -538,9 +580,8 @@ step(60);                                  // let the key fall
 ok('the key lands on something solid',
    level.pickup.grounded === true && level.pickup.y + level.pickup.h <= GROUND + 1,
    'key at y=' + level.pickup.y);
-ok('the key drops inside the arena',
-   level.pickup.x > level.enemy.home.x &&
-   level.pickup.x < level.enemy.home.x + level.enemy.home.w,
+ok('the key drops somewhere in the room',
+   level.pickup.x > 0 && level.pickup.x < level.worldW,
    'key x=' + level.pickup.x);
 
 /* one swing must not count as three */
