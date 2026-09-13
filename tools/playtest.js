@@ -227,7 +227,7 @@ WScript.Echo('');
 WScript.Echo('[every room]');
 var NEEDED = ['name', 'worldW', 'start', 'fallY', 'solids', 'hazards',
               'saws', 'waves', 'enemies', 'pickups', 'door', 'arrows', 'hints',
-              'bombs', 'sinkers'];
+              'bombs', 'sinkers', 'orbs'];
 var missing = '';
 for (var li = 0; li < BUILDERS.length; li++) {
   var built = BUILDERS[li]();
@@ -1740,6 +1740,143 @@ step(6);
 ok('you do not start on something that is already sinking',
    Math.abs(level.sinkers[0].y - level.sinkers[0].home) < 1);
 
+/* ==================================================================
+   ROOM NINE — dash orbs over a bottomless drop
+   ================================================================== */
+WScript.Echo('');
+WScript.Echo('[room nine: the drop]');
+loadLevel(9); state.running = true;
+ok('the room loads', level.name === 'Room Nine');
+ok('the platforms start lower than Room Eight', level.sinkers[0].home > 400,
+   'top at ' + level.sinkers[0].home);
+ok('they fall faster than Room Eight', level.sinkers[0].rate > 58,
+   level.sinkers[0].rate + ' px/s');
+ok('and they never stop', level.sinkers[0].max > 1000,
+   'cap ' + level.sinkers[0].max);
+
+/* stay on one and it takes you into the void in about three seconds */
+var n1 = level.sinkers[0];
+placeOn(n1.x + n1.w - 40, n1.y);
+var secs = 0;
+for (var i = 0; i < 600; i++) {
+  step(1);
+  secs += 0.016;
+  if (p.dead) break;
+}
+ok('standing on one eventually kills you', p.dead === true);
+ok('it takes about three seconds', secs > 2.4 && secs < 4.2,
+   'died after ' + secs.toFixed(1) + 's');
+
+WScript.Echo('');
+WScript.Echo('[room nine: more spikes]');
+loadLevel(9); state.running = true;
+var spiked9 = 0;
+for (var i = 0; i < level.sinkers.length; i++) {
+  if (level.sinkers[i].spike) spiked9++;
+}
+ok('every sinking platform carries spikes', spiked9 === level.sinkers.length,
+   spiked9 + ' of ' + level.sinkers.length);
+
+WScript.Echo('');
+WScript.Echo('[room nine: the dash orb]');
+loadLevel(9); state.running = true;
+ok('there is an orb for every gap', level.orbs.length === 6,
+   level.orbs.length + ' orbs');
+ok('the first one is right at the start', level.orbs[0].x < 500,
+   'first orb at x=' + level.orbs[0].x);
+ok('it is signposted', level.hints.length > 0 &&
+   level.hints[0].small.indexOf('ORB') !== -1);
+
+/* the orb only fires when you're in it */
+placeOn(100, level.solids[0].y);
+tap('Space');
+ok('pressing jump away from an orb just jumps', p.dash === 0);
+
+loadLevel(9); state.running = true;
+var o9 = level.orbs[0];
+p.x = o9.x - SIZE / 2; p.y = o9.y - SIZE / 2;
+p.vx = 0; p.vy = 0; p.dead = false; p.onGround = false;
+release('Space'); tap('Space');
+ok('pressing jump inside an orb dashes instead', p.dash > 0,
+   'dash ' + p.dash.toFixed(2) + 's');
+ok('the orb goes on cooldown', o9.cool > 0);
+
+var dashFrom = p.x, heldLevel = p.y;
+for (var i = 0; i < 40 && p.dash > 0; i++) step(1);
+ok('the dash throws you a long way forward', p.x - dashFrom > 300,
+   'carried ' + Math.round(p.x - dashFrom) + 'px');
+ok('and it is flat - no falling during it',
+   Math.abs(p.y - heldLevel) < 6,
+   'drifted ' + Math.round(p.y - heldLevel) + 'px');
+
+WScript.Echo('');
+WScript.Echo('[room nine: the gaps need it]');
+loadLevel(9); state.running = true;
+var plats9 = [];
+for (var i = 0; i < level.solids.length; i++) plats9.push(level.solids[i]);
+plats9.sort(function (a, b) { return a.x - b.x; });
+
+var widest9 = 0, allWide = true;
+for (var i = 0; i < plats9.length - 1; i++) {
+  var g9 = plats9[i + 1].x - (plats9[i].x + plats9[i].w);
+  if (g9 > widest9) widest9 = g9;
+  if (g9 <= 349) allWide = false;
+}
+ok('every gap is past what any jump can reach', allWide,
+   'widest ' + widest9 + 'px, best double jump is 349px');
+
+/* prove it: no jump alone gets across the first gap */
+loadLevel(9); state.running = true;
+var jumpedIt = false;
+for (var m = 0; m < 4 && !jumpedIt; m++) {
+  var timing = [false, true, 150, 300][m];
+  for (var jx = plats9[0].x + plats9[0].w - 200;
+       jx <= plats9[0].x + plats9[0].w + 6 && !jumpedIt; jx += 8) {
+    loadLevel(9); state.running = true;
+    level.orbs.length = 0;                    // take the orbs away
+    var r9 = attempt(40, plats9[0].y, jx, timing, 300);
+    if (r9.r === 'landed' && r9.x > 600) jumpedIt = true;
+  }
+}
+ok('with the orbs gone the first gap is impossible', !jumpedIt);
+
+WScript.Echo('');
+WScript.Echo('[room nine: the saws at the end]');
+loadLevel(9); state.running = true;
+ok('there are saws between the last platforms', level.saws.length === 3,
+   level.saws.length + ' saws');
+
+var sawsLate = true;
+for (var i = 0; i < level.saws.length; i++) {
+  if (level.saws[i].x0 < level.worldW / 2) sawsLate = false;
+}
+ok('they are all in the back half of the room', sawsLate);
+
+var inGaps = true;
+for (var i = 0; i < level.saws.length; i++) {
+  var sx9 = level.saws[i].x0;
+  for (var k = 0; k < level.solids.length; k++) {
+    var s9 = level.solids[k];
+    if (sx9 > s9.x - 24 && sx9 < s9.x + s9.w + 24) inGaps = false;
+  }
+}
+ok('they hang in the gaps, not over the platforms', inGaps);
+
+/* the dash corridor must be blocked sometimes and clear at others */
+var corridor = level.orbs[0].y + SIZE / 2;
+for (var i = 0; i < level.saws.length; i++) {
+  var sw9 = level.saws[i];
+  var blockedEver = false, clearEver = false;
+  for (var t0 = 0; t0 < sw9.period; t0 += 0.02) {
+    state.t = t0;
+    var at9 = sawPos(sw9);
+    if (Math.abs(at9.y - corridor) < sw9.r + SIZE / 2) blockedEver = true;
+    else clearEver = true;
+  }
+  ok('saw ' + (i + 1) + ' blocks the dash line some of the time', blockedEver);
+  ok('saw ' + (i + 1) + ' leaves it clear some of the time', clearEver);
+}
+
 WScript.Echo('');
 WScript.Echo('[hitting something that has hold of you]');
 loadLevel(3); state.running = true;
@@ -1775,7 +1912,7 @@ ok('it remembers where you came from', returnToDone === BUILDERS.length - 1);
 state.picked = true;
 finishLevel();
 ok('finishing the tutorial returns you to that room screen',
-   doneTitle.textContent === 'ROOM EIGHT CLEARED',
+   doneTitle.textContent === 'ROOM NINE CLEARED',
    'showed "' + doneTitle.textContent + '"');
 ok('not back to room one',
    nextBtn.textContent !== 'Start the Game', nextBtn.textContent);
