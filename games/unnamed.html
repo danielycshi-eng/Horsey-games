@@ -26,7 +26,7 @@
 
     #game { display: block; width: 100%; height: 100%; }
 
-    /* ---- name-your-character screen ---- */
+    /* ---- full-screen menus ---- */
     .screen {
       position: absolute;
       inset: 0;
@@ -53,12 +53,20 @@
       50%      { transform: scale(1.04); opacity: 1; }
     }
 
+    .done-title {
+      font-size: clamp(1.6rem, 5vw, 2.6rem);
+      font-weight: 800;
+      letter-spacing: 6px;
+      color: #4ec3ff;
+      text-shadow: 0 0 22px rgba(78, 195, 255, 0.6);
+    }
+
     .screen p {
       color: #8ea7d6;
       letter-spacing: 4px;
       text-transform: uppercase;
       font-size: 0.8rem;
-      margin: 0.2rem 0 1.6rem;
+      margin: 0.5rem 0 1.4rem;
     }
 
     #nameInput {
@@ -89,7 +97,7 @@
 
     .tbtn {
       margin-top: 1.1rem;
-      width: min(78vw, 260px);
+      width: min(78vw, 280px);
       padding: 0.65rem 1.4rem;
       font-family: inherit;
       font-size: 1rem;
@@ -146,6 +154,15 @@
 
       <div class="keys">One life. No checkpoints. Mind the gap.</div>
     </div>
+
+    <div class="screen hidden" id="doneScreen">
+      <div class="done-title" id="doneTitle">TUTORIAL COMPLETE</div>
+      <p id="doneSub">Nice work</p>
+      <div class="panel">
+        <button id="nextBtn" class="tbtn" type="button">Start the Game</button>
+        <button id="againBtn" class="tbtn ghost" type="button">Restart the Tutorial</button>
+      </div>
+    </div>
   </div>
 
 <script>
@@ -156,63 +173,115 @@
   var ctx    = canvas.getContext('2d');
   var W = 960, H = 540;
 
-  /* ============================================================
-     WORLD
-     Ground sits at y=440. The tutorial fits in one screen height,
-     so the camera only ever scrolls sideways.
-     ============================================================ */
   var GROUND = 440;
-  var WORLD_W = 3720;
-  var START_X = 120;
-
-  /* Each lesson gets its own stretch of ground with nothing else in it,
-     so you never meet two new ideas at the same time. */
-  var solids = [
-    { x: -60,  y: GROUND, w: 1160, h: 160 },   // ground A: 0 .. 1100
-    { x: 820,  y: 370,    w: 140,  h: 70  },   // the ledge (teaches JUMP)
-    { x: 1320, y: GROUND, w: 2400, h: 160 },   // ground B: 1320 .. 3720
-    { x: 2800, y: 386,    w: 70,   h: 54  }    // apple pedestal
-  ];
-
-  var barrier = { x: 2250, y: 120, w: 26, h: 320, open: false };
-
-  var pit = { x: 1100, w: 220 };               // one jump clears 176px, so this needs two
-
-  var scarecrow = { x: 1800, y: 352, w: 46, h: 88, hp: 3, maxHp: 3, regen: 0, flash: 0, shake: 0, everBroken: false };
-  var goal      = { x: 3450, y: 300, w: 60, h: 140 };
-
-  /* Where the apple lives when nobody is carrying it. Respawn puts it back
-     here — keep it a named spot so it can never drift out of sync again. */
-  var APPLE_HOME = { x: 2822, y: 358 };
-  var apple = { x: APPLE_HOME.x, y: APPLE_HOME.y, w: 26, h: 28, held: false, vy: 0, grounded: true };
-
-  var hints = [
-    { x: 300,  y: 360, big: '←   →',   small: 'MOVE' },
-    { x: 760,  y: 286, big: 'SPACE',             small: 'JUMP' },
-    { x: 1210, y: 200, big: 'SPACE IN THE AIR',  small: 'DOUBLE JUMP' },
-    { x: 1720, y: 292, big: 'I',                 small: 'ATTACK' },
-    { x: 2720, y: 286, big: 'B',                 small: 'PICK UP / DROP' }
-  ];
+  var SIZE   = 30;               // a square cube, like a proper icon
 
   /* ============================================================
-     PLAYER
+     PHYSICS
      ============================================================ */
   var GRAVITY  = 2000;
   var MOVE_SPD = 275;
   var ACCEL    = 2800;
   var FRICTION = 3000;
-  var JUMP_V   = 640;
-  var JUMP_V2  = 700;          // the second jump kicks a little harder
+  var JUMP_V   = 640;            // one jump: 102px up, 176px across
+  var JUMP_V2  = 700;            // the second jump kicks a little harder
   var MAX_FALL = 950;
   var COYOTE   = 0.10;
   var BUFFER   = 0.12;
   var ATK_TIME = 0.20;
   var ATK_COOL = 0.32;
 
-  var SIZE = 30;                 // a square cube, like a proper icon
+  /* ============================================================
+     LEVELS
+
+     Each builder returns a fresh, self-contained room. Nothing is
+     shared between them, so reloading a level is a clean slate.
+
+     solids  - you stand on these
+     hazards - touching one kills you
+     pickup  - the one thing you can carry (B), with a home to
+               return to
+     door    - walk into it carrying `needs` and the room is over
+     fallY   - fall past this and you're gone
+     ============================================================ */
+  function buildTutorial() {
+    return {
+      name: 'Tutorial',
+      worldW: 3720,
+      start: { x: 120, y: GROUND - SIZE },
+      fallY: 520,
+
+      /* Each lesson gets its own stretch of ground with nothing else
+         in it, so you never meet two new ideas at the same time. */
+      solids: [
+        { x: -60,  y: GROUND, w: 1160, h: 160 },   // ground A: 0 .. 1100
+        { x: 820,  y: 370,    w: 140,  h: 70  },   // the ledge (teaches JUMP)
+        { x: 1320, y: GROUND, w: 2400, h: 160 },   // ground B: 1320 .. 3720
+        { x: 2800, y: 386,    w: 70,   h: 54  }    // apple pedestal
+      ],
+      hazards: [ { x: 1100, y: 486, w: 220, h: 54 } ],
+      pit: { x: 1100, w: 220 },                    // 220px: too far for one jump
+
+      scarecrow: { x: 1800, y: 352, w: 46, h: 88, hp: 3, maxHp: 3,
+                   regen: 0, flash: 0, shake: 0, everBroken: false },
+      barrier: { x: 2250, y: 120, w: 26, h: 320, open: false },
+
+      pickup: { kind: 'apple', x: 2822, y: 358, w: 26, h: 28,
+                home: { x: 2822, y: 358 } },
+      door: { x: 3450, y: 300, w: 60, h: 140, needs: 'apple' },
+
+      arrows: [[1180, 330], [1250, 268]],
+      hints: [
+        { x: 300,  y: 360, big: '←   →',   small: 'MOVE' },
+        { x: 760,  y: 286, big: 'SPACE',             small: 'JUMP' },
+        { x: 1210, y: 200, big: 'SPACE IN THE AIR',  small: 'DOUBLE JUMP' },
+        { x: 1720, y: 292, big: 'I',                 small: 'ATTACK' },
+        { x: 2720, y: 286, big: 'B',                 small: 'PICK UP / DROP' }
+      ]
+    };
+  }
+
+  /* Room One. Four beats, each one jump harder than the last:
+     a single jump up, a double jump higher, a double jump over
+     spikes, then the key and the door out. */
+  function buildRoomOne() {
+    return {
+      name: 'Room One',
+      worldW: 2700,
+      start: { x: 80, y: GROUND - SIZE },
+      fallY: 620,
+
+      solids: [
+        { x: -60,  y: GROUND, w: 660, h: 160 },   // start ground: 0 .. 600
+        { x: 700,  y: 370,    w: 140, h: 26 },    // 1. one jump up (70 high)
+        { x: 960,  y: 240,    w: 140, h: 26 },    // 2. 130 higher - needs two
+        { x: 1180, y: 300,    w: 140, h: 26 },    // the run-up
+        { x: 1320, y: 300,    w: 240, h: 26 },    // 3. the spiked stretch
+        { x: 1560, y: 300,    w: 200, h: 26 },    // landing
+        { x: 1860, y: 300,    w: 260, h: 26 },    // 4. the key
+        { x: 2200, y: 300,    w: 340, h: 26 }     // the door
+      ],
+      hazards: [ { x: 1326, y: 272, w: 228, h: 28 } ],
+
+      pickup: { kind: 'key', x: 1960, y: 274, w: 30, h: 26,
+                home: { x: 1960, y: 274 } },
+      door: { x: 2300, y: 170, w: 60, h: 130, needs: 'key' },
+
+      arrows: [],
+      hints: [ { x: 1975, y: 216, big: 'B', small: 'TAKE THE KEY' } ]
+    };
+  }
+
+  var BUILDERS = [buildTutorial, buildRoomOne];
+
+  /* ============================================================
+     STATE
+     ============================================================ */
+  var level = null;
+  var levelIndex = 0;
 
   var p = {
-    x: START_X, y: GROUND - SIZE, w: SIZE, h: SIZE,
+    x: 0, y: 0, w: SIZE, h: SIZE,
     vx: 0, vy: 0,
     onGround: false, airJumps: 1,
     face: 1, rot: 0,
@@ -226,35 +295,74 @@
     running: false,
     coyote: 0,
     buffer: 0,
-    applePicked: false,
+    picked: false,          // the room's pickup has been in your hands
     complete: false,
-    completeT: 0,
     flash: 0,
     saveT: 0,
+    titleT: 0,              // room-name card countdown
     t: 0
   };
 
   var cam = { x: 0 };
   var particles = [];
 
-  /* The last patch of solid ground you stood on. This is what gets saved,
-     so Continue never drops you into the pit or into mid-air. */
-  var safeSpot = { x: START_X, y: GROUND - SIZE };
+  /* The last patch of solid ground you stood on. This is what gets
+     saved, so Continue can never drop you into a pit or mid-air. */
+  var safeSpot = { x: 0, y: 0 };
+
+  /* ============================================================
+     LOADING A ROOM
+     ============================================================ */
+  function loadLevel(i) {
+    levelIndex = i;
+    level = BUILDERS[i]();
+
+    p.x = level.start.x;
+    p.y = level.start.y;
+    p.vx = 0; p.vy = 0;
+    p.rot = 0;
+    p.onGround = false;
+    p.airJumps = 1;
+    p.face = 1;
+    p.atk = 0; p.cool = 0; p.swung = false;
+    p.holding = null;
+    p.dead = false; p.deadT = 0;
+
+    state.picked = false;
+    state.complete = false;
+    state.coyote = 0;
+    state.buffer = 0;
+    state.saveT = 0;
+    state.titleT = 2.4;
+
+    safeSpot.x = level.start.x;
+    safeSpot.y = level.start.y;
+
+    particles.length = 0;
+    cam.x = Math.max(0, Math.min(level.worldW - W, p.x + p.w / 2 - W / 2));
+  }
+
+  /* No checkpoints: dying rewinds the whole room. */
+  function respawn() {
+    loadLevel(levelIndex);
+  }
 
   /* ============================================================
      SAVE / CONTINUE
      Progress lives in localStorage so closing the tab doesn't cost
-     you the tutorial. (The passcode gate deliberately remembers
+     you your run. (The passcode gate deliberately remembers
      nothing — that's separate, and stays that way.)
      ============================================================ */
-  var SAVE_KEY = 'unnamed_save_v1';
+  var SAVE_KEY = 'unnamed_save_v2';
 
   function readSave() {
     try {
       var raw = localStorage.getItem(SAVE_KEY);
       if (!raw) return null;
       var s = JSON.parse(raw);
-      if (!s || s.v !== 1 || typeof s.x !== 'number' || typeof s.y !== 'number') return null;
+      if (!s || s.v !== 2) return null;
+      if (typeof s.x !== 'number' || typeof s.y !== 'number') return null;
+      if (typeof s.level !== 'number' || !BUILDERS[s.level]) return null;
       return s;
     } catch (e) {
       return null;
@@ -262,16 +370,16 @@
   }
 
   function saveGame() {
-    if (!state.running) return;
+    if (!state.running || !level) return;
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify({
-        v: 1,
+        v: 2,
         name: state.name,
+        level: levelIndex,
         x: safeSpot.x,
         y: safeSpot.y,
-        barrierOpen: barrier.open,
-        applePicked: state.applePicked,
-        complete: state.complete
+        picked: state.picked,
+        barrierOpen: !!(level.barrier && level.barrier.open)
       }));
     } catch (e) {}
   }
@@ -279,7 +387,6 @@
   function clearSave() {
     try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
   }
-
 
   /* ============================================================
      INPUT
@@ -312,20 +419,24 @@
   }
 
   function toggleCarry() {
+    var item = level.pickup;
+    if (!item) return;
+
     if (p.holding) {
-      apple.x = p.x + p.w / 2 - apple.w / 2 + p.face * 18;
-      apple.y = p.y;
-      apple.held = false;
-      apple.grounded = false;
-      apple.vy = 0;
+      item.x = p.x + p.w / 2 - item.w / 2 + p.face * 18;
+      item.y = p.y;
+      item.held = false;
+      item.grounded = false;
+      item.vy = 0;
       p.holding = null;
       return;
     }
-    if (!apple.held && near(p, apple, 58)) {
-      apple.held = true;
-      p.holding = 'apple';
-      state.applePicked = true;
-      burst(apple.x + 13, apple.y + 14, '#ff5f7e', 12);
+    if (!item.held && near(p, item, 58)) {
+      item.held = true;
+      p.holding = item.kind;
+      state.picked = true;
+      burst(item.x + item.w / 2, item.y + item.h / 2,
+            item.kind === 'key' ? '#ffd166' : '#ff5f7e', 12);
       saveGame();
     }
   }
@@ -340,11 +451,15 @@
      PHYSICS
      ============================================================ */
   function activeSolids() {
-    return barrier.open ? solids : solids.concat([barrier]);
+    if (level.barrier && !level.barrier.open) {
+      return level.solids.concat([level.barrier]);
+    }
+    return level.solids;
   }
 
   function hits(a, b) {
-    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    return a.x < b.x + b.w && a.x + a.w > b.x &&
+           a.y < b.y + b.h && a.y + a.h > b.y;
   }
 
   function movePlayer(dt) {
@@ -378,38 +493,22 @@
     }
 
     if (p.x < 0) { p.x = 0; p.vx = 0; }
-    if (p.x + p.w > WORLD_W) { p.x = WORLD_W - p.w; p.vx = 0; }
+    if (p.x + p.w > level.worldW) { p.x = level.worldW - p.w; p.vx = 0; }
   }
 
   function jump(isDouble) {
     p.vy = isDouble ? -JUMP_V2 : -JUMP_V;
     p.onGround = false;
-    burst(p.x + p.w / 2, p.y + p.h, isDouble ? '#c7a0ff' : '#4ec3ff', isDouble ? 14 : 7, 0.6);
+    burst(p.x + p.w / 2, p.y + p.h,
+          isDouble ? '#c7a0ff' : '#4ec3ff', isDouble ? 14 : 7, 0.6);
   }
 
-  /* ============================================================
-     DEATH / RESPAWN
-     ============================================================ */
   function die() {
     if (p.dead) return;
     p.dead = true;
     p.deadT = 0;
     state.flash = 1;
     burst(p.x + p.w / 2, p.y + p.h / 2, '#ff5f7e', 34, 1.4);
-  }
-
-  function respawn() {
-    p.x = START_X;
-    p.y = GROUND - SIZE;
-    p.vx = 0; p.vy = 0;
-    p.rot = 0;
-    p.dead = false;
-    p.atk = 0; p.cool = 0;
-    p.holding = null;
-    apple.held = false;
-    apple.grounded = true;
-    apple.x = APPLE_HOME.x;
-    apple.y = APPLE_HOME.y;
   }
 
   /* ============================================================
@@ -438,6 +537,7 @@
   function update(dt) {
     state.t += dt;
     if (state.flash > 0) state.flash = Math.max(0, state.flash - dt * 2.5);
+    if (state.titleT > 0) state.titleT = Math.max(0, state.titleT - dt);
 
     var i;
     for (i = particles.length - 1; i >= 0; i--) {
@@ -449,14 +549,16 @@
       q.y += q.vy * dt;
     }
 
-    // the scarecrow grows back so you can keep practising on it
-    if (scarecrow.flash > 0) scarecrow.flash -= dt;
-    if (scarecrow.shake > 0) scarecrow.shake -= dt;
-    if (scarecrow.hp <= 0) {
-      scarecrow.regen -= dt;
-      if (scarecrow.regen <= 0) {
-        scarecrow.hp = scarecrow.maxHp;
-        burst(scarecrow.x + scarecrow.w / 2, scarecrow.y + scarecrow.h / 2, '#f9c74f', 16);
+    var sc = level.scarecrow;
+    if (sc) {
+      if (sc.flash > 0) sc.flash -= dt;
+      if (sc.shake > 0) sc.shake -= dt;
+      if (sc.hp <= 0) {
+        sc.regen -= dt;
+        if (sc.regen <= 0) {
+          sc.hp = sc.maxHp;
+          burst(sc.x + sc.w / 2, sc.y + sc.h / 2, '#f9c74f', 16);
+        }
       }
     }
 
@@ -466,7 +568,7 @@
       return;
     }
 
-    if (state.complete) { state.completeT += dt; return; }
+    if (state.complete) return;
 
     /* --- horizontal --- */
     var want = 0;
@@ -508,7 +610,7 @@
 
     movePlayer(dt);
 
-    /* --- remember where it was safe to stand, and checkpoint the save --- */
+    /* --- remember safe ground, and checkpoint the save --- */
     if (p.onGround) { safeSpot.x = p.x; safeSpot.y = p.y; }
     state.saveT += dt;
     if (state.saveT > 2) { state.saveT = 0; saveGame(); }
@@ -522,19 +624,22 @@
     if (p.atk > 0) {
       p.atk -= dt;
       if (!p.swung) {
-        var hb = { x: p.face > 0 ? p.x + p.w - 4 : p.x - 34, y: p.y - 2, w: 38, h: p.h + 4 };
-        if (scarecrow.hp > 0 && hits(hb, scarecrow)) {
-          scarecrow.hp--;
-          scarecrow.flash = 0.16;
-          scarecrow.shake = 0.28;
-          burst(scarecrow.x + scarecrow.w / 2, scarecrow.y + 30, '#f9c74f', 14);
-          if (scarecrow.hp <= 0) {
-            scarecrow.regen = 2.6;
-            burst(scarecrow.x + scarecrow.w / 2, scarecrow.y + 40, '#ffd166', 26, 1.3);
-            if (!scarecrow.everBroken) {
-              scarecrow.everBroken = true;
-              barrier.open = true;
-              burst(barrier.x + 13, barrier.y + 160, '#4ec3ff', 40, 1.6);
+        var hb = { x: p.face > 0 ? p.x + p.w - 4 : p.x - 34,
+                   y: p.y - 2, w: 38, h: p.h + 4 };
+        if (sc && sc.hp > 0 && hits(hb, sc)) {
+          sc.hp--;
+          sc.flash = 0.16;
+          sc.shake = 0.28;
+          burst(sc.x + sc.w / 2, sc.y + 30, '#f9c74f', 14);
+          if (sc.hp <= 0) {
+            sc.regen = 2.6;
+            burst(sc.x + sc.w / 2, sc.y + 40, '#ffd166', 26, 1.3);
+            if (!sc.everBroken) {
+              sc.everBroken = true;
+              if (level.barrier) {
+                level.barrier.open = true;
+                burst(level.barrier.x + 13, level.barrier.y + 160, '#4ec3ff', 40, 1.6);
+              }
               saveGame();
             }
           }
@@ -543,33 +648,52 @@
       }
     }
 
-    /* --- carried / dropped apple --- */
-    if (apple.held) {
-      apple.x = p.x + p.w / 2 - apple.w / 2;
-      apple.y = p.y - apple.h - 8;
-    } else if (!apple.grounded) {
-      apple.vy += GRAVITY * dt;
-      apple.y += apple.vy * dt;
-      var floor = GROUND - apple.h;
-      if (apple.y >= floor) { apple.y = floor; apple.vy = 0; apple.grounded = true; }
+    /* --- the carried / dropped item --- */
+    var item = level.pickup;
+    if (item) {
+      if (item.held) {
+        item.x = p.x + p.w / 2 - item.w / 2;
+        item.y = p.y - item.h - 8;
+      } else if (item.grounded === false) {
+        item.vy += GRAVITY * dt;
+        item.y += item.vy * dt;
+        var floor = restingFloor(item);
+        if (item.y >= floor) { item.y = floor; item.vy = 0; item.grounded = true; }
+      }
     }
 
-    /* --- the pit --- */
-    if (p.y > 520) die();
+    /* --- hazards --- */
+    for (i = 0; i < level.hazards.length; i++) {
+      if (hits(p, level.hazards[i])) { die(); return; }
+    }
+    if (p.y > level.fallY) { die(); return; }
 
-    /* --- the door at the end --- */
-    if (state.applePicked && hits(p, goal)) {
+    /* --- the door out --- */
+    if (state.picked && hits(p, level.door)) {
       state.complete = true;
-      state.completeT = 0;
-      burst(goal.x + 30, goal.y + 70, '#4ec3ff', 50, 1.8);
+      burst(level.door.x + level.door.w / 2, level.door.y + 70, '#4ec3ff', 50, 1.8);
       saveGame();
+      finishLevel();
+      return;
     }
 
     /* --- camera --- */
     var target = p.x + p.w / 2 - W / 2;
     if (target < 0) target = 0;
-    if (target > WORLD_W - W) target = WORLD_W - W;
+    if (target > level.worldW - W) target = level.worldW - W;
     cam.x += (target - cam.x) * Math.min(1, dt * 9);
+  }
+
+  /* Where a dropped item lands: the top of whatever is under it. */
+  function restingFloor(item) {
+    var best = level.fallY;
+    for (var i = 0; i < level.solids.length; i++) {
+      var s = level.solids[i];
+      if (item.x + item.w < s.x || item.x > s.x + s.w) continue;
+      if (s.y < item.y + item.h) continue;
+      if (s.y - item.h < best) best = s.y - item.h;
+    }
+    return best;
   }
 
   /* ============================================================
@@ -608,7 +732,8 @@
     ctx.save();
     ctx.globalAlpha = 0.16;
     for (var i = 0; i < 6; i++) {
-      var bx = ((i * 430 - cam.x * 0.18) % (W + 300) + (W + 300)) % (W + 300) - 150;
+      var span = W + 300;
+      var bx = ((i * 430 - cam.x * 0.18) % span + span) % span - 150;
       var by = 70 + (i % 3) * 120 + Math.sin(state.t * 0.6 + i) * 10;
       ctx.fillStyle = i % 2 ? '#4e7fff' : '#c7a0ff';
       ctx.save();
@@ -624,7 +749,7 @@
     ctx.fillStyle = '#16224d';
     ctx.fillRect(s.x, s.y, s.w, s.h);
     ctx.fillStyle = 'rgba(78,195,255,0.10)';
-    ctx.fillRect(s.x, s.y, s.w, 10);
+    ctx.fillRect(s.x, s.y, s.w, Math.min(10, s.h));
     ctx.fillStyle = '#4ec3ff';
     ctx.shadowColor = '#4ec3ff';
     ctx.shadowBlur = 14;
@@ -632,15 +757,19 @@
     ctx.shadowBlur = 0;
   }
 
-  function drawSpikes() {
+  function drawHazard(hz) {
     ctx.fillStyle = '#ff5f7e';
     ctx.shadowColor = '#ff5f7e';
     ctx.shadowBlur = 16;
-    for (var x = pit.x + 6; x < pit.x + pit.w - 20; x += 34) {
+    var step = 34;
+    var n = Math.max(1, Math.floor(hz.w / step));
+    var wide = hz.w / n;
+    for (var i = 0; i < n; i++) {
+      var x = hz.x + i * wide;
       ctx.beginPath();
-      ctx.moveTo(x, 540);
-      ctx.lineTo(x + 17, 486);
-      ctx.lineTo(x + 34, 540);
+      ctx.moveTo(x, hz.y + hz.h);
+      ctx.lineTo(x + wide / 2, hz.y);
+      ctx.lineTo(x + wide, hz.y + hz.h);
       ctx.closePath();
       ctx.fill();
     }
@@ -648,12 +777,12 @@
   }
 
   function drawArrows() {
-    // the two chevrons over the pit that hint at jump number two
+    var marks = level.arrows;
+    if (!marks || !marks.length) return;
     var pulse = 0.55 + Math.sin(state.t * 4) * 0.35;
-    var marks = [[1180, 330], [1250, 268]];
     for (var i = 0; i < marks.length; i++) {
       ctx.save();
-      ctx.globalAlpha = pulse * (i === 1 ? 1 : 0.7);
+      ctx.globalAlpha = pulse * (i === marks.length - 1 ? 1 : 0.7);
       ctx.strokeStyle = '#c7a0ff';
       ctx.shadowColor = '#c7a0ff';
       ctx.shadowBlur = 14;
@@ -670,29 +799,28 @@
   }
 
   function drawBarrier() {
-    if (barrier.open) return;
+    var b = level.barrier;
+    if (!b || b.open) return;
     var pulse = 0.7 + Math.sin(state.t * 6) * 0.3;
     ctx.save();
     ctx.globalAlpha = pulse;
     ctx.fillStyle = '#ff5f7e';
     ctx.shadowColor = '#ff5f7e';
     ctx.shadowBlur = 22;
-    ctx.fillRect(barrier.x, barrier.y, barrier.w, barrier.h);
+    ctx.fillRect(b.x, b.y, b.w, b.h);
     ctx.restore();
     ctx.fillStyle = 'rgba(255,255,255,0.3)';
-    for (var y = barrier.y; y < barrier.y + barrier.h; y += 26) {
-      ctx.fillRect(barrier.x, y, barrier.w, 3);
-    }
+    for (var y = b.y; y < b.y + b.h; y += 26) ctx.fillRect(b.x, y, b.w, 3);
   }
 
   function drawScarecrow() {
-    var s = scarecrow;
+    var s = level.scarecrow;
+    if (!s) return;
     ctx.save();
     var jitter = s.shake > 0 ? (Math.random() - 0.5) * 7 : 0;
     ctx.translate(s.x + jitter, s.y);
 
     if (s.hp <= 0) {
-      // knocked flat: the bare post, waiting to grow back
       ctx.globalAlpha = 0.45;
       ctx.fillStyle = '#6b4b2a';
       ctx.fillRect(19, 48, 8, 40);
@@ -701,12 +829,11 @@
     }
 
     if (s.flash > 0) { ctx.shadowColor = '#ffffff'; ctx.shadowBlur = 20; }
-
     ctx.fillStyle = '#6b4b2a';
-    ctx.fillRect(19, 26, 8, 62);                      // post
-    ctx.fillRect(2, 36, 42, 7);                       // crossbar
+    ctx.fillRect(19, 26, 8, 62);
+    ctx.fillRect(2, 36, 42, 7);
     ctx.fillStyle = s.flash > 0 ? '#ffffff' : '#f9c74f';
-    rr(8, 0, 30, 30, 6); ctx.fill();                  // burlap head
+    rr(8, 0, 30, 30, 6); ctx.fill();
     ctx.fillStyle = '#3a2a12';
     ctx.fillRect(15, 10, 5, 5);
     ctx.fillRect(27, 10, 5, 5);
@@ -724,49 +851,78 @@
     }
   }
 
-  function drawApple() {
-    var bob = apple.held ? 0 : Math.sin(state.t * 3) * 3;
+  function drawPickup() {
+    var it = level.pickup;
+    if (!it) return;
+    var bob = it.held ? 0 : Math.sin(state.t * 3) * 3;
     ctx.save();
-    ctx.translate(apple.x + 13, apple.y + 15 + bob);
-    ctx.fillStyle = '#ff5f7e';
-    ctx.shadowColor = '#ff5f7e';
-    ctx.shadowBlur = 14;
-    ctx.beginPath();
-    ctx.arc(0, 2, 12, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = '#7bffb2';
-    ctx.beginPath();
-    ctx.moveTo(2, -10); ctx.lineTo(14, -16); ctx.lineTo(5, -4);
-    ctx.closePath(); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.4)';
-    ctx.beginPath(); ctx.arc(-5, -2, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.translate(it.x + it.w / 2, it.y + it.h / 2 + bob);
+
+    if (it.kind === 'key') {
+      ctx.fillStyle = '#ffd166';
+      ctx.shadowColor = '#ffd166';
+      ctx.shadowBlur = 16;
+      ctx.beginPath();                         // bow
+      ctx.arc(-7, 0, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#05070f';
+      ctx.beginPath();
+      ctx.arc(-7, 0, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffd166';
+      ctx.fillRect(-1, -3, 16, 6);             // shaft
+      ctx.fillRect(9, 3, 4, 6);                // teeth
+      ctx.fillRect(14, 3, 3, 5);
+    } else {
+      ctx.fillStyle = '#ff5f7e';
+      ctx.shadowColor = '#ff5f7e';
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.arc(0, 2, 12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#7bffb2';
+      ctx.beginPath();
+      ctx.moveTo(2, -10); ctx.lineTo(14, -16); ctx.lineTo(5, -4);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.beginPath(); ctx.arc(-5, -2, 3, 0, Math.PI * 2); ctx.fill();
+    }
     ctx.restore();
   }
 
-  function drawGoal() {
-    var ready = state.applePicked;
+  function drawDoor() {
+    var d = level.door;
+    var ready = state.picked;
     var pulse = 0.6 + Math.sin(state.t * 3) * 0.25;
     ctx.save();
     ctx.globalAlpha = ready ? pulse + 0.25 : 0.3;
     ctx.fillStyle = ready ? '#4ec3ff' : '#3d4a72';
     if (ready) { ctx.shadowColor = '#4ec3ff'; ctx.shadowBlur = 30; }
-    rr(goal.x, goal.y, goal.w, goal.h, 10);
+    rr(d.x, d.y, d.w, d.h, 10);
     ctx.fill();
     ctx.restore();
+
     ctx.fillStyle = 'rgba(5,7,15,0.75)';
-    rr(goal.x + 10, goal.y + 12, goal.w - 20, goal.h - 24, 6);
+    rr(d.x + 10, d.y + 12, d.w - 20, d.h - 24, 6);
     ctx.fill();
-    ctx.fillStyle = ready ? '#bff0ff' : '#56658c';
-    ctx.font = 'bold 26px sans-serif';
+
     ctx.textAlign = 'center';
-    ctx.fillText('?', goal.x + goal.w / 2, goal.y + goal.h / 2 + 9);
+    ctx.fillStyle = ready ? '#bff0ff' : '#56658c';
+    if (d.needs === 'key' && !ready) {
+      ctx.font = 'bold 20px sans-serif';       // a keyhole, while locked
+      ctx.fillText('⚿', d.x + d.w / 2, d.y + d.h / 2 + 8);
+    } else {
+      ctx.font = 'bold 26px sans-serif';
+      ctx.fillText('?', d.x + d.w / 2, d.y + d.h / 2 + 9);
+    }
   }
 
   function drawHints() {
     ctx.textAlign = 'center';
-    for (var i = 0; i < hints.length; i++) {
-      var h = hints[i];
+    for (var i = 0; i < level.hints.length; i++) {
+      var h = level.hints[i];
       var dist = Math.abs((p.x + p.w / 2) - h.x);
       var a = dist > 480 ? 0 : dist > 330 ? (480 - dist) / 150 : 1;
       if (a <= 0) continue;
@@ -850,57 +1006,50 @@
       ctx.textAlign = 'right';
       ctx.fillStyle = '#8ea7d6';
       ctx.font = '12px sans-serif';
-      ctx.fillText('CARRYING: APPLE  —  PRESS B TO DROP', W - 18, 30);
+      ctx.fillText('CARRYING: ' + p.holding.toUpperCase() + '  —  PRESS B TO DROP', W - 18, 30);
     }
     ctx.restore();
+
+    /* room name card, on the way in */
+    if (state.titleT > 0) {
+      var a = Math.min(1, state.titleT / 0.6);
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#4ec3ff';
+      ctx.shadowColor = '#4ec3ff';
+      ctx.shadowBlur = 20;
+      ctx.font = 'bold 30px sans-serif';
+      ctx.fillText(level.name.toUpperCase(), W / 2, 92);
+      ctx.restore();
+    }
 
     if (state.flash > 0) {
       ctx.fillStyle = 'rgba(255,95,126,' + (state.flash * 0.45) + ')';
       ctx.fillRect(0, 0, W, H);
     }
-
-    if (state.complete) {
-      var a = Math.min(1, state.completeT * 1.6);
-      ctx.fillStyle = 'rgba(5,7,15,' + (a * 0.86) + ')';
-      ctx.fillRect(0, 0, W, H);
-      ctx.globalAlpha = a;
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#4ec3ff';
-      ctx.shadowColor = '#4ec3ff';
-      ctx.shadowBlur = 24;
-      ctx.font = 'bold 42px sans-serif';
-      ctx.fillText('TUTORIAL COMPLETE', W / 2, H / 2 - 16);
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = '#8ea7d6';
-      ctx.font = '15px sans-serif';
-      ctx.fillText('Nice work, ' + state.name + '. The story starts here.', W / 2, H / 2 + 20);
-      ctx.fillStyle = '#56658c';
-      ctx.font = '12px sans-serif';
-      ctx.fillText('TO BE CONTINUED', W / 2, H / 2 + 58);
-      ctx.globalAlpha = 1;
-    }
   }
 
   function draw() {
     drawBackground();
+    if (!level) return;
 
     ctx.save();
     ctx.translate(-Math.round(cam.x), 0);
 
-    drawSpikes();
     var i;
-    for (i = 0; i < solids.length; i++) drawSolid(solids[i]);
+    for (i = 0; i < level.hazards.length; i++) drawHazard(level.hazards[i]);
+    for (i = 0; i < level.solids.length; i++) drawSolid(level.solids[i]);
     drawBarrier();
     drawArrows();
-    drawGoal();
+    drawDoor();
     drawScarecrow();
-    drawApple();
+    drawPickup();
     drawHints();
     drawPlayer();
     drawParticles();
 
     ctx.restore();
-
     drawHUD();
   }
 
@@ -911,14 +1060,14 @@
   function frame(now) {
     var dt = last ? (now - last) / 1000 : 0;
     last = now;
-    if (dt > 0.05) dt = 0.05;      // a stutter shouldn't teleport anyone into the pit
-    if (state.running) update(dt);
+    if (dt > 0.05) dt = 0.05;   // a stutter shouldn't teleport anyone into a pit
+    if (state.running && level) update(dt);
     draw();
     requestAnimationFrame(frame);
   }
 
   /* ============================================================
-     START
+     MENUS
      ============================================================ */
   var titleScreen = document.getElementById('titleScreen');
   var menuPanel   = document.getElementById('menuPanel');
@@ -928,25 +1077,17 @@
   var nameInput   = document.getElementById('nameInput');
   var beginBtn    = document.getElementById('beginBtn');
 
-  /* Wipe every trace of a previous run. */
-  function resetWorld() {
-    respawn();
-    barrier.open = false;
-    scarecrow.everBroken = false;
-    scarecrow.hp = scarecrow.maxHp;
-    scarecrow.regen = 0;
-    state.applePicked = false;
-    state.complete = false;
-    state.completeT = 0;
-    state.saveT = 0;
-    safeSpot.x = START_X;
-    safeSpot.y = GROUND - SIZE;
-    particles.length = 0;
-    cam.x = 0;
-  }
+  var doneScreen  = document.getElementById('doneScreen');
+  var doneTitle   = document.getElementById('doneTitle');
+  var doneSub     = document.getElementById('doneSub');
+  var nextBtn     = document.getElementById('nextBtn');
+  var againBtn    = document.getElementById('againBtn');
+
+  var onNext = null, onAgain = null;
 
   function enterGame() {
     titleScreen.classList.add('hidden');
+    doneScreen.classList.add('hidden');
     state.running = true;
     saveGame();
   }
@@ -955,23 +1096,25 @@
     var n = nameInput.value.trim();
     state.name = n ? n : 'HERO';
     clearSave();
-    resetWorld();
+    loadLevel(0);
     enterGame();
   }
 
   function continueGame() {
     var s = readSave();
     if (!s) { showNamePanel(); return; }
-    resetWorld();
+    loadLevel(s.level);
     state.name = s.name || 'HERO';
-    barrier.open = !!s.barrierOpen;
-    scarecrow.everBroken = !!s.barrierOpen;
-    state.applePicked = !!s.applePicked;
+    state.picked = !!s.picked;
+    if (level.barrier && s.barrierOpen) {
+      level.barrier.open = true;
+      if (level.scarecrow) level.scarecrow.everBroken = true;
+    }
     p.x = s.x;
     p.y = s.y;
     safeSpot.x = s.x;
     safeSpot.y = s.y;
-    cam.x = Math.max(0, Math.min(WORLD_W - W, p.x + p.w / 2 - W / 2));
+    cam.x = Math.max(0, Math.min(level.worldW - W, p.x + p.w / 2 - W / 2));
     enterGame();
   }
 
@@ -982,12 +1125,45 @@
     nameInput.focus();
   }
 
+  /* Reaching a door ends the room and offers the two ways onward. */
+  function finishLevel() {
+    var finished = levelIndex;
+    state.running = false;
+
+    if (finished === 0) {
+      doneTitle.textContent = 'TUTORIAL COMPLETE';
+      doneSub.textContent = 'Nice work, ' + state.name;
+      nextBtn.textContent = 'Start the Game';
+      againBtn.textContent = 'Restart the Tutorial';
+      onNext  = function () { loadLevel(1); enterGame(); };
+      onAgain = function () { loadLevel(0); enterGame(); };
+    } else if (finished === BUILDERS.length - 1) {
+      doneTitle.textContent = level.name.toUpperCase() + ' CLEARED';
+      doneSub.textContent = 'To be continued';
+      nextBtn.textContent = 'Play It Again';
+      againBtn.textContent = 'Back to the Tutorial';
+      onNext  = function () { loadLevel(finished); enterGame(); };
+      onAgain = function () { loadLevel(0); enterGame(); };
+    } else {
+      doneTitle.textContent = level.name.toUpperCase() + ' CLEARED';
+      doneSub.textContent = 'Onward';
+      nextBtn.textContent = 'Next Room';
+      againBtn.textContent = 'Play It Again';
+      onNext  = function () { loadLevel(finished + 1); enterGame(); };
+      onAgain = function () { loadLevel(finished); enterGame(); };
+    }
+
+    doneScreen.classList.remove('hidden');
+  }
+
   continueBtn.addEventListener('click', continueGame);
   newBtn.addEventListener('click', showNamePanel);
   beginBtn.addEventListener('click', newGame);
   nameInput.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') { e.preventDefault(); newGame(); }
   });
+  nextBtn.addEventListener('click', function () { if (onNext) onNext(); });
+  againBtn.addEventListener('click', function () { if (onAgain) onAgain(); });
 
   /* Don't lose progress on the way out — leaving via the Games link,
      closing the tab, or the browser backgrounding us all count. */
@@ -1002,6 +1178,8 @@
     namePanel.classList.add('hide');
   }
 
+  loadLevel(0);
+  state.titleT = 0;
   requestAnimationFrame(frame);
 })();
 </script>

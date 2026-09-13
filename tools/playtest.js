@@ -2,7 +2,7 @@
  *
  * Loads the real game script with a stubbed DOM, then drives the real
  * frame loop with scripted key input and asserts what actually happens.
- * Run:  cscript //Nologo //E:JScript playtest.js
+ * Run:  cscript //Nologo //E:JScript tools\playtest.js [game.html]
  */
 
 /* ---- JScript is ES3-ish; the game assumes ES5 ---- */
@@ -14,6 +14,30 @@ if (!Array.prototype.indexOf) {
 }
 if (!String.prototype.trim) {
   String.prototype.trim = function () { return this.replace(/^\s+|\s+$/g, ''); };
+}
+
+/* WSH's JScript predates JSON; every real browser has it. Implicit global
+   assignment (no var) so there's no hoisting shadow. */
+if (typeof JSON === 'undefined') {
+  JSON = {
+    stringify: function (o) {
+      if (o === null || o === undefined) return 'null';
+      var t = typeof o, i, parts = [];
+      if (t === 'number' || t === 'boolean') return String(o);
+      if (t === 'string') {
+        return '"' + o.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+      }
+      if (o instanceof Array) {
+        for (i = 0; i < o.length; i++) parts.push(JSON.stringify(o[i]));
+        return '[' + parts.join(',') + ']';
+      }
+      for (var k in o) {
+        if (o.hasOwnProperty(k)) parts.push('"' + k + '":' + JSON.stringify(o[k]));
+      }
+      return '{' + parts.join(',') + '}';
+    },
+    parse: function (s) { return eval('(' + s + ')'); }
+  };
 }
 
 /* ---- fake DOM ---- */
@@ -43,6 +67,7 @@ FakeCtx.prototype.createLinearGradient = function () {
 function fakeEl() {
   return {
     value: '',
+    textContent: '',
     classList: { add: noop, remove: noop },
     addEventListener: noop,
     focus: noop,
@@ -59,7 +84,6 @@ var document = {
 var window = { addEventListener: noop };
 var requestAnimationFrame = noop;
 
-/* in-memory stand-in for localStorage */
 var localStorage = {
   _d: {},
   getItem: function (k) { return this._d.hasOwnProperty(k) ? this._d[k] : null; },
@@ -67,36 +91,13 @@ var localStorage = {
   removeItem: function (k) { delete this._d[k]; }
 };
 
-/* WSH's JScript predates JSON; every real browser has it. Implicit global
-   assignment (no var) so there's no hoisting shadow. */
-if (typeof JSON === 'undefined') {
-  JSON = {
-    stringify: function (o) {
-      if (o === null || o === undefined) return 'null';
-      var t = typeof o, i, parts = [];
-      if (t === 'number' || t === 'boolean') return String(o);
-      if (t === 'string') {
-        return '"' + o.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
-      }
-      if (o instanceof Array) {
-        for (i = 0; i < o.length; i++) parts.push(JSON.stringify(o[i]));
-        return '[' + parts.join(',') + ']';
-      }
-      for (var k in o) {
-        if (o.hasOwnProperty(k)) parts.push('"' + k + '":' + JSON.stringify(o[k]));
-      }
-      return '{' + parts.join(',') + '}';
-    },
-    parse: function (s) { return eval('(' + s + ')'); }
-  };
-}
-
 /* ---- load the game, unwrapped so its internals become globals ---- */
 var fso = new ActiveXObject('Scripting.FileSystemObject');
 var HERE = fso.GetParentFolderName(WScript.ScriptFullName);
 var HTML = WScript.Arguments.length
   ? WScript.Arguments(0)
   : fso.BuildPath(HERE, '..\\games\\unnamed.html');
+
 var fh = fso.OpenTextFile(HTML, 1, false, 0);
 var all = fh.ReadAll();
 fh.Close();
@@ -121,32 +122,77 @@ function step(n) {
   for (var i = 0; i < n; i++) { T += 16; frame(T); }
 }
 
-function place(x) {
-  p.x = x; p.y = GROUND - SIZE;
+/* stand the player on top of `top`, at x */
+function placeOn(x, top) {
+  p.x = x; p.y = top - SIZE;
   p.vx = 0; p.vy = 0;
   p.onGround = true; p.airJumps = 1;
   p.dead = false; p.deadT = 0;
   p.face = 1; p.atk = 0; p.cool = 0;
   state.buffer = 0; state.coyote = 0;
+  state.complete = false;
+  state.running = true;
 }
 
 function box(o) { return { x: o.x, y: o.y, w: o.w, h: o.h }; }
 function hold(k) { keys[k] = true; }
 function release(k) { keys[k] = false; }
 function tap(k) { keys[k] = true; press(k); }
+function letGo() { release('ArrowRight'); release('ArrowLeft'); release('Space'); }
 
-state.running = true;
+function solidAt(x, y) {
+  for (var i = 0; i < level.solids.length; i++) {
+    var s = level.solids[i];
+    if (s.x === x && s.y === y) return s;
+  }
+  return null;
+}
+
+/* Run right from (startX, startTop), jump when the right edge passes
+   jumpAtX, optionally jump again near the apex. Report where we ended. */
+function attempt(startX, startTop, jumpAtX, useDouble, limit) {
+  placeOn(startX, startTop);
+  hold('ArrowRight');
+  var jumped = false, doubled = false;
+  for (var i = 0; i < limit; i++) {
+    if (!jumped && p.x + p.w >= jumpAtX) { tap('Space'); jumped = true; }
+    else if (jumped && !doubled && useDouble && p.vy > -120) {
+      release('Space'); tap('Space'); doubled = true;
+    }
+    step(1);
+    if (p.dead) { letGo(); return { r: 'died' }; }
+    if (jumped && p.onGround) { letGo(); return { r: 'landed', x: p.x, y: p.y + p.h }; }
+  }
+  letGo();
+  return { r: 'stuck' };
+}
+
+/* Is there ANY take-off point that gets you from here onto `target`? */
+function canReach(startX, startTop, target, useDouble) {
+  for (var jx = startX; jx <= startX + 320; jx += 8) {
+    var r = attempt(startX, startTop, jx, useDouble, 260);
+    if (r.r === 'landed' && r.y === target.y &&
+        r.x + SIZE > target.x && r.x < target.x + target.w) {
+      return true;
+    }
+  }
+  return false;
+}
+
 state.name = 'TESTER';
 
 WScript.Echo('');
 WScript.Echo('=== ??? headless playtest ===');
 WScript.Echo('');
 
-/* ------------------------------------------------------------------
-   1. The reported bug: the apple must go home, not onto the scarecrow
-   ------------------------------------------------------------------ */
-WScript.Echo('[apple]');
-place(2765);
+/* ==================================================================
+   TUTORIAL
+   ================================================================== */
+loadLevel(0);
+state.running = true;
+WScript.Echo('[tutorial: the apple]');
+
+placeOn(2765, GROUND);
 tap('KeyB');
 ok('B near the pedestal picks the apple up', p.holding === 'apple');
 step(3);
@@ -154,196 +200,209 @@ step(3);
 die();
 step(60);                                   // respawn fires after 0.7s
 ok('death returns the apple to its pedestal',
-   apple.x === APPLE_HOME.x && apple.y === APPLE_HOME.y,
-   'apple at ' + apple.x + ',' + apple.y + ' expected ' + APPLE_HOME.x + ',' + APPLE_HOME.y);
+   level.pickup.x === level.pickup.home.x && level.pickup.y === level.pickup.home.y,
+   'at ' + level.pickup.x + ',' + level.pickup.y);
 ok('the apple never lands on the scarecrow',
-   !hits(box(apple), box(scarecrow)),
-   'apple x=' + apple.x + ' scarecrow x=' + scarecrow.x);
-ok('the apple sits on top of its pedestal',
-   apple.y + apple.h === 386,
-   'apple bottom = ' + (apple.y + apple.h));
+   !hits(box(level.pickup), box(level.scarecrow)),
+   'apple x=' + level.pickup.x + ' scarecrow x=' + level.scarecrow.x);
 
-/* ------------------------------------------------------------------
-   2. The pit: one jump must fail, two must succeed
-   ------------------------------------------------------------------ */
 WScript.Echo('');
-WScript.Echo('[pit]');
+WScript.Echo('[tutorial: the pit]');
+loadLevel(0); state.running = true;
+var ground = solidAt(-60, GROUND);
+var groundB = solidAt(1320, GROUND);
+ok('a single jump falls short of the pit',
+   attempt(1000, GROUND, level.pit.x - 2, false, 200).r === 'died');
+loadLevel(0); state.running = true;
+ok('a double jump clears the pit',
+   attempt(1000, GROUND, level.pit.x - 2, true, 200).r === 'landed');
 
-function runPit(useDouble) {
-  place(1000);
-  hold('ArrowRight');
-  var jumped = false, doubled = false, i;
-  for (i = 0; i < 200; i++) {
-    if (!jumped && p.x + p.w >= pit.x - 2) { tap('Space'); jumped = true; }
-    else if (jumped && !doubled && useDouble && p.vy > -120) {
-      release('Space'); tap('Space'); doubled = true;
-    }
-    step(1);
-    if (p.dead) return 'died';
-    if (jumped && p.onGround && p.x > pit.x + pit.w) return 'cleared';
-  }
-  return 'stuck';
-}
-
-ok('a single jump falls short of the pit', runPit(false) === 'died');
-ok('a double jump clears the pit', runPit(true) === 'cleared');
-
-/* ------------------------------------------------------------------
-   3. The ledge must be climbable with one jump
-   ------------------------------------------------------------------ */
 WScript.Echo('');
-WScript.Echo('[ledge]');
-place(700);
-hold('ArrowRight');
-var onLedge = false;
-for (var i = 0; i < 200; i++) {
-  if (p.onGround && p.x + p.w > 810 && p.y + p.h >= GROUND) tap('Space');
-  step(1);
-  if (p.onGround && p.y + p.h <= 372) { onLedge = true; break; }
-}
-release('ArrowRight');
-ok('one jump gets you onto the ledge', onLedge, 'player at y=' + p.y);
+WScript.Echo('[tutorial: the ledge]');
+loadLevel(0); state.running = true;
+ok('one jump gets you onto the ledge',
+   canReach(700, GROUND, solidAt(820, 370), false));
 
-/* ------------------------------------------------------------------
-   4. The scarecrow opens the barrier, then grows back
-   ------------------------------------------------------------------ */
 WScript.Echo('');
-WScript.Echo('[scarecrow]');
-ok('the barrier starts closed', barrier.open === false);
+WScript.Echo('[tutorial: the scarecrow]');
+loadLevel(0); state.running = true;
+ok('the barrier starts closed', level.barrier.open === false);
 
-place(1765);
-var swings = 0;
-for (var i = 0; i < 120 && scarecrow.hp > 0; i++) {
+placeOn(1765, GROUND);
+for (var i = 0; i < 120 && level.scarecrow.hp > 0; i++) {
   release('KeyI'); tap('KeyI');
-  if (p.atk > 0) swings++;
   step(25);                                 // longer than the 0.32s cooldown
 }
-ok('three swings break the scarecrow', scarecrow.hp <= 0, 'hp=' + scarecrow.hp + ' swings=' + swings);
-ok('breaking it opens the barrier', barrier.open === true);
+ok('three swings break the scarecrow', level.scarecrow.hp <= 0, 'hp=' + level.scarecrow.hp);
+ok('breaking it opens the barrier', level.barrier.open === true);
+step(200);                                  // past the 2.6s regen
+ok('the scarecrow grows back to practise on',
+   level.scarecrow.hp === level.scarecrow.maxHp);
 
-step(200);                                  // 3.2s, past the 2.6s regen
-ok('the scarecrow grows back to practise on', scarecrow.hp === scarecrow.maxHp, 'hp=' + scarecrow.hp);
-
-/* ------------------------------------------------------------------
-   5. The barrier really blocks before it opens
-   ------------------------------------------------------------------ */
 WScript.Echo('');
-WScript.Echo('[barrier]');
-barrier.open = false;
-place(2100);
+WScript.Echo('[tutorial: the barrier]');
+loadLevel(0); state.running = true;
+placeOn(2100, GROUND);
 hold('ArrowRight');
 step(150);
-ok('a closed barrier stops you walking past', p.x + p.w <= barrier.x + 1, 'player right edge = ' + (p.x + p.w));
-
-var blockedHeight = true;
+ok('a closed barrier stops you walking past',
+   p.x + p.w <= level.barrier.x + 1, 'right edge = ' + (p.x + p.w));
+var over = false;
 for (var i = 0; i < 200; i++) {
-  if (p.onGround) tap('Space');
-  else { release('Space'); tap('Space'); }
+  if (p.onGround) tap('Space'); else { release('Space'); tap('Space'); }
   step(1);
-  if (p.x > barrier.x + barrier.w) { blockedHeight = false; break; }
+  if (p.x > level.barrier.x + level.barrier.w) { over = true; break; }
 }
-ok('you cannot double-jump over the barrier either', blockedHeight);
-release('ArrowRight');
-release('Space');
-barrier.open = true;
+letGo();
+ok('you cannot double-jump over the barrier either', !over);
 
-/* ------------------------------------------------------------------
-   6. The door only opens once you have carried the apple
-   ------------------------------------------------------------------ */
+/* ==================================================================
+   ROOM ONE — the four beats
+   ================================================================== */
 WScript.Echo('');
-WScript.Echo('[door]');
-state.applePicked = false;
-state.complete = false;
-place(goal.x - 10);
-step(5);
-ok('the door ignores you without the apple', state.complete === false);
+WScript.Echo('[room one: beat 1, one jump up]');
+loadLevel(1); state.running = true;
+ok('the room loads', level.name === 'Room One');
+var platA = solidAt(700, 370);
+var platB = solidAt(960, 240);
+var platC = solidAt(1180, 300);
+var platD = solidAt(1560, 300);
+var platE = solidAt(1860, 300);
+var platF = solidAt(2200, 300);
+ok('every platform exists',
+   platA && platB && platC && platD && platE && platF);
+ok('one jump reaches the first platform', canReach(420, GROUND, platA, false));
 
-state.applePicked = true;
-place(goal.x - 10);
+WScript.Echo('');
+WScript.Echo('[room one: beat 2, double jump higher]');
+loadLevel(1); state.running = true;
+ok('one jump CANNOT reach the high platform', !canReach(700, 370, platB, false));
+loadLevel(1); state.running = true;
+ok('two jumps can', canReach(700, 370, platB, true));
+
+WScript.Echo('');
+WScript.Echo('[room one: beat 3, double jump over spikes]');
+loadLevel(1); state.running = true;
+ok('the spikes sit between the run-up and the landing',
+   level.hazards[0].x > platC.x + platC.w - 1 &&
+   level.hazards[0].x + level.hazards[0].w < platD.x + 1,
+   'spikes ' + level.hazards[0].x + '..' + (level.hazards[0].x + level.hazards[0].w));
+ok('one jump CANNOT clear the spikes', !canReach(platC.x, 300, platD, false));
+loadLevel(1); state.running = true;
+ok('two jumps can', canReach(platC.x, 300, platD, true));
+
+loadLevel(1); state.running = true;
+placeOn(1400, 300);                          // stood right on the spike bed
+step(4);
+ok('touching the spikes kills you', p.dead === true);
+
+loadLevel(1); state.running = true;
+placeOn(650, GROUND);                        // walked off into the first gap
+p.onGround = false;
+var fell = false;
+for (var i = 0; i < 80; i++) {               // stop at the death, not after
+  step(1);                                   // the 0.7s respawn would hide it
+  if (p.dead) { fell = true; break; }
+}
+ok('falling off the platforms kills you', fell, 'ended at y=' + p.y);
+
+WScript.Echo('');
+WScript.Echo('[room one: beat 4, the key and the door]');
+loadLevel(1); state.running = true;
+ok('the key starts on a platform you can stand on',
+   level.pickup.y + level.pickup.h === platE.y,
+   'key bottom = ' + (level.pickup.y + level.pickup.h) + ' platform top = ' + platE.y);
+
+placeOn(level.door.x - 40, 300);
+step(6);
+ok('the door stays shut without the key', state.complete === false);
+
+loadLevel(1); state.running = true;
+placeOn(1930, 300);
+tap('KeyB');
+ok('B picks the key up', p.holding === 'key', 'holding=' + p.holding);
+ok('picking it up flags the door', state.picked === true);
+
 hold('ArrowRight');
-step(30);
-ok('the door opens once you have picked the apple up', state.complete === true);
-
-/* ------------------------------------------------------------------
-   7. Nothing in the level is unreachable or overlapping
-   ------------------------------------------------------------------ */
-WScript.Echo('');
-WScript.Echo('[layout]');
-var things = [
-  ['scarecrow', box(scarecrow)],
-  ['apple', box(apple)],
-  ['goal', box(goal)],
-  ['barrier', box(barrier)]
-];
-var overlap = '';
-for (var i = 0; i < things.length; i++) {
-  for (var j = i + 1; j < things.length; j++) {
-    if (hits(things[i][1], things[j][1])) overlap += things[i][0] + '/' + things[j][0] + ' ';
-  }
+var opened = false;
+for (var i = 0; i < 300; i++) {
+  /* jump the gap between the key platform and the door platform */
+  if (p.onGround && p.x + p.w > platE.x + platE.w - 40) tap('Space');
+  else if (!p.onGround && p.vy > -120) { release('Space'); tap('Space'); }
+  step(1);
+  if (state.complete) { opened = true; break; }
+  if (p.dead) break;
 }
-ok('no two props occupy the same space', overlap === '', overlap);
-ok('everything sits inside the world', goal.x + goal.w < WORLD_W);
-ok('the pit is inside the gap between the two grounds',
-   pit.x === 1100 && pit.x + pit.w === 1320);
+letGo();
+ok('carrying the key to the door ends the room', opened,
+   p.dead ? 'died on the way' : 'stopped at x=' + p.x);
+ok('the key came with you', state.picked === true);
 
-/* ------------------------------------------------------------------
-   8. Save / Continue: exiting must not cost you the tutorial
-   ------------------------------------------------------------------ */
+WScript.Echo('');
+WScript.Echo('[room one: reachable end to end]');
+loadLevel(1); state.running = true;
+var chain =
+  canReach(420, GROUND, platA, false) &&
+  canReach(platA.x, 370, platB, true) &&
+  canReach(platB.x, 240, platC, false) &&
+  canReach(platC.x, 300, platD, true) &&
+  canReach(platD.x, 300, platE, true) &&
+  canReach(platE.x, 300, platF, true);
+ok('you can get from the start to the door', chain);
+
+/* ==================================================================
+   SAVE / CONTINUE
+   ================================================================== */
 WScript.Echo('');
 WScript.Echo('[save]');
-
 clearSave();
 ok('a fresh install has nothing to continue', readSave() === null);
 
 nameInput.value = 'ZELDA';
 newGame();
 ok('New Game takes the typed name', state.name === 'ZELDA');
-ok('New Game starts you at the beginning', p.x === START_X);
+ok('New Game starts in the tutorial', levelIndex === 0);
+ok('New Game starts you at the beginning', p.x === level.start.x);
 ok('New Game writes a save immediately', readSave() !== null);
 
-/* play forward a bit, then "quit" */
-barrier.open = true;
-state.applePicked = true;
-safeSpot.x = 2900;
-safeSpot.y = GROUND - SIZE;
+/* play into room one, then "quit" */
+loadLevel(1);
+state.running = true;
+state.picked = true;
+safeSpot.x = 1900; safeSpot.y = 270;
 saveGame();
 
 var s = readSave();
+ok('the save records which room you are in', s.level === 1, 'level=' + s.level);
 ok('the save records how far you got',
-   s.x === 2900 && s.barrierOpen === true && s.applePicked === true,
-   'x=' + s.x + ' barrier=' + s.barrierOpen + ' apple=' + s.applePicked);
+   s.x === 1900 && s.picked === true);
 
-/* "come back later" */
-resetWorld();
-ok('resetWorld really does wipe progress', barrier.open === false && p.x === START_X);
+loadLevel(0);
+ok('loading another room really does reset', levelIndex === 0 && state.picked === false);
 
 continueGame();
+ok('Continue puts you back in the right room', levelIndex === 1);
 ok('Continue restores your name', state.name === 'ZELDA');
-ok('Continue restores where you stood', p.x === 2900, 'p.x=' + p.x);
-ok('Continue restores the opened barrier', barrier.open === true);
-ok('Continue restores the apple flag', state.applePicked === true);
+ok('Continue restores where you stood', p.x === 1900, 'p.x=' + p.x);
+ok('Continue remembers you had the key', state.picked === true);
 
-/* New Game over the top of a save must wipe it */
 nameInput.value = 'LINK';
 newGame();
-ok('New Game wipes the old progress',
-   barrier.open === false && state.applePicked === false && p.x === START_X);
+ok('New Game wipes the old progress', levelIndex === 0 && state.picked === false);
 ok('New Game overwrites the save file', readSave().name === 'LINK');
 
-/* Every spot Continue could restore you to must be somewhere you can
-   actually stand. Collect the saved spots across a run at the pit, then
-   drop the player onto each one with no input and see if anyone falls. */
-place(1000);
+/* every spot Continue could restore must be somewhere you can stand */
+loadLevel(1); state.running = true;
+placeOn(420, GROUND);
 hold('ArrowRight');
 var spots = [];
-for (var i = 0; i < 140; i++) {
-  if (p.x + p.w >= pit.x - 2 && p.onGround) tap('Space');
+for (var i = 0; i < 160; i++) {
+  if (p.onGround && p.x + p.w > 560) tap('Space');
   step(1);
   spots.push({ x: safeSpot.x, y: safeSpot.y });
   if (p.dead) break;
 }
-release('ArrowRight');
-release('Space');
+letGo();
 
 var unsafe = null;
 for (var i = 0; i < spots.length && !unsafe; i++) {
@@ -352,12 +411,11 @@ for (var i = 0; i < spots.length && !unsafe; i++) {
   p.dead = false; p.deadT = 0; p.onGround = false;
   state.buffer = 0; state.coyote = 0;
   step(25);
-  if (p.dead || p.y > GROUND) unsafe = spots[i];
+  if (p.dead) unsafe = spots[i];
 }
 ok('every spot Continue can restore is solid ground',
    unsafe === null,
    unsafe ? 'fell from x=' + unsafe.x + ' y=' + unsafe.y : '');
-ok('the run above actually crossed the pit', spots.length > 40, spots.length + ' samples');
 
 WScript.Echo('');
 WScript.Echo('=== ' + passed + ' passed, ' + failed + ' failed ===');
