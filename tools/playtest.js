@@ -157,13 +157,17 @@ function solidAt(x, y) {
 
 /* Run right from (startX, startTop), jump when the right edge passes
    jumpAtX, optionally jump again near the apex. Report where we ended. */
+/* `useDouble` may be true (spend the second jump near the apex) or a vy
+   threshold — delaying it until you are falling carries you much further.
+   Measured: apex timing reaches 288px, a late second jump up to 349px. */
 function attempt(startX, startTop, jumpAtX, useDouble, limit) {
+  var thresh = (typeof useDouble === 'number') ? useDouble : -120;
   placeOn(startX, startTop);
   hold('ArrowRight');
   var jumped = false, doubled = false;
   for (var i = 0; i < limit; i++) {
     if (!jumped && p.x + p.w >= jumpAtX) { tap('Space'); jumped = true; }
-    else if (jumped && !doubled && useDouble && p.vy > -120) {
+    else if (jumped && !doubled && useDouble && p.vy > thresh) {
       release('Space'); tap('Space'); doubled = true;
     }
     step(1);
@@ -180,11 +184,14 @@ function attempt(startX, startTop, jumpAtX, useDouble, limit) {
 function canReachFrom(from, target, useDouble) {
   var edge = from.x + from.w;
   var startX = Math.max(from.x + 2, edge - 320);
-  for (var jx = edge - 150; jx <= edge + 6; jx += 6) {
-    var r = attempt(startX, from.y, jx, useDouble, 300);
-    if (r.r === 'landed' && r.y === target.y &&
-        r.x + SIZE > target.x && r.x < target.x + target.w) {
-      return true;
+  var timings = useDouble ? [true, 300] : [false];
+  for (var m = 0; m < timings.length; m++) {
+    for (var jx = edge - 150; jx <= edge + 6; jx += 6) {
+      var r = attempt(startX, from.y, jx, timings[m], 300);
+      if (r.r === 'landed' && r.y === target.y &&
+          r.x + SIZE > target.x && r.x < target.x + target.w) {
+        return true;
+      }
     }
   }
   return false;
@@ -192,11 +199,14 @@ function canReachFrom(from, target, useDouble) {
 
 /* Is there ANY take-off point that gets you from here onto `target`? */
 function canReach(startX, startTop, target, useDouble) {
-  for (var jx = startX; jx <= startX + 320; jx += 8) {
-    var r = attempt(startX, startTop, jx, useDouble, 260);
-    if (r.r === 'landed' && r.y === target.y &&
-        r.x + SIZE > target.x && r.x < target.x + target.w) {
-      return true;
+  var timings = useDouble ? [true, 300] : [false];
+  for (var m = 0; m < timings.length; m++) {
+    for (var jx = startX; jx <= startX + 320; jx += 8) {
+      var r = attempt(startX, startTop, jx, timings[m], 260);
+      if (r.r === 'landed' && r.y === target.y &&
+          r.x + SIZE > target.x && r.x < target.x + target.w) {
+        return true;
+      }
     }
   }
   return false;
@@ -217,7 +227,7 @@ WScript.Echo('');
 WScript.Echo('[every room]');
 var NEEDED = ['name', 'worldW', 'start', 'fallY', 'solids', 'hazards',
               'saws', 'waves', 'enemies', 'pickups', 'door', 'arrows', 'hints',
-              'bombs'];
+              'bombs', 'sinkers'];
 var missing = '';
 for (var li = 0; li < BUILDERS.length; li++) {
   var built = BUILDERS[li]();
@@ -955,8 +965,9 @@ for (var t0 = 0; t0 < 3.0; t0 += 0.02) {
   }
 }
 ok('no raised stretch is longer than a double jump',
-   longestUp <= 300,
-   'longest raised run ' + longestUp + 'px, a double jump carries ~368px');
+   longestUp <= 280,
+   'longest raised run ' + longestUp +
+   'px; a double jump carries 288px at apex timing, 349px at the latest');
 
 /* every bed must telegraph before it fires, with enough notice to move */
 var wv1 = level.waves[5];
@@ -1498,6 +1509,181 @@ ok('it drops bombs roughly a third of the time',
 ok('it sometimes combines two attacks', combos > 0,
    combos + ' combos in ' + rounds);
 
+/* ==================================================================
+   ROOM EIGHT — sinking platforms
+   ================================================================== */
+WScript.Echo('');
+WScript.Echo('[room eight: the sinking platforms]');
+loadLevel(8); state.running = true;
+ok('the room loads', level.name === 'Room Eight');
+ok('there are platforms that sink', level.sinkers.length >= 6,
+   level.sinkers.length + ' sinkers');
+ok('nothing to land on if you fall', level.fallY > GROUND);
+
+/* standing on one takes it down */
+var s1 = level.sinkers[0];
+var startY = s1.y;
+placeOn(s1.x + 60, s1.y);
+step(90);
+ok('it sinks while you stand on it', s1.y > startY + 15,
+   'dropped ' + Math.round(s1.y - startY) + 'px in 1.4s');
+ok('but slowly', s1.y - startY < 70,
+   'dropped ' + Math.round(s1.y - startY) + 'px in 1.4s');
+ok('and it carries you down with it',
+   Math.abs((p.y + p.h) - s1.y) < 3,
+   'player bottom ' + Math.round(p.y + p.h) + ', platform ' + Math.round(s1.y));
+
+/* it stops sinking rather than dropping forever */
+step(900);
+ok('it bottoms out instead of falling forever', s1.y <= s1.home + s1.max + 1,
+   'ended ' + Math.round(s1.y - s1.home) + 'px down, cap ' + s1.max);
+
+/* step off and it comes back */
+loadLevel(8); state.running = true;
+s1 = level.sinkers[0];
+placeOn(s1.x + 60, s1.y);
+step(120);
+var sunkTo = s1.y;
+p.x = -20; p.y = level.start.y;               // back on the start ledge
+p.onGround = true;
+step(200);
+ok('it rises again once you are off', s1.y < sunkTo - 10,
+   'came back ' + Math.round(sunkTo - s1.y) + 'px');
+ok('it never rises above where it started', s1.y >= s1.home - 0.5);
+
+WScript.Echo('');
+WScript.Echo('[room eight: the chains]');
+loadLevel(8); state.running = true;
+var chained = [];
+for (var i = 0; i < level.sinkers.length; i++) {
+  if (level.sinkers[i].chain) chained.push(level.sinkers[i]);
+}
+ok('some platforms share a chain', chained.length >= 4,
+   chained.length + ' chained');
+
+var chA = [];
+for (var i = 0; i < level.sinkers.length; i++) {
+  if (level.sinkers[i].chain === 'a') chA.push(level.sinkers[i]);
+}
+ok('chain a has more than one platform', chA.length >= 2);
+
+var partnerStart = chA[1].y;
+placeOn(chA[0].x + 60, chA[0].y);             // stand on the FIRST one only
+step(90);
+ok('standing on one drags its partner down too',
+   chA[1].y > partnerStart + 15,
+   'partner dropped ' + Math.round(chA[1].y - partnerStart) + 'px');
+ok('they go down together',
+   Math.abs((chA[0].y - chA[0].home) - (chA[1].y - chA[1].home)) < 2,
+   'one at ' + Math.round(chA[0].y - chA[0].home) +
+   ', other at ' + Math.round(chA[1].y - chA[1].home));
+
+/* an unchained platform must NOT move when you stand elsewhere */
+var lone = null;
+for (var i = 0; i < level.sinkers.length; i++) {
+  if (!level.sinkers[i].chain) { lone = level.sinkers[i]; break; }
+}
+ok('unchained platforms stay put', Math.abs(lone.y - lone.home) < 1,
+   'moved ' + Math.round(lone.y - lone.home) + 'px');
+
+WScript.Echo('');
+WScript.Echo('[room eight: the spiked ones]');
+loadLevel(8); state.running = true;
+ok('a couple of platforms are spiked', level.hazards.length >= 2);
+
+var spikedSolids = [];
+for (var i = 0; i < level.solids.length; i++) {
+  if (level.solids[i].spiked) spikedSolids.push(level.solids[i]);
+}
+ok('the spikes sit on top of real platforms', spikedSolids.length >= 2);
+var capsMatch = true;
+for (var i = 0; i < spikedSolids.length; i++) {
+  var found = false;
+  for (var k = 0; k < level.hazards.length; k++) {
+    var hz = level.hazards[k];
+    if (hz.x === spikedSolids[i].x && hz.y + hz.h === spikedSolids[i].y) found = true;
+  }
+  if (!found) capsMatch = false;
+}
+ok('every spiked platform has its spikes where it is', capsMatch);
+
+/* landing on one kills you */
+placeOn(spikedSolids[0].x + 40, spikedSolids[0].y);
+step(4);
+ok('landing on a spiked platform kills you', p.dead === true);
+
+/* spiked ones do not sink - they are only ever something to clear */
+loadLevel(8); state.running = true;
+var sp8 = null;
+for (var i = 0; i < level.sinkers.length; i++) {
+  if (level.sinkers[i].spiked) sp8 = level.sinkers[i];
+}
+ok('spiked platforms are not sinkers', sp8 === null);
+
+WScript.Echo('');
+WScript.Echo('[room eight: getting across]');
+loadLevel(8); state.running = true;
+
+/* every gap you must cross, in order, and what it takes */
+var run8 = [];
+for (var i = 0; i < level.solids.length; i++) run8.push(level.solids[i]);
+run8.sort(function (a, b) { return a.x - b.x; });
+
+var landables = [];
+for (var i = 0; i < run8.length; i++) {
+  if (!run8[i].spiked) landables.push(run8[i]);
+}
+/* These platforms sink as you walk them, so every take-off attempt has
+   to start from a fresh room. Reusing one leaves it lower each try and
+   eventually reports a perfectly good jump as impossible. */
+function solidByX(x) {
+  for (var k = 0; k < level.solids.length; k++) {
+    if (level.solids[k].x === x) return level.solids[k];
+  }
+  return null;
+}
+
+function canReachSinking(fromX, toX, useDouble) {
+  loadLevel(8);
+  var edge = solidByX(fromX).x + solidByX(fromX).w;
+  for (var jx = edge - 150; jx <= edge + 6; jx += 6) {
+    loadLevel(8);
+    state.running = true;
+    var a = solidByX(fromX), b = solidByX(toX);
+    var sx = Math.max(a.x + 2, edge - 320);
+    var r = attempt(sx, a.y, jx, useDouble, 300);
+    if (r.r === 'landed' && Math.abs(r.y - b.y) < 2 &&
+        r.x + SIZE > b.x && r.x < b.x + b.w) {
+      return true;
+    }
+  }
+  return false;
+}
+
+var allReach = true, worstGap = 0, gapReport = '', needDouble = 0;
+for (var i = 0; i < landables.length - 1; i++) {
+  var gp = landables[i + 1].x - (landables[i].x + landables[i].w);
+  if (gp > worstGap) worstGap = gp;
+  gapReport += Math.round(gp) + ' ';
+  if (gp > 176) needDouble++;
+  if (!canReachSinking(landables[i].x, landables[i + 1].x, true)) {
+    allReach = false;
+    gapReport += '(FAILED here) ';
+  }
+}
+ok('every platform can be reached from the one before it', allReach,
+   'gaps: ' + gapReport);
+ok('most of them need a double jump',
+   needDouble >= landables.length - 2,
+   needDouble + ' of ' + (landables.length - 1) +
+   ' gaps are past a single jump (176px)');
+
+loadLevel(8); state.running = true;
+placeOn(level.start.x, level.start.y + SIZE);
+step(6);
+ok('you do not start on something that is already sinking',
+   Math.abs(level.sinkers[0].y - level.sinkers[0].home) < 1);
+
 WScript.Echo('');
 WScript.Echo('[hitting something that has hold of you]');
 loadLevel(3); state.running = true;
@@ -1533,7 +1719,7 @@ ok('it remembers where you came from', returnToDone === BUILDERS.length - 1);
 state.picked = true;
 finishLevel();
 ok('finishing the tutorial returns you to that room screen',
-   doneTitle.textContent === 'THE BOSS CLEARED',
+   doneTitle.textContent === 'ROOM EIGHT CLEARED',
    'showed "' + doneTitle.textContent + '"');
 ok('not back to room one',
    nextBtn.textContent !== 'Start the Game', nextBtn.textContent);

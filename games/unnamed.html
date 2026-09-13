@@ -233,6 +233,7 @@
       waves: [],
       boss: null,
       bombs: [],
+      sinkers: [],
       enemies: [],
       saws: [],
       arrows: [[1180, 330], [1250, 268]],
@@ -275,6 +276,7 @@
       waves: [],
       boss: null,
       bombs: [],
+      sinkers: [],
       enemies: [],
       saws: [],
       arrows: [],
@@ -315,6 +317,7 @@
       waves: [],
       boss: null,
       bombs: [],
+      sinkers: [],
       enemies: [],
       pickups: [],
       door: { x: 1900, y: 250, w: 60, h: 130, needs: null },
@@ -346,6 +349,7 @@
       waves: [],
       boss: null,
       bombs: [],
+      sinkers: [],
       hazards: [],
       saws: [],
 
@@ -425,6 +429,7 @@
       waves: [],
       boss: null,
       bombs: [],
+      sinkers: [],
       hazards: [],
       saws: [ sawOn(platA, 3.0, 0.00),
               sawOn(platB, 2.6, 0.35),
@@ -471,6 +476,7 @@
       waves: [],
       boss: null,
       bombs: [],
+      sinkers: [],
 
       npc: {
         x: 900, y: GROUND - 34, w: 30, h: 34,
@@ -538,6 +544,7 @@
       waves: waves,
       boss: null,
       bombs: [],
+      sinkers: [],
 
       saws: [],                            // no blades in here at all
 
@@ -575,6 +582,7 @@
       waves: [],
       enemies: [],
       bombs: [],
+      sinkers: [],
 
       boss: {
         x: 1000, y: 96, w: 74, h: 56,
@@ -602,9 +610,69 @@
     };
   }
 
+  /* Room Eight. Nothing underneath but a long drop, and the platforms
+     sag under you the moment you land. Some share a chain and go down
+     together; some are capped with spikes and are only ever something
+     to clear. Almost every gap is a double jump. */
+  function buildRoomEight() {
+    var TOP = 380;
+
+    function sinker(x, w, chain) {
+      return { x: x, y: TOP, w: w, h: 24, oneWay: true,
+               home: TOP, chain: chain || null,
+               rate: 26, back: 44, max: 180, active: false };
+    }
+
+    function spiked(x, w) {
+      return { x: x, y: TOP, w: w, h: 24, oneWay: true, spiked: true };
+    }
+
+    /* Gaps are 240, and 280 where you have to clear a spiked one. A
+       double jump carries 288px spending the second jump at the apex,
+       so everything here is inside comfortable reach. */
+    var start = { x: -60, y: TOP, w: 300, h: 160 };
+    var p1 = sinker(420, 220);
+    var s1 = spiked(740, 120);
+    var p2 = sinker(920, 220);
+    var p3 = sinker(1380, 220, 'a');          // these two are chained
+    var p4 = sinker(1840, 220, 'a');
+    var s2 = spiked(2160, 120);
+    var p5 = sinker(2340, 220);
+    var p6 = sinker(2800, 220, 'b');          // and so are these
+    var p7 = sinker(3260, 220, 'b');
+    var end = { x: 3720, y: TOP, w: 360, h: 160 };
+
+    return {
+      name: 'Room Eight',
+      worldW: 4080,
+      start: { x: 60, y: TOP - SIZE },
+      fallY: 640,
+
+      solids: [start, p1, s1, p2, p3, p4, s2, p5, p6, p7, end],
+      sinkers: [p1, p2, p3, p4, p5, p6, p7],
+
+      /* the spiked caps sit on top of their platforms */
+      hazards: [
+        { x: s1.x, y: TOP - 24, w: s1.w, h: 24 },
+        { x: s2.x, y: TOP - 24, w: s2.w, h: 24 }
+      ],
+
+      saws: [],
+      waves: [],
+      enemies: [],
+      bombs: [],
+      boss: null,
+      pickups: [],
+      door: { x: 3870, y: TOP - 130, w: 60, h: 130, needs: null },
+
+      arrows: [],
+      hints: []
+    };
+  }
+
   var BUILDERS = [buildTutorial, buildRoomOne, buildRoomTwo,
                   buildRoomThree, buildRoomFour, buildRoomFive,
-                  buildRoomSix, buildRoomSeven];
+                  buildRoomSix, buildRoomSeven, buildRoomEight];
 
   var GRAB_MAX = 2;              // seconds of being held before you die
 
@@ -916,6 +984,50 @@
     p.deadT = 0;
     state.flash = 1;
     burst(p.x + p.w / 2, p.y + p.h / 2, '#ff5f7e', 34, 1.4);
+  }
+
+  /* ============================================================
+     SINKING PLATFORMS
+     They sag while you stand on them and creep back up once you're
+     off. Chained ones move as one, so stepping on either sinks both.
+     The player rides whatever they're standing on.
+     ============================================================ */
+  function standingOn(s) {
+    if (!p.onGround) return false;
+    if (Math.abs((p.y + p.h) - s.y) > 2) return false;
+    return p.x + p.w > s.x && p.x < s.x + s.w;
+  }
+
+  function updateSinkers(dt) {
+    var list = level.sinkers;
+    if (!list.length) return;
+    var i, s;
+
+    for (i = 0; i < list.length; i++) list[i].active = false;
+
+    /* whatever you're on goes down, and so does anything sharing its chain */
+    for (i = 0; i < list.length; i++) {
+      if (!standingOn(list[i])) continue;
+      list[i].active = true;
+      if (list[i].chain) {
+        for (var k = 0; k < list.length; k++) {
+          if (list[k].chain === list[i].chain) list[k].active = true;
+        }
+      }
+    }
+
+    for (i = 0; i < list.length; i++) {
+      s = list[i];
+      var was = s.y;
+      if (s.active) s.y = Math.min(s.home + s.max, s.y + s.rate * dt);
+      else s.y = Math.max(s.home, s.y - s.back * dt);
+
+      /* carry the player down with it rather than leaving them hovering */
+      var moved = s.y - was;
+      if (moved > 0 && standingOn({ x: s.x, y: was, w: s.w, h: s.h })) {
+        p.y += moved;
+      }
+    }
   }
 
   /* ============================================================
@@ -1385,6 +1497,8 @@
 
     movePlayer(dt);
 
+    updateSinkers(dt);
+
     /* --- remember safe ground, and checkpoint the save --- */
     if (p.onGround) { safeSpot.x = p.x; safeSpot.y = p.y; }
     state.saveT += dt;
@@ -1764,6 +1878,49 @@
   }
 
   function drawSolid(s) {
+    /* a sinking platform hangs from a chain, and the chain pays out as
+       it drops — chained pairs share a colour so you can see the link */
+    if (s.home !== undefined) {
+      var tone = s.chain === 'a' ? '#ffd166' : s.chain === 'b' ? '#7bffb2' : '#5c6579';
+      ctx.save();
+      ctx.strokeStyle = tone;
+      ctx.globalAlpha = 0.45;
+      ctx.lineWidth = 3;
+      ctx.setLineDash([7, 7]);
+      ctx.beginPath();
+      ctx.moveTo(s.x + 18, 0);
+      ctx.lineTo(s.x + 18, s.y);
+      ctx.moveTo(s.x + s.w - 18, 0);
+      ctx.lineTo(s.x + s.w - 18, s.y);
+      ctx.stroke();
+      ctx.restore();
+
+      if (s.chain) {                            // a tag at each end of a pair
+        ctx.save();
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = tone;
+        ctx.fillRect(s.x + 8, s.y - 7, 14, 5);
+        ctx.fillRect(s.x + s.w - 22, s.y - 7, 14, 5);
+        ctx.restore();
+      }
+    }
+
+    /* spiked caps get their teeth drawn on top */
+    if (s.spiked) {
+      ctx.fillStyle = '#ff5f7e';
+      ctx.shadowColor = '#ff5f7e';
+      ctx.shadowBlur = 14;
+      for (var sx = s.x; sx < s.x + s.w - 1; sx += s.w / 4) {
+        ctx.beginPath();
+        ctx.moveTo(sx, s.y);
+        ctx.lineTo(sx + s.w / 8, s.y - 24);
+        ctx.lineTo(sx + s.w / 4, s.y);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.shadowBlur = 0;
+    }
+
     ctx.fillStyle = '#16224d';
     ctx.fillRect(s.x, s.y, s.w, s.h);
     ctx.fillStyle = 'rgba(78,195,255,0.10)';
