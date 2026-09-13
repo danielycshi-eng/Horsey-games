@@ -60,6 +60,13 @@ FakeCtx.prototype.fillRect = noop;
 FakeCtx.prototype.strokeRect = noop;
 FakeCtx.prototype.fillText = noop;
 FakeCtx.prototype.clearRect = noop;
+FakeCtx.prototype.setLineDash = noop;
+FakeCtx.prototype.quadraticCurveTo = noop;
+FakeCtx.prototype.bezierCurveTo = noop;
+FakeCtx.prototype.ellipse = noop;
+FakeCtx.prototype.clip = noop;
+FakeCtx.prototype.measureText = function () { return { width: 0 }; };
+FakeCtx.prototype.createRadialGradient = function () { return { addColorStop: noop }; };
 FakeCtx.prototype.createLinearGradient = function () {
   return { addColorStop: noop };
 };
@@ -209,7 +216,8 @@ WScript.Echo('');
    ================================================================== */
 WScript.Echo('[every room]');
 var NEEDED = ['name', 'worldW', 'start', 'fallY', 'solids', 'hazards',
-              'saws', 'waves', 'enemies', 'pickups', 'door', 'arrows', 'hints'];
+              'saws', 'waves', 'enemies', 'pickups', 'door', 'arrows', 'hints',
+              'bombs'];
 var missing = '';
 for (var li = 0; li < BUILDERS.length; li++) {
   var built = BUILDERS[li]();
@@ -1041,6 +1049,266 @@ ok('the tenth drops the key', level.pickups[0].hidden === false);
 ok('and it appears up on the tallest platform',
    level.pickups[0].y + level.pickups[0].h === plat6C.y);
 
+/* ==================================================================
+   ROOM SEVEN — the boss
+   ================================================================== */
+WScript.Echo('');
+WScript.Echo('[boss: the arena]');
+loadLevel(7); state.running = true;
+ok('the room loads', level.name === 'The Boss');
+ok('it has three hit points', level.boss.hp === 3);
+ok('it floats well above you', level.boss.y + level.boss.h < 200);
+
+var bL = solidAt(420, 330), bH = solidAt(880, 210), bR = solidAt(1340, 330);
+ok('two low platforms with a high one between them',
+   bL && bH && bR && bH.y < bL.y && bH.y < bR.y &&
+   bH.x > bL.x && bH.x < bR.x);
+ok('you can get under all three',
+   bL.y < GROUND - SIZE && bH.y < GROUND - SIZE && bR.y < GROUND - SIZE);
+ok('the key is set to spawn on the high platform',
+   level.pickups[1].spawnAt.y + level.pickups[1].h === bH.y);
+
+WScript.Echo('');
+WScript.Echo('[boss: the laser]');
+loadLevel(7); state.running = true;
+var B = level.boss;
+B.moves.length = 0;
+B.x = 1860; B.y = 96;                        // open sky, no platform below
+startMove(B, 'laser');
+var laser = B.moves[0];
+ok('this beam has nothing over the player',
+   beamFloor(laser.x, B.y + B.h) === GROUND, 'beam stops at ' +
+   beamFloor(laser.x, B.y + B.h));
+
+/* out in the open, under the beam: dead */
+placeOn(laser.x - SIZE / 2, GROUND);
+var diedOpen = false;
+for (var i = 0; i < 200; i++) {
+  p.x = laser.x - SIZE / 2; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0;
+  step(1);
+  if (p.dead) { diedOpen = true; break; }
+}
+ok('standing in the beam kills you', diedOpen);
+
+/* same spot, but under a platform: safe */
+loadLevel(7); state.running = true;
+B = level.boss; B.moves.length = 0;
+B.x = bL.x + 100; B.y = 96;
+startMove(B, 'laser');
+laser = B.moves[0];
+ok('the beam is aimed over the platform',
+   laser.x > bL.x && laser.x < bL.x + bL.w, 'beam at ' + laser.x);
+var safeUnder = true;
+for (var i = 0; i < 200; i++) {
+  p.x = laser.x - SIZE / 2; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0;
+  step(1);
+  if (p.dead) { safeUnder = false; break; }
+}
+ok('hiding under a platform stops the beam', safeUnder);
+
+/* and the beam telegraphs before it fires */
+loadLevel(7); state.running = true;
+B = level.boss; B.moves.length = 0;
+B.x = 1900; B.y = 96;                        // away from any platform
+startMove(B, 'laser');
+laser = B.moves[0];
+ok('the laser charges before it fires', laser.charge >= 0.5,
+   'charge ' + laser.charge + 's');
+placeOn(laser.x - SIZE / 2, GROUND);
+var aliveDuringCharge = true;
+for (var i = 0; i < Math.floor(laser.charge / 0.016) - 3; i++) {
+  p.x = laser.x - SIZE / 2; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0;
+  step(1);
+  if (p.dead) aliveDuringCharge = false;
+}
+ok('the charge itself does not hurt you', aliveDuringCharge);
+
+WScript.Echo('');
+WScript.Echo('[boss: the crash]');
+loadLevel(7); state.running = true;
+B = level.boss; B.moves.length = 0;
+placeOn(1900, GROUND);                       // in the open, no platform
+B.x = 1900; B.y = 96;
+startMove(B, 'crash');
+var hitByCrash = false;
+for (var i = 0; i < 220; i++) {
+  p.x = 1900; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0;
+  step(1);
+  if (p.dead) { hitByCrash = true; break; }
+}
+ok('standing still under a crash kills you', hitByCrash);
+
+loadLevel(7); state.running = true;
+B = level.boss; B.moves.length = 0;
+placeOn(bH.x + 140, GROUND);                 // under the high platform
+B.x = bH.x + 140; B.y = 96;
+startMove(B, 'crash');
+var shelteredFromCrash = true;
+for (var i = 0; i < 220; i++) {
+  p.x = bH.x + 140; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0;
+  step(1);
+  if (p.dead) { shelteredFromCrash = false; break; }
+}
+ok('the crash lands on the platform above you instead', shelteredFromCrash);
+
+WScript.Echo('');
+WScript.Echo('[boss: the spike wave]');
+loadLevel(7); state.running = true;
+B = level.boss; B.moves.length = 0;
+startMove(B, 'spikes');
+var sp = B.moves[0];
+ok('the wave warns before it starts rolling', sp.lead >= 0.5,
+   'lead ' + sp.lead + 's');
+
+placeOn(1000, GROUND);
+var caughtByWave = false;
+for (var i = 0; i < 260; i++) {
+  p.x = 1000; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0;
+  step(1);
+  if (p.dead) { caughtByWave = true; break; }
+}
+ok('standing on the ground, the wave gets you', caughtByWave);
+
+loadLevel(7); state.running = true;
+B = level.boss; B.moves.length = 0;
+startMove(B, 'spikes');
+placeOn(bH.x + 140, bH.y);                   // up on the high platform
+var safeUpTop = true;
+for (var i = 0; i < 260; i++) {
+  p.x = bH.x + 140; p.y = bH.y - SIZE; p.vx = 0; p.vy = 0;
+  step(1);
+  if (p.dead) { safeUpTop = false; break; }
+}
+ok('standing on a platform, the wave passes under you', safeUpTop);
+
+WScript.Echo('');
+WScript.Echo('[boss: the saw wall]');
+loadLevel(7); state.running = true;
+B = level.boss; B.moves.length = 0;
+startMove(B, 'saws');
+var sw7 = B.moves[0];
+ok('the wall waits at the edge before sweeping', sw7.hold >= 0.5,
+   'hold ' + sw7.hold + 's');
+ok('there is a gap in it', sw7.gapH >= 100, 'gap ' + sw7.gapH + 'px');
+ok('the gap is somewhere you can reach',
+   sw7.gapY > 120 && sw7.gapY < GROUND, 'gap centred at y=' + sw7.gapY);
+
+/* in the gap you live; out of it you don't */
+var inGap = { survived: false }, outGap = { died: false };
+loadLevel(7); state.running = true;
+B = level.boss; B.moves.length = 0;
+startMove(B, 'saws');
+sw7 = B.moves[0];
+var gapTop = sw7.gapY - sw7.gapH / 2, gapBottom = sw7.gapY + sw7.gapH / 2;
+var holdX = Math.max(60, Math.min(level.worldW - 60, level.worldW / 2));
+var survived = true;
+for (var i = 0; i < 300; i++) {
+  p.x = holdX; p.y = sw7.gapY - SIZE / 2;    // sat right in the gap
+  p.vx = 0; p.vy = 0;
+  step(1);
+  if (p.dead) { survived = false; break; }
+}
+ok('sitting in the gap gets you through', survived,
+   'gap ' + Math.round(gapTop) + '..' + Math.round(gapBottom));
+
+loadLevel(7); state.running = true;
+B = level.boss; B.moves.length = 0;
+startMove(B, 'saws');
+sw7 = B.moves[0];
+var cut = false;
+for (var i = 0; i < 300; i++) {
+  p.x = holdX; p.y = 470 - SIZE;              // on the floor, not the gap
+  if (sw7.gapY > 400) p.y = 120;              // unless the gap IS the floor
+  p.vx = 0; p.vy = 0;
+  step(1);
+  if (p.dead) { cut = true; break; }
+}
+ok('standing outside the gap gets you cut', cut);
+
+WScript.Echo('');
+WScript.Echo('[boss: the bombs]');
+loadLevel(7); state.running = true;
+B = level.boss; B.moves.length = 0;
+placeOn(120, GROUND);
+startMove(B, 'bombs');
+var blue = level.pickups[0];
+ok('the blue bomb starts hidden', blue.hidden === true);
+
+for (var i = 0; i < 160; i++) {
+  p.x = 120; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0;   // far from the drops
+  step(1);
+}
+ok('red bombs get dropped', level.bombs.length > 0 || B.moves.length === 0);
+ok('a blue one turns up too', blue.hidden === false);
+
+/* pick it up, let go, and it should fly at the boss */
+loadLevel(7); state.running = true;
+B = level.boss; B.moves.length = 0;
+B.x = 1000; B.y = 96;
+blue = level.pickups[0];
+blue.hidden = false; blue.grounded = true; blue.flying = false;
+blue.x = 300; blue.y = GROUND - blue.h;
+p.x = 300; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0; p.dead = false;
+tap('KeyB');
+ok('you can pick the blue bomb up', p.holding === blue);
+
+release('KeyB'); tap('KeyB');
+ok('letting go throws it', blue.flying === true);
+
+var hpWas = B.hp;
+for (var i = 0; i < 120; i++) {
+  step(1);
+  if (B.hp < hpWas) break;
+}
+ok('the thrown bomb damages the boss', B.hp === hpWas - 1,
+   'hp ' + hpWas + ' -> ' + B.hp);
+ok('and the bomb is spent', blue.hidden === true);
+
+WScript.Echo('');
+WScript.Echo('[boss: going down]');
+loadLevel(7); state.running = true;
+B = level.boss;
+ok('the key stays hidden while it lives', level.pickups[1].hidden === true);
+hurtBoss(B); hurtBoss(B);
+ok('two hits is not enough', !B.dead && level.pickups[1].hidden === true,
+   'hp=' + B.hp);
+hurtBoss(B);
+ok('three hits kills it', B.dead === true);
+ok('and it drops the key on the high platform',
+   level.pickups[1].hidden === false &&
+   level.pickups[1].y + level.pickups[1].h === bH.y);
+
+B.moves.length = 0;
+placeOn(level.door.x - 40, GROUND);
+state.picked = true;
+hold('ArrowRight');
+var outBoss = false;
+for (var i = 0; i < 150; i++) { step(1); if (state.complete) { outBoss = true; break; } }
+letGo();
+ok('the key opens the way out', outBoss);
+
+WScript.Echo('');
+WScript.Echo('[boss: how it picks attacks]');
+loadLevel(7); state.running = true;
+B = level.boss;
+var seen = {}, combos = 0, bombRuns = 0, rounds = 400;
+for (var i = 0; i < rounds; i++) {
+  B.moves.length = 0;
+  chooseAttack(B);
+  if (B.moves.length > 1) combos++;
+  for (var m = 0; m < B.moves.length; m++) seen[B.moves[m].kind] = true;
+  if (B.moves.length === 1 && B.moves[0].kind === 'bombs') bombRuns++;
+}
+ok('it uses the laser', seen.laser === true);
+ok('it uses the crash', seen.crash === true);
+ok('it uses the spikes', seen.spikes === true);
+ok('it uses the saws', seen.saws === true);
+ok('it drops bombs roughly a third of the time',
+   bombRuns > rounds * 0.22 && bombRuns < rounds * 0.45,
+   Math.round(bombRuns / rounds * 100) + '%');
+ok('it sometimes combines two attacks', combos > 0,
+   combos + ' combos in ' + rounds);
+
 WScript.Echo('');
 WScript.Echo('[hitting something that has hold of you]');
 loadLevel(3); state.running = true;
@@ -1076,7 +1344,7 @@ ok('it remembers where you came from', returnToDone === BUILDERS.length - 1);
 state.picked = true;
 finishLevel();
 ok('finishing the tutorial returns you to that room screen',
-   doneTitle.textContent === 'ROOM SIX CLEARED',
+   doneTitle.textContent === 'THE BOSS CLEARED',
    'showed "' + doneTitle.textContent + '"');
 ok('not back to room one',
    nextBtn.textContent !== 'Start the Game', nextBtn.textContent);

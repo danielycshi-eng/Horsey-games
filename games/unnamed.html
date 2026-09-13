@@ -231,6 +231,8 @@
       door: { x: 3450, y: 300, w: 60, h: 140, needs: 'apple' },
 
       waves: [],
+      boss: null,
+      bombs: [],
       enemies: [],
       saws: [],
       arrows: [[1180, 330], [1250, 268]],
@@ -271,6 +273,8 @@
       door: { x: 2300, y: 170, w: 60, h: 130, needs: 'key' },
 
       waves: [],
+      boss: null,
+      bombs: [],
       enemies: [],
       saws: [],
       arrows: [],
@@ -309,6 +313,8 @@
       ],
 
       waves: [],
+      boss: null,
+      bombs: [],
       enemies: [],
       pickups: [],
       door: { x: 1900, y: 250, w: 60, h: 130, needs: null },
@@ -338,6 +344,8 @@
         { x: 3040, y: 380,    w: 320, h: 26  }    // the way out
       ],
       waves: [],
+      boss: null,
+      bombs: [],
       hazards: [],
       saws: [],
 
@@ -415,6 +423,8 @@
 
       solids: [ground, platA, platB, platC],
       waves: [],
+      boss: null,
+      bombs: [],
       hazards: [],
       saws: [ sawOn(platA, 3.0, 0.00),
               sawOn(platB, 2.6, 0.35),
@@ -459,6 +469,8 @@
       saws: [],
       enemies: [],
       waves: [],
+      boss: null,
+      bombs: [],
 
       npc: {
         x: 900, y: GROUND - 34, w: 30, h: 34,
@@ -524,6 +536,8 @@
       solids: [ground, ledge, platA, platB, platC],
       hazards: [],
       waves: waves,
+      boss: null,
+      bombs: [],
 
       saws: [],                            // no blades in here at all
 
@@ -539,9 +553,58 @@
     };
   }
 
+  /* The boss. Two low platforms with a high one between them, and a
+     thing in the air that will not come down to your level. Everything
+     it does is survivable from somewhere: under a platform, on top of
+     one, or by being somewhere else entirely. */
+  function buildRoomSeven() {
+    var ground = { x: -60,  y: GROUND, w: 2520, h: 160 };
+    var lowL   = { x: 420,  y: 330,    w: 320,  h: 24, oneWay: true };
+    var high   = { x: 880,  y: 210,    w: 320,  h: 24, oneWay: true };
+    var lowR   = { x: 1340, y: 330,    w: 320,  h: 24, oneWay: true };
+
+    return {
+      name: 'The Boss',
+      worldW: 2400,
+      start: { x: 120, y: GROUND - SIZE },
+      fallY: 620,
+
+      solids: [ground, lowL, high, lowR],
+      hazards: [],
+      saws: [],
+      waves: [],
+      enemies: [],
+      bombs: [],
+
+      boss: {
+        x: 1000, y: 96, w: 74, h: 56,
+        vx: 120,
+        hp: 3, maxHp: 3,
+        flash: 0, dead: false,
+        hover: 96,
+        idle: 0, rest: 1.4,
+        moves: []
+      },
+
+      /* the blue bomb appears during a bomb drop; the key when it dies */
+      pickups: [
+        { kind: 'bomb', x: 0, y: 0, w: 26, h: 26, hidden: true,
+          grounded: true, vy: 0, flying: false,
+          home: { x: 1000, y: GROUND - 26 } },
+        { kind: 'key', x: 1020, y: 184, w: 30, h: 26, hidden: true,
+          spawnAt: { x: 1020, y: 184 },
+          home: { x: 1020, y: 184 } }
+      ],
+      door: { x: 2100, y: 310, w: 60, h: 130, needs: 'key' },
+
+      arrows: [],
+      hints: []
+    };
+  }
+
   var BUILDERS = [buildTutorial, buildRoomOne, buildRoomTwo,
                   buildRoomThree, buildRoomFour, buildRoomFive,
-                  buildRoomSix];
+                  buildRoomSix, buildRoomSeven];
 
   var GRAB_MAX = 2;              // seconds of being held before you die
 
@@ -701,6 +764,12 @@
       held.grounded = false;
       held.vy = 0;
       p.holding = null;
+
+      /* let go of the blue bomb and it goes looking for the boss */
+      if (held.kind === 'bomb' && level.boss && !level.boss.dead) {
+        held.flying = true;
+        burst(held.x + held.w / 2, held.y + held.h / 2, '#4ec3ff', 16);
+      }
       return;
     }
 
@@ -850,6 +919,253 @@
   }
 
   /* ============================================================
+     THE BOSS
+
+     It floats, and it never comes down to your level except to crash.
+     Attacks live in boss.moves, so two can run at once — a laser while
+     the spikes roll, say. Every attack is survivable from somewhere:
+     under a platform, on top of one, or simply elsewhere.
+     ============================================================ */
+  var CRASH_SPEED = 1500;
+
+  function bossBox(b) { return { x: b.x, y: b.y, w: b.w, h: b.h }; }
+
+  /* How far down a beam from `x` gets before something stops it. This is
+     what makes hiding under a platform work, with no special cases. */
+  function beamFloor(x, fromY) {
+    var best = GROUND;
+    for (var i = 0; i < level.solids.length; i++) {
+      var s = level.solids[i];
+      if (x < s.x || x > s.x + s.w) continue;
+      if (s.y < fromY) continue;
+      if (s.y < best) best = s.y;
+    }
+    return best;
+  }
+
+  function startMove(b, kind) {
+    var mv = { kind: kind, t: 0 };
+    if (kind === 'laser') {
+      mv.dur = 2.2;
+      mv.charge = 0.9;
+      mv.x = b.x + b.w / 2;
+    } else if (kind === 'crash') {
+      mv.dur = 3.0;
+      mv.landed = false;
+      mv.targetX = p.x + p.w / 2 - b.w / 2;
+    } else if (kind === 'spikes') {
+      mv.dur = 3.6;
+      mv.dir = (b.x + b.w / 2) > (p.x + p.w / 2) ? -1 : 1;
+      mv.from = mv.dir > 0 ? -200 : level.worldW + 200;
+      mv.speed = 560;
+      mv.lead = 0.8;
+    } else if (kind === 'saws') {
+      mv.dur = 4.4;
+      mv.hold = 0.9;                    // parked at the edge so you can read it
+      mv.dir = Math.random() < 0.5 ? 1 : -1;
+      mv.from = mv.dir > 0 ? -80 : level.worldW + 80;
+      mv.speed = 620;
+      mv.gapY = 150 + Math.random() * 230;
+      mv.gapH = 130;
+    } else if (kind === 'bombs') {
+      mv.dur = 5.2;
+      mv.dropped = 0;
+      mv.blueDropped = false;
+    }
+    b.moves.push(mv);
+  }
+
+  /* 33% of the time it drops bombs. Otherwise an attack, and sometimes
+     a second one on top of it. Crash never doubles up — it moves the
+     boss, and stacking it reads as unfair rather than hard. */
+  function chooseAttack(b) {
+    if (Math.random() < 0.33) { startMove(b, 'bombs'); return; }
+
+    var pool = ['laser', 'crash', 'spikes', 'saws'];
+    var first = pool[Math.floor(Math.random() * pool.length)];
+    startMove(b, first);
+
+    if (first !== 'crash' && Math.random() < 0.3) {
+      var others = [];
+      for (var i = 0; i < pool.length; i++) {
+        if (pool[i] !== first && pool[i] !== 'crash') others.push(pool[i]);
+      }
+      startMove(b, others[Math.floor(Math.random() * others.length)]);
+    }
+  }
+
+  function spawnBomb(x, blue) {
+    if (blue) {
+      var bb = level.pickups[0];
+      bb.hidden = false;
+      bb.held = false;
+      bb.flying = false;
+      bb.grounded = false;
+      bb.vy = 0;
+      bb.x = x;
+      bb.y = 130;
+      bb.home = { x: x, y: GROUND - bb.h };
+      return;
+    }
+    level.bombs.push({
+      x: x, y: 130, w: 24, h: 24,
+      vy: 0, grounded: false,
+      fuse: 1.7, blast: 0
+    });
+  }
+
+  function hurtBoss(b) {
+    b.hp--;
+    b.flash = 0.4;
+    burst(b.x + b.w / 2, b.y + b.h / 2, '#4ec3ff', 40, 1.5);
+    if (b.hp <= 0) {
+      b.dead = true;
+      b.moves.length = 0;
+      burst(b.x + b.w / 2, b.y + b.h / 2, '#ffd166', 70, 2.2);
+      dropKey(b);
+    }
+  }
+
+  function runMove(b, mv, dt) {
+    var i;
+
+    if (mv.kind === 'laser') {
+      if (mv.t >= mv.charge) {
+        var stop = beamFloor(mv.x, b.y + b.h);
+        var beam = { x: mv.x - 17, y: b.y + b.h, w: 34, h: stop - (b.y + b.h) };
+        if (beam.h > 0 && hits(p, beam)) { die(); return; }
+      }
+
+    } else if (mv.kind === 'crash') {
+      if (mv.t < 0.55) {
+        b.x += (mv.targetX - b.x) * Math.min(1, dt * 5);
+        b.y += (70 - b.y) * Math.min(1, dt * 5);
+      } else if (mv.t < 0.85) {
+        /* hangs there a moment — this is your cue to move */
+      } else if (!mv.landed) {
+        b.y += CRASH_SPEED * dt;
+        var floorY = beamFloor(b.x + b.w / 2, b.y);
+        if (b.y + b.h >= floorY) {
+          b.y = floorY - b.h;
+          mv.landed = true;
+          mv.landY = floorY;
+          mv.shockT = 0;
+          burst(b.x + b.w / 2, floorY, '#ff5f7e', 40, 1.6);
+          state.flash = 0.5;
+        }
+        if (hits(p, bossBox(b))) { die(); return; }
+      } else {
+        mv.shockT += dt;
+        if (mv.shockT < 0.5) {
+          var reach = mv.shockT * 620;
+          var left  = { x: b.x - reach, y: mv.landY - 22, w: reach, h: 22 };
+          var right = { x: b.x + b.w,   y: mv.landY - 22, w: reach, h: 22 };
+          if (hits(p, left) || hits(p, right)) { die(); return; }
+        }
+        if (mv.t > mv.dur - 0.9) b.y += (b.hover - b.y) * Math.min(1, dt * 3);
+      }
+
+    } else if (mv.kind === 'spikes') {
+      if (mv.t >= mv.lead) {
+        var front = mv.from + mv.dir * mv.speed * (mv.t - mv.lead);
+        mv.front = front;
+        var band = { x: front - 120, y: GROUND - 44, w: 240, h: 44 };
+        if (hits(p, band)) { die(); return; }
+      }
+
+    } else if (mv.kind === 'saws') {
+      if (mv.t >= mv.hold) {
+        mv.colX = mv.from + mv.dir * mv.speed * (mv.t - mv.hold);
+      } else {
+        mv.colX = mv.from;
+      }
+      for (var y = 470; y > 90; y -= 58) {
+        if (y > mv.gapY - mv.gapH / 2 && y < mv.gapY + mv.gapH / 2) continue;
+        if (circleHitsBox(mv.colX, y, 24, p)) { die(); return; }
+      }
+
+    } else if (mv.kind === 'bombs') {
+      var want = Math.floor(mv.t / 0.55);
+      while (mv.dropped < want && mv.dropped < 6) {
+        spawnBomb(220 + Math.random() * (level.worldW - 600), false);
+        mv.dropped++;
+      }
+      if (!mv.blueDropped && mv.t > 1.0) {
+        mv.blueDropped = true;
+        spawnBomb(260 + Math.random() * (level.worldW - 700), true);
+      }
+    }
+  }
+
+  function updateBoss(dt) {
+    var b = level.boss;
+    if (!b) return;
+    if (b.flash > 0) b.flash -= dt;
+    if (b.dead) {
+      b.y += (b.hover - 40 - b.y) * Math.min(1, dt * 2);
+      return;
+    }
+
+    for (var i = b.moves.length - 1; i >= 0; i--) {
+      var mv = b.moves[i];
+      mv.t += dt;
+      runMove(b, mv, dt);
+      if (p.dead) return;
+      if (mv.t >= mv.dur) b.moves.splice(i, 1);
+    }
+
+    /* between attacks it drifts, so it's never a stationary target */
+    if (b.moves.length === 0) {
+      b.y += (b.hover - b.y) * Math.min(1, dt * 3);
+      b.x += b.vx * dt;
+      if (b.x < 240) { b.x = 240; b.vx = Math.abs(b.vx); }
+      if (b.x + b.w > level.worldW - 240) {
+        b.x = level.worldW - 240 - b.w;
+        b.vx = -Math.abs(b.vx);
+      }
+      b.idle += dt;
+      if (b.idle >= b.rest) { b.idle = 0; chooseAttack(b); }
+    }
+  }
+
+  /* Red bombs fall, sit, then go off. Being near one when it does is
+     the whole danger; the blue one is the opportunity. */
+  function updateBombs(dt) {
+    for (var i = level.bombs.length - 1; i >= 0; i--) {
+      var bo = level.bombs[i];
+
+      if (bo.blast > 0) {
+        bo.blast -= dt;
+        if (circleHitsBox(bo.x + bo.w / 2, bo.y + bo.h / 2, 74, p)) { die(); return; }
+        if (bo.blast <= 0) level.bombs.splice(i, 1);
+        continue;
+      }
+
+      if (!bo.grounded) {
+        bo.vy += GRAVITY * dt;
+        var wasB = bo.y + bo.h;
+        bo.y += bo.vy * dt;
+        var nowB = bo.y + bo.h;
+        for (var k = 0; k < level.solids.length; k++) {
+          var s = level.solids[k];
+          if (bo.x + bo.w <= s.x || bo.x >= s.x + s.w) continue;
+          if (wasB <= s.y && nowB >= s.y) {
+            bo.y = s.y - bo.h; bo.vy = 0; bo.grounded = true; break;
+          }
+        }
+        if (bo.y > level.fallY) { level.bombs.splice(i, 1); continue; }
+      }
+
+      bo.fuse -= dt;
+      if (bo.fuse <= 0) {
+        bo.blast = 0.3;
+        burst(bo.x + bo.w / 2, bo.y + bo.h / 2, '#ff5f7e', 44, 1.8);
+        state.flash = Math.max(state.flash, 0.35);
+      }
+    }
+  }
+
+  /* ============================================================
      PARTICLES
      ============================================================ */
   function burst(x, y, color, n, power) {
@@ -989,10 +1305,34 @@
       }
     }
 
+    /* --- the boss and its bombs --- */
+    updateBoss(dt);
+    if (p.dead) return;
+    updateBombs(dt);
+    if (p.dead) return;
+
     /* --- carried and dropped things --- */
     for (var pi = 0; pi < level.pickups.length; pi++) {
       var item = level.pickups[pi];
       if (item.hidden) continue;
+
+      /* a thrown blue bomb makes its own way to the boss */
+      if (item.flying) {
+        var bs = level.boss;
+        if (!bs || bs.dead) { item.hidden = false; item.flying = false; continue; }
+        var tx = bs.x + bs.w / 2, ty = bs.y + bs.h / 2;
+        var dx = tx - (item.x + item.w / 2), dy = ty - (item.y + item.h / 2);
+        var dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        item.x += (dx / dist) * 640 * dt;
+        item.y += (dy / dist) * 640 * dt;
+        if (dist < 46) {
+          item.flying = false;
+          item.hidden = true;
+          hurtBoss(bs);
+        }
+        continue;
+      }
+
       if (item.held) {
         item.x = p.x + p.w / 2 - item.w / 2;
         item.y = p.y - item.h - 8;
@@ -1409,6 +1749,165 @@
     }
   }
 
+  function drawBoss() {
+    var b = level.boss;
+    if (!b) return;
+
+    /* attack telegraphs and live danger, drawn behind the boss */
+    for (var i = 0; i < b.moves.length; i++) {
+      var mv = b.moves[i];
+
+      if (mv.kind === 'laser') {
+        var stop = beamFloor(mv.x, b.y + b.h);
+        if (mv.t < mv.charge) {
+          var chg = mv.t / mv.charge;
+          ctx.save();
+          ctx.globalAlpha = 0.25 + 0.45 * chg;
+          ctx.strokeStyle = '#ffd166';
+          ctx.setLineDash([9, 9]);
+          ctx.lineWidth = 2 + chg * 3;
+          ctx.beginPath();
+          ctx.moveTo(mv.x, b.y + b.h);
+          ctx.lineTo(mv.x, stop);
+          ctx.stroke();
+          ctx.restore();
+        } else {
+          var pulse = 0.75 + Math.sin(state.t * 40) * 0.25;
+          ctx.save();
+          ctx.globalAlpha = pulse;
+          ctx.fillStyle = '#ff5f7e';
+          ctx.shadowColor = '#ff5f7e';
+          ctx.shadowBlur = 26;
+          ctx.fillRect(mv.x - 17, b.y + b.h, 34, stop - (b.y + b.h));
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(mv.x - 6, b.y + b.h, 12, stop - (b.y + b.h));
+          ctx.restore();
+        }
+
+      } else if (mv.kind === 'crash') {
+        if (mv.t >= 0.55 && mv.t < 0.85) {
+          var down = beamFloor(b.x + b.w / 2, b.y);
+          ctx.save();
+          ctx.globalAlpha = 0.3 + 0.4 * Math.sin(state.t * 30);
+          ctx.fillStyle = '#ffd166';
+          ctx.fillRect(b.x, b.y + b.h, b.w, down - (b.y + b.h));
+          ctx.restore();
+        }
+        if (mv.landed && mv.shockT < 0.5) {
+          var reach = mv.shockT * 620;
+          ctx.save();
+          ctx.globalAlpha = 1 - mv.shockT / 0.5;
+          ctx.fillStyle = '#ff5f7e';
+          ctx.shadowColor = '#ff5f7e';
+          ctx.shadowBlur = 18;
+          ctx.fillRect(b.x - reach, mv.landY - 22, reach, 22);
+          ctx.fillRect(b.x + b.w, mv.landY - 22, reach, 22);
+          ctx.restore();
+        }
+
+      } else if (mv.kind === 'spikes') {
+        if (mv.t < mv.lead) {
+          ctx.save();
+          ctx.globalAlpha = 0.35 + 0.4 * Math.sin(state.t * 20);
+          ctx.fillStyle = '#ffd166';
+          ctx.fillRect(-60, GROUND - 6, level.worldW + 120, 6);
+          ctx.restore();
+        } else if (mv.front !== undefined) {
+          ctx.fillStyle = '#ff5f7e';
+          ctx.shadowColor = '#ff5f7e';
+          ctx.shadowBlur = 16;
+          for (var sx = mv.front - 120; sx < mv.front + 120; sx += 40) {
+            ctx.beginPath();
+            ctx.moveTo(sx, GROUND);
+            ctx.lineTo(sx + 20, GROUND - 44);
+            ctx.lineTo(sx + 40, GROUND);
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.shadowBlur = 0;
+        }
+
+      } else if (mv.kind === 'saws' && mv.colX !== undefined) {
+        ctx.save();
+        if (mv.t < mv.hold) ctx.globalAlpha = 0.45 + 0.3 * Math.sin(state.t * 16);
+        for (var y = 470; y > 90; y -= 58) {
+          if (y > mv.gapY - mv.gapH / 2 && y < mv.gapY + mv.gapH / 2) continue;
+          ctx.save();
+          ctx.translate(mv.colX, y);
+          ctx.rotate(state.t * 9);
+          ctx.fillStyle = '#ff5f7e';
+          ctx.shadowColor = '#ff5f7e';
+          ctx.shadowBlur = 14;
+          ctx.beginPath();
+          for (var k = 0; k < 10; k++) {
+            var a0 = (k / 10) * Math.PI * 2;
+            var a1 = ((k + 0.5) / 10) * Math.PI * 2;
+            ctx.lineTo(Math.cos(a0) * 24, Math.sin(a0) * 24);
+            ctx.lineTo(Math.cos(a1) * 16, Math.sin(a1) * 16);
+          }
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
+        ctx.restore();
+      }
+    }
+
+    /* the thing itself */
+    ctx.save();
+    ctx.translate(b.x + b.w / 2, b.y + b.h / 2);
+    var float = Math.sin(state.t * 2.2) * 3;
+    ctx.fillStyle = b.flash > 0 ? '#ffffff' : (b.dead ? '#3d4a72' : '#c7a0ff');
+    ctx.shadowColor = '#c7a0ff';
+    ctx.shadowBlur = 26;
+    rr(-b.w / 2, -b.h / 2 + float, b.w, b.h, 12);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = '#1a1030';
+    rr(-b.w / 2 + 9, -b.h / 2 + 10 + float, b.w - 18, b.h - 22, 7);
+    ctx.fill();
+    ctx.fillStyle = b.dead ? '#56658c' : '#ff5f7e';
+    ctx.fillRect(-18, -6 + float, 13, 9);
+    ctx.fillRect(5, -6 + float, 13, 9);
+    ctx.restore();
+  }
+
+  function drawBombs() {
+    for (var i = 0; i < level.bombs.length; i++) {
+      var bo = level.bombs[i];
+      if (bo.blast > 0) {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, bo.blast / 0.3);
+        ctx.fillStyle = '#ff5f7e';
+        ctx.shadowColor = '#ff5f7e';
+        ctx.shadowBlur = 40;
+        ctx.beginPath();
+        ctx.arc(bo.x + bo.w / 2, bo.y + bo.h / 2, 74, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        continue;
+      }
+      var soon = bo.fuse < 0.6;
+      ctx.save();
+      ctx.translate(bo.x + bo.w / 2, bo.y + bo.h / 2);
+      ctx.fillStyle = soon && Math.sin(state.t * 30) > 0 ? '#ffffff' : '#8a2036';
+      ctx.shadowColor = '#ff5f7e';
+      ctx.shadowBlur = soon ? 20 : 8;
+      ctx.beginPath();
+      ctx.arc(0, 0, 12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = '#ffd166';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(4, -10);
+      ctx.lineTo(9, -17);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   function drawNpc() {
     var n = level.npc;
     if (!n) return;
@@ -1602,9 +2101,27 @@
     ctx.save();
     ctx.translate(it.x + it.w / 2, it.y + it.h / 2 + bob);
 
-    if (it.kind === 'key') {
-      ctx.fillStyle = '#ffd166';
-      ctx.shadowColor = '#ffd166';
+    if (it.kind === 'bomb') {
+      ctx.fillStyle = '#4ec3ff';
+      ctx.shadowColor = '#4ec3ff';
+      ctx.shadowBlur = 22;
+      ctx.beginPath();
+      ctx.arc(0, 0, 12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.beginPath();
+      ctx.arc(-4, -4, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#bff0ff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(4, -10);
+      ctx.lineTo(9, -17);
+      ctx.stroke();
+    } else if (it.kind === 'key') {
+      ctx.fillStyle = it.kind === 'bomb' ? '#4ec3ff' : '#ffd166';
+      ctx.shadowColor = it.kind === 'bomb' ? '#4ec3ff' : '#ffd166';
       ctx.shadowBlur = 16;
       ctx.beginPath();                         // bow
       ctx.arc(-7, 0, 8, 0, Math.PI * 2);
@@ -1766,6 +2283,29 @@
     }
     ctx.restore();
 
+    /* boss health, across the top */
+    if (level.boss) {
+      var bb = level.boss;
+      var bw = 320, bx = W / 2 - bw / 2;
+      ctx.save();
+      ctx.fillStyle = 'rgba(5,7,15,0.75)';
+      rr(bx - 3, 61, bw + 6, 16, 8);
+      ctx.fill();
+      for (var i = 0; i < bb.maxHp; i++) {
+        var seg = (bw - (bb.maxHp - 1) * 6) / bb.maxHp;
+        ctx.fillStyle = i < bb.hp ? '#c7a0ff' : 'rgba(199,160,255,0.16)';
+        if (i < bb.hp) { ctx.shadowColor = '#c7a0ff'; ctx.shadowBlur = 12; }
+        else ctx.shadowBlur = 0;
+        ctx.fillRect(bx + i * (seg + 6), 64, seg, 10);
+      }
+      ctx.shadowBlur = 0;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#8ea7d6';
+      ctx.font = '11px sans-serif';
+      ctx.fillText(bb.dead ? 'DOWN' : '???', W / 2, 54);
+      ctx.restore();
+    }
+
     /* room name card, on the way in */
     if (state.titleT > 0) {
       var a = Math.min(1, state.titleT / 0.6);
@@ -1809,6 +2349,8 @@
     drawArrows();
     drawDoor();
     drawScarecrow();
+    drawBoss();
+    drawBombs();
     drawNpc();
     drawEnemies();
     drawPickups();
