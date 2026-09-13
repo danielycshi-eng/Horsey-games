@@ -1840,6 +1840,56 @@ for (var m = 0; m < 4 && !jumpedIt; m++) {
 }
 ok('with the orbs gone the first gap is impossible', !jumpedIt);
 
+/* ...and with the orbs there, every single gap goes. This is the room's
+   one load-bearing property: if any gap fails, it cannot be finished. */
+function crossesWithOrb(gi) {
+  for (var jx = -160; jx <= 8; jx += 6) {
+    loadLevel(9); state.running = true;
+    var a = null, b = null;
+    for (var k = 0; k < level.solids.length; k++) {
+      if (level.solids[k].x === plats9[gi].x) a = level.solids[k];
+      if (level.solids[k].x === plats9[gi + 1].x) b = level.solids[k];
+    }
+    var edge = a.x + a.w;
+    var sx = Math.max(a.x + (a.spike ? a.spike.w + 6 : 4), edge - 300);
+    placeOn(sx, a.y);
+    hold('ArrowRight');
+    var jumped = false, dashed = false, made = false;
+    for (var i = 0; i < 260; i++) {
+      if (!jumped && p.x + p.w >= edge + jx) { tap('Space'); jumped = true; }
+      else if (jumped && !dashed) {
+        for (var q = 0; q < level.orbs.length; q++) {
+          var oo = level.orbs[q];
+          if (oo.cool <= 0 && circleHitsBox(oo.x, oo.y, oo.r + 17, p)) {
+            release('Space'); tap('Space');
+            if (p.dash > 0) dashed = true;
+          }
+        }
+      }
+      step(1);
+      if (p.dead) break;
+      if (jumped && p.onGround && p.x > b.x - 20) { made = dashed; break; }
+    }
+    letGo();
+    if (made) return true;
+  }
+  return false;
+}
+
+var everyGap = true, gapWhich = '';
+for (var i = 0; i < plats9.length - 1; i++) {
+  if (!crossesWithOrb(i)) { everyGap = false; gapWhich += (i + 1) + ' '; }
+}
+ok('every gap can be crossed using its orb', everyGap,
+   'failed on gap ' + gapWhich);
+
+WScript.Echo('');
+WScript.Echo('[room nine: the orb itself]');
+loadLevel(9); state.running = true;
+ok('the orb is small', level.orbs[0].r <= 20, 'radius ' + level.orbs[0].r);
+ok('but the catch is forgiving', level.orbs[0].r + 17 >= level.orbs[0].r * 1.7,
+   'catch radius ' + (level.orbs[0].r + 17));
+
 WScript.Echo('');
 WScript.Echo('[room nine: the saws at the end]');
 loadLevel(9); state.running = true;
