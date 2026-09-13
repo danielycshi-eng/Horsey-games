@@ -1,13 +1,12 @@
 /* Passcode gate shared by every page.
  *
  * Usage (in <head>, before anything else):
- *   index.html   <script src="gate.js" data-gate="start" data-gate-next="games.html"></script>
  *   games.html   <script src="gate.js" data-gate="site"></script>
  *   games/x.html <script src="../gate.js" data-gate="x"></script>
  *
- * "start" arms the Start button. "site" locks the page behind the site code.
- * A game id locks the page behind the site code AND that game's code.
- * Unlocks last for the browser session (sessionStorage).
+ * The code is asked for on EVERY page load — nothing is remembered, so
+ * leaving a game and coming back means typing it again. That is deliberate:
+ * people only get to play what they were given the code for.
  */
 (function () {
   var CODES = {
@@ -37,31 +36,22 @@
   };
 
   var script = document.currentScript;
-  var mode   = script.getAttribute('data-gate');
-  var next   = script.getAttribute('data-gate-next');
-  var back   = script.getAttribute('data-gate-back') || '';
+  var id     = script.getAttribute('data-gate');
+  if (!CODES[id]) return;
 
-  function isUnlocked(id) {
-    try { return sessionStorage.getItem('hg_gate_' + id) === 'yes'; }
-    catch (e) { return false; }
-  }
+  var back = script.getAttribute('data-gate-back') ||
+             (id === 'site' ? 'index.html' : '../games.html');
 
-  function markUnlocked(id) {
-    try { sessionStorage.setItem('hg_gate_' + id, 'yes'); } catch (e) {}
-  }
+  /* Hide the page immediately so nothing flashes before the gate paints. */
+  document.documentElement.classList.add('hg-locked');
 
-  function matches(entered, id) {
-    return entered.trim().toUpperCase() === CODES[id].toUpperCase();
-  }
+  /* Back/forward cache can restore a page without re-running scripts, which
+     would hand out a free pass. Reload so the gate always runs. */
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted) window.location.reload();
+  });
 
-  /* Which codes still have to be entered, in order. */
-  function pending(id) {
-    var chain = id === 'site' ? ['site'] : ['site', id];
-    return chain.filter(function (step) { return !isUnlocked(step); });
-  }
-
-  /* Ask for each code in `steps`, then call done(). */
-  function askFor(steps, backHref, done) {
+  function build() {
     var overlay = document.createElement('div');
     overlay.className = 'hg-gate';
     overlay.innerHTML =
@@ -72,44 +62,21 @@
         '<input class="hg-gate-input" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="32">' +
         '<button class="hg-gate-btn" type="button">Unlock</button>' +
         '<p class="hg-gate-err"></p>' +
-        '<a class="hg-gate-back"></a>' +
+        '<a class="hg-gate-back" href="' + back + '">&larr; Back</a>' +
       '</div>';
     document.body.appendChild(overlay);
 
     var box   = overlay.querySelector('.hg-gate-box');
-    var title = overlay.querySelector('.hg-gate-title');
     var input = overlay.querySelector('.hg-gate-input');
-    var btn   = overlay.querySelector('.hg-gate-btn');
     var err   = overlay.querySelector('.hg-gate-err');
-    var link  = overlay.querySelector('.hg-gate-back');
-    var i     = 0;
 
-    if (backHref) {
-      link.href = backHref;
-      link.textContent = backHref === 'CANCEL' ? 'Cancel' : '← Back';
-      if (backHref === 'CANCEL') {
-        link.removeAttribute('href');
-        link.classList.add('hg-gate-cancel');
-        link.addEventListener('click', function () { overlay.remove(); });
-      }
-    } else {
-      link.remove();
-    }
-
-    function show() {
-      title.textContent = LABELS[steps[i]];
-      err.textContent = '';
-      input.value = '';
-      input.focus();
-    }
+    overlay.querySelector('.hg-gate-title').textContent = LABELS[id];
 
     function submit() {
-      if (matches(input.value, steps[i])) {
-        markUnlocked(steps[i]);
-        i++;
-        if (i < steps.length) { show(); return; }
+      if (input.value.trim().toUpperCase() === CODES[id].toUpperCase()) {
         overlay.remove();
-        done();
+        document.documentElement.classList.remove('hg-locked');
+        window.dispatchEvent(new Event('resize'));
       } else {
         err.textContent = 'Wrong passcode';
         box.classList.remove('hg-gate-shake');
@@ -119,48 +86,16 @@
       }
     }
 
-    btn.addEventListener('click', submit);
+    overlay.querySelector('.hg-gate-btn').addEventListener('click', submit);
     input.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') { e.preventDefault(); submit(); }
     });
-
-    show();
+    input.focus();
   }
 
-  function onReady(fn) {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', fn);
-    } else {
-      fn();
-    }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', build);
+  } else {
+    build();
   }
-
-  if (mode === 'start') {
-    /* Home page stays visible; the Start button is what's guarded. */
-    onReady(function () {
-      var target = document.querySelector('[data-gate-start]') ||
-                   document.querySelector('a[href="' + next + '"]');
-      if (!target) return;
-      target.addEventListener('click', function (e) {
-        if (isUnlocked('site')) return;
-        e.preventDefault();
-        askFor(['site'], 'CANCEL', function () { window.location.href = next; });
-      });
-    });
-    return;
-  }
-
-  if (!CODES[mode]) return;
-
-  var steps = pending(mode);
-  if (!steps.length) return;
-
-  /* Hide the page immediately so nothing flashes before the gate paints. */
-  document.documentElement.classList.add('hg-locked');
-  onReady(function () {
-    askFor(steps, back || (mode === 'site' ? 'index.html' : '../games.html'), function () {
-      document.documentElement.classList.remove('hg-locked');
-      window.dispatchEvent(new Event('resize'));
-    });
-  });
 })();
