@@ -19,7 +19,8 @@
     'cookie-clicker':      'THXORTEIL',
     'delivery-master':     'UBERR',
     'protect-the-crystal': 'RODE',
-    shapes:                'TRIANGLE'
+    shapes:                'TRIANGLE',
+    unnamed:               'NONAME'
   };
 
   var LABELS = {
@@ -32,7 +33,8 @@
     'cookie-clicker':      'Cookie Clicker',
     'delivery-master':     'Delivery Master',
     'protect-the-crystal': 'Protect the Crystal',
-    shapes:                'Shapes'
+    shapes:                'Shapes',
+    unnamed:               '???'
   };
 
   var script = document.currentScript;
