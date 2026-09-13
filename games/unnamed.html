@@ -115,7 +115,7 @@
       <p>a story with no name yet</p>
       <input id="nameInput" type="text" maxlength="12" placeholder="NAME YOUR HERO" autocomplete="off" spellcheck="false">
       <button id="beginBtn" type="button">Begin</button>
-      <div class="keys">you only get one life &mdash; checkpoints are your friend</div>
+      <div class="keys">one life. no checkpoints. mind the gap.</div>
     </div>
   </div>
 
@@ -133,36 +133,32 @@
      so the camera only ever scrolls sideways.
      ============================================================ */
   var GROUND = 440;
-  var WORLD_W = 2340;
+  var WORLD_W = 3720;
+  var START_X = 120;
 
+  /* Each lesson gets its own stretch of ground with nothing else in it,
+     so you never meet two new ideas at the same time. */
   var solids = [
-    { x: -60,  y: GROUND, w: 820,  h: 160 },   // ground A: 0 .. 760
-    { x: 480,  y: 370,    w: 130,  h: 70  },   // the small ledge (teaches JUMP)
-    { x: 980,  y: GROUND, w: 1420, h: 160 },   // ground B: 980 .. 2400
-    { x: 1800, y: 386,    w: 70,   h: 54  }    // apple pedestal
+    { x: -60,  y: GROUND, w: 1160, h: 160 },   // ground A: 0 .. 1100
+    { x: 820,  y: 370,    w: 140,  h: 70  },   // the ledge (teaches JUMP)
+    { x: 1320, y: GROUND, w: 2400, h: 160 },   // ground B: 1320 .. 3720
+    { x: 2800, y: 386,    w: 70,   h: 54  }    // apple pedestal
   ];
 
-  var barrier = { x: 1520, y: 120, w: 26, h: 320, open: false };
+  var barrier = { x: 2250, y: 120, w: 26, h: 320, open: false };
 
-  var pit = { x: 760, w: 220 };                // one jump clears 176px, so this needs two
+  var pit = { x: 1100, w: 220 };               // one jump clears 176px, so this needs two
 
-  var checkpoints = [
-    { x: 90,   active: true  },
-    { x: 690,  active: false },
-    { x: 1120, active: false },
-    { x: 1640, active: false }
-  ];
-
-  var scarecrow = { x: 1320, y: 352, w: 46, h: 88, hp: 3, maxHp: 3, regen: 0, flash: 0, shake: 0, everBroken: false };
-  var apple     = { x: 1822, y: 358, w: 26, h: 28, held: false, vy: 0, grounded: true };
-  var goal      = { x: 2180, y: 300, w: 60, h: 140 };
+  var scarecrow = { x: 1800, y: 352, w: 46, h: 88, hp: 3, maxHp: 3, regen: 0, flash: 0, shake: 0, everBroken: false };
+  var apple     = { x: 2822, y: 358, w: 26, h: 28, held: false, vy: 0, grounded: true };
+  var goal      = { x: 3450, y: 300, w: 60, h: 140 };
 
   var hints = [
-    { x: 150,  y: 360, big: '←   →',      small: 'MOVE' },
-    { x: 430,  y: 286, big: 'SPACE',                small: 'JUMP' },
-    { x: 890,  y: 200, big: 'SPACE IN THE AIR',     small: 'DOUBLE JUMP' },
-    { x: 1250, y: 292, big: 'I',                    small: 'ATTACK' },
-    { x: 1740, y: 286, big: 'B',                    small: 'PICK UP / DROP' }
+    { x: 300,  y: 360, big: '←   →',   small: 'MOVE' },
+    { x: 760,  y: 286, big: 'SPACE',             small: 'JUMP' },
+    { x: 1210, y: 200, big: 'SPACE IN THE AIR',  small: 'DOUBLE JUMP' },
+    { x: 1720, y: 292, big: 'I',                 small: 'ATTACK' },
+    { x: 2720, y: 286, big: 'B',                 small: 'PICK UP / DROP' }
   ];
 
   /* ============================================================
@@ -180,21 +176,21 @@
   var ATK_TIME = 0.20;
   var ATK_COOL = 0.32;
 
+  var SIZE = 30;                 // a square cube, like a proper icon
+
   var p = {
-    x: 90, y: GROUND - 34, w: 26, h: 34,
+    x: START_X, y: GROUND - SIZE, w: SIZE, h: SIZE,
     vx: 0, vy: 0,
     onGround: false, airJumps: 1,
     face: 1, rot: 0,
     atk: 0, cool: 0, swung: false,
     holding: null,
-    hp: 3, maxHp: 3,
     dead: false, deadT: 0
   };
 
   var state = {
     name: 'HERO',
     running: false,
-    spawn: { x: 90, y: GROUND - 34 },
     coyote: 0,
     buffer: 0,
     applePicked: false,
@@ -324,11 +320,10 @@
   }
 
   function respawn() {
-    p.x = state.spawn.x;
-    p.y = state.spawn.y;
+    p.x = START_X;
+    p.y = GROUND - SIZE;
     p.vx = 0; p.vy = 0;
     p.rot = 0;
-    p.hp = p.maxHp;
     p.dead = false;
     p.atk = 0; p.cool = 0;
     p.holding = null;
@@ -474,17 +469,6 @@
       if (apple.y >= floor) { apple.y = floor; apple.vy = 0; apple.grounded = true; }
     }
 
-    /* --- checkpoints --- */
-    for (i = 0; i < checkpoints.length; i++) {
-      var c = checkpoints[i];
-      if (c.active) continue;
-      if (Math.abs((p.x + p.w / 2) - c.x) < 26 && p.y + p.h > GROUND - 70) {
-        c.active = true;
-        state.spawn = { x: c.x - p.w / 2, y: GROUND - p.h };
-        burst(c.x, GROUND - 40, '#7bffb2', 22, 1.1);
-      }
-    }
-
     /* --- the pit --- */
     if (p.y > 520) die();
 
@@ -580,7 +564,7 @@
   function drawArrows() {
     // the two chevrons over the pit that hint at jump number two
     var pulse = 0.55 + Math.sin(state.t * 4) * 0.35;
-    var marks = [[840, 330], [910, 268]];
+    var marks = [[1180, 330], [1250, 268]];
     for (var i = 0; i < marks.length; i++) {
       ctx.save();
       ctx.globalAlpha = pulse * (i === 1 ? 1 : 0.7);
@@ -597,27 +581,6 @@
       ctx.stroke();
       ctx.restore();
     }
-  }
-
-  function drawCheckpoint(c) {
-    var lit = c.active;
-    var sway = lit ? Math.sin(state.t * 3 + c.x) * 3 : 0;
-    ctx.strokeStyle = lit ? '#7bffb2' : '#3d4a72';
-    ctx.lineWidth = 4;
-    ctx.lineCap = 'round';
-    if (lit) { ctx.shadowColor = '#7bffb2'; ctx.shadowBlur = 16; }
-    ctx.beginPath();
-    ctx.moveTo(c.x, GROUND);
-    ctx.lineTo(c.x, GROUND - 72);
-    ctx.stroke();
-    ctx.fillStyle = lit ? '#7bffb2' : '#3d4a72';
-    ctx.beginPath();
-    ctx.moveTo(c.x, GROUND - 72);
-    ctx.lineTo(c.x + 34 + sway, GROUND - 60);
-    ctx.lineTo(c.x, GROUND - 48);
-    ctx.closePath();
-    ctx.fill();
-    ctx.shadowBlur = 0;
   }
 
   function drawBarrier() {
@@ -797,13 +760,6 @@
     ctx.fillStyle = '#4ec3ff';
     ctx.fillText(state.name.toUpperCase(), 18, 30);
 
-    for (var i = 0; i < p.maxHp; i++) {
-      ctx.fillStyle = i < p.hp ? '#ff5f7e' : 'rgba(255,95,126,0.2)';
-      ctx.beginPath();
-      ctx.arc(24 + i * 22, 46, 6, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
     if (p.holding) {
       ctx.textAlign = 'right';
       ctx.fillStyle = '#8ea7d6';
@@ -850,7 +806,6 @@
     for (i = 0; i < solids.length; i++) drawSolid(solids[i]);
     drawBarrier();
     drawArrows();
-    for (i = 0; i < checkpoints.length; i++) drawCheckpoint(checkpoints[i]);
     drawGoal();
     drawScarecrow();
     drawApple();
