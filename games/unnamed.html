@@ -112,10 +112,10 @@
 
     <div class="screen" id="titleScreen">
       <div class="qmark">???</div>
-      <p>a story with no name yet</p>
+      <p>A story with no name yet</p>
       <input id="nameInput" type="text" maxlength="12" placeholder="NAME YOUR HERO" autocomplete="off" spellcheck="false">
       <button id="beginBtn" type="button">Begin</button>
-      <div class="keys">one life. no checkpoints. mind the gap.</div>
+      <div class="keys">One life. No checkpoints. Mind the gap.</div>
     </div>
   </div>
 
@@ -150,8 +150,12 @@
   var pit = { x: 1100, w: 220 };               // one jump clears 176px, so this needs two
 
   var scarecrow = { x: 1800, y: 352, w: 46, h: 88, hp: 3, maxHp: 3, regen: 0, flash: 0, shake: 0, everBroken: false };
-  var apple     = { x: 2822, y: 358, w: 26, h: 28, held: false, vy: 0, grounded: true };
   var goal      = { x: 3450, y: 300, w: 60, h: 140 };
+
+  /* Where the apple lives when nobody is carrying it. Respawn puts it back
+     here — keep it a named spot so it can never drift out of sync again. */
+  var APPLE_HOME = { x: 2822, y: 358 };
+  var apple = { x: APPLE_HOME.x, y: APPLE_HOME.y, w: 26, h: 28, held: false, vy: 0, grounded: true };
 
   var hints = [
     { x: 300,  y: 360, big: '←   →',   small: 'MOVE' },
@@ -329,8 +333,8 @@
     p.holding = null;
     apple.held = false;
     apple.grounded = true;
-    apple.x = 1822;
-    apple.y = 358;
+    apple.x = APPLE_HOME.x;
+    apple.y = APPLE_HOME.y;
   }
 
   /* ============================================================
@@ -764,7 +768,7 @@
       ctx.textAlign = 'right';
       ctx.fillStyle = '#8ea7d6';
       ctx.font = '12px sans-serif';
-      ctx.fillText('CARRYING: APPLE    B to drop', W - 18, 30);
+      ctx.fillText('CARRYING: APPLE  —  PRESS B TO DROP', W - 18, 30);
     }
     ctx.restore();
 
@@ -787,7 +791,7 @@
       ctx.shadowBlur = 0;
       ctx.fillStyle = '#8ea7d6';
       ctx.font = '15px sans-serif';
-      ctx.fillText('nice work, ' + state.name + '. the story starts here.', W / 2, H / 2 + 20);
+      ctx.fillText('Nice work, ' + state.name + '. The story starts here.', W / 2, H / 2 + 20);
       ctx.fillStyle = '#56658c';
       ctx.font = '12px sans-serif';
       ctx.fillText('TO BE CONTINUED', W / 2, H / 2 + 58);
