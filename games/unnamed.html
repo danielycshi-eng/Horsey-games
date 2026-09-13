@@ -501,8 +501,8 @@
     var BED = 120;
     for (var i = 0; i * BED - 60 < 3760; i++) {
       waves.push({
-        x: -60 + i * BED, w: BED, h: 56,
-        period: 2.8, phase: (i * 0.26) % 1
+        x: -60 + i * BED, w: BED, h: 34,   // low, and slow, with a tell
+        period: 4.6, phase: (i * 0.26) % 1
       });
     }
 
@@ -525,15 +525,7 @@
       hazards: [],
       waves: waves,
 
-      saws: [
-        sawOn(platA, 3.0, 0.00),
-        sawOn(platB, 2.6, 0.35),
-        sawOn(platC, 2.2, 0.70),
-        /* and one patrolling the floor the whole length of the room,
-           from under the spawn ledge to the door */
-        { x0: 30, x1: 3560, y0: GROUND - 26, y1: GROUND - 26,
-          r: 26, period: 12.0, phase: 0.0 }
-      ],
+      saws: [],                            // no blades in here at all
 
       enemies: reds,
 
@@ -773,6 +765,20 @@
   function waveBox(wv) {
     var out = waveOut(wv);
     return { x: wv.x, y: GROUND - wv.h * out, w: wv.w, h: wv.h * out };
+  }
+
+  /* 0 while a bed is quiet, ramping to 1 over the last WAVE_TELL seconds
+     before it fires. Spikes that appear with no notice aren't a test of
+     anything — you want to see it coming and choose to move. */
+  var WAVE_TELL = 0.7;
+
+  function waveWarn(wv) {
+    if (waveOut(wv) > 0) return 0;
+    var th = ((state.t / wv.period + wv.phase) % 1) * Math.PI * 2;
+    var window = Math.PI * 2 * WAVE_TELL / wv.period;
+    var fires = Math.PI / 2;                 // where it starts coming up
+    if (th >= fires - window && th < fires) return (th - (fires - window)) / window;
+    return 0;
   }
 
   /* Saws are drawn round, so judge them round — squaring them off
@@ -1357,6 +1363,31 @@
       /* the slot they come out of, so you can see where they'll be */
       ctx.fillStyle = 'rgba(255,95,126,0.10)';
       ctx.fillRect(wv.x, GROUND - 4, wv.w, 4);
+
+      /* the tell: the slot lights up and little nubs peek out just
+         before this bed fires */
+      var warn = waveWarn(wv);
+      if (warn > 0) {
+        var flash = 0.35 + 0.65 * warn * (0.6 + 0.4 * Math.sin(state.t * 22));
+        ctx.save();
+        ctx.globalAlpha = flash;
+        ctx.fillStyle = '#ffd166';
+        ctx.shadowColor = '#ffd166';
+        ctx.shadowBlur = 12;
+        ctx.fillRect(wv.x + 2, GROUND - 5, wv.w - 4, 5);
+        var nub = 3 + warn * 5;
+        for (var t = 0; t < 3; t++) {
+          var nx = wv.x + (t + 0.5) * (wv.w / 3);
+          ctx.beginPath();
+          ctx.moveTo(nx - 7, GROUND);
+          ctx.lineTo(nx, GROUND - nub);
+          ctx.lineTo(nx + 7, GROUND);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
       if (out <= 0.02) continue;
 
       var h = wv.h * out;

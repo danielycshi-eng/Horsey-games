@@ -873,7 +873,8 @@ WScript.Echo('[room six: everything at once]');
 loadLevel(6); state.running = true;
 ok('the room loads', level.name === 'Room Six');
 ok('ten reds', level.enemies.length === 10, level.enemies.length + ' reds');
-ok('saws on the platforms and one on the floor', level.saws.length === 4);
+ok('no saws anywhere in this room', level.saws.length === 0,
+   level.saws.length + ' saws');
 ok('spikes come out of the ground in a wave', level.waves.length > 6,
    level.waves.length + ' beds');
 
@@ -949,23 +950,40 @@ ok('no raised stretch is longer than a double jump',
    longestUp <= 300,
    'longest raised run ' + longestUp + 'px, a double jump carries ~368px');
 
+/* every bed must telegraph before it fires, with enough notice to move */
+var wv1 = level.waves[5];
+var sawTellFor = 0, tellRanOut = false, everWarned = false;
+for (var t0 = 0; t0 < wv1.period * 2; t0 += 0.02) {
+  state.t = t0;
+  var wn = waveWarn(wv1), o = waveOut(wv1);
+  if (wn > 0) { everWarned = true; sawTellFor += 0.02; }
+  if (o > 0 && sawTellFor > 0 && sawTellFor < 0.4) tellRanOut = true;
+  if (o > 0) sawTellFor = 0;
+}
+ok('a bed warns you before it fires', everWarned);
+ok('the warning gives you time to move', !tellRanOut);
+
+/* and the warning must never be showing while the spikes are already up */
+var overlap = false;
+for (var t0 = 0; t0 < wv1.period * 2; t0 += 0.02) {
+  state.t = t0;
+  if (waveWarn(wv1) > 0 && waveOut(wv1) > 0) overlap = true;
+}
+ok('the warning stops once the spikes are out', !overlap);
+
+ok('the spikes are low', level.waves[0].h <= 40,
+   'spikes reach ' + level.waves[0].h + 'px');
+ok('and slow', level.waves[0].period >= 4,
+   'period ' + level.waves[0].period + 's');
+
 /* The point of the ledge is that the ROOM doesn't kill you the instant
    you appear. The reds will come for you, and should — so take them out
    of it and check the terrain alone is survivable. */
 level.enemies = [];
 placeOn(level.start.x, 350);
 step(320);
-ok('the spawn ledge is safe from spikes and saws', !p.dead,
+ok('the spawn ledge is safe from the spikes', !p.dead,
    'died standing still at x=' + Math.round(p.x));
-
-/* the floor saw really does patrol */
-var floorSaw = level.saws[3];
-ok('the floor saw runs the whole length of the room',
-   floorSaw.y0 === floorSaw.y1 && floorSaw.y0 + floorSaw.r === GROUND &&
-   floorSaw.x0 <= ledge6.x + ledge6.w &&
-   floorSaw.x1 >= level.door.x,
-   'from ' + floorSaw.x0 + ' to ' + floorSaw.x1 +
-   ' (ledge ends ' + (ledge6.x + ledge6.w) + ', door at ' + level.door.x + ')');
 
 /* the wave has to actually rise and fall, and leave gaps */
 var everUp = false, everDown = false;
