@@ -932,15 +932,20 @@
 
   /* How far down a beam from `x` gets before something stops it. This is
      what makes hiding under a platform work, with no special cases. */
-  function beamFloor(x, fromY) {
-    var best = GROUND;
+  function solidUnder(x, fromY) {
+    var best = null;
     for (var i = 0; i < level.solids.length; i++) {
       var s = level.solids[i];
       if (x < s.x || x > s.x + s.w) continue;
       if (s.y < fromY) continue;
-      if (s.y < best) best = s.y;
+      if (!best || s.y < best.y) best = s;
     }
     return best;
+  }
+
+  function beamFloor(x, fromY) {
+    var s = solidUnder(x, fromY);
+    return s ? s.y : GROUND;
   }
 
   function startMove(b, kind) {
@@ -961,7 +966,6 @@
       mv.done = 0;
       mv.sub = 'move';
       mv.subT = 0;
-      mv.blasts = [];
 
     } else if (kind === 'spikes') {
       /* it slams the floor and spikes erupt outward from the impact,
@@ -971,7 +975,7 @@
       mv.subT = 0;
       mv.beds = null;
       mv.since = 0;
-      mv.spread = 760;
+      mv.spread = 620;                  // a teeny bit slower
 
     } else if (kind === 'saws') {
       /* the blades gather around it first, then it throws them at you */
@@ -1027,13 +1031,20 @@
     return 1 - (-age / 0.4);
   }
 
-  function eruptFrom(mv, originX) {
+  /* Spikes run along whatever it landed on. Slam the floor and they
+     cross the floor; slam a platform and they only cover that platform. */
+  function eruptFrom(mv, originX, surf) {
     mv.beds = [];
     mv.since = 0;
+    mv.surfY = surf ? surf.y : GROUND;
+
+    var from = surf ? surf.x : -60;
+    var to   = surf ? surf.x + surf.w : level.worldW + 60;
     var BED = 110;
-    for (var x = -60; x < level.worldW + 60; x += BED) {
-      mv.beds.push({ x: x, w: BED,
-                     upAt: Math.abs(x + BED / 2 - originX) / mv.spread });
+    for (var x = from; x < to - 18; x += BED) {
+      var w = Math.min(BED, to - x);
+      mv.beds.push({ x: x, w: w,
+                     upAt: Math.abs(x + w / 2 - originX) / mv.spread });
     }
   }
 
@@ -1121,10 +1132,11 @@
         var floorY = beamFloor(b.x + b.w / 2, b.y);
         if (hits(p, bossBox(b))) { die(); return; }
         if (b.y + b.h >= floorY) {
+          /* it lands, and that's all it does — no shockwave. Getting
+             out from under it is the whole answer. */
           b.y = floorY - b.h;
-          mv.blasts.push({ x: b.x + b.w / 2, y: floorY, t: 0 });
-          burst(b.x + b.w / 2, floorY, '#ff5f7e', 46, 1.8);
-          state.flash = 0.55;
+          burst(b.x + b.w / 2, floorY, '#ff5f7e', 26, 1.1);
+          state.flash = 0.3;
           mv.done++;
           mv.sub = mv.done >= mv.slams ? 'over' : 'recover';
           mv.subT = 0;
@@ -1136,17 +1148,6 @@
 
       } else {
         b.y += (b.hover - b.y) * Math.min(1, dt * 3);
-      }
-
-      /* every slam throws a blast out along whatever it hit */
-      for (i = mv.blasts.length - 1; i >= 0; i--) {
-        var bl = mv.blasts[i];
-        bl.t += dt;
-        if (bl.t > 0.6) { mv.blasts.splice(i, 1); continue; }
-        var reach = bl.t * 700;
-        var left  = { x: bl.x - reach, y: bl.y - 34, w: reach, h: 34 };
-        var right = { x: bl.x,         y: bl.y - 34, w: reach, h: 34 };
-        if (hits(p, left) || hits(p, right)) { die(); return; }
       }
 
     } else if (mv.kind === 'spikes') {
@@ -1161,14 +1162,16 @@
         if (mv.subT > 0.35) { mv.sub = 'drop'; mv.subT = 0; }
 
       } else if (mv.sub === 'drop') {
+        var surf = solidUnder(b.x + b.w / 2, b.y);
+        var landY = surf ? surf.y : GROUND;
         b.y += CRASH_SPEED * dt;
         if (hits(p, bossBox(b))) { die(); return; }
-        if (b.y + b.h >= GROUND) {
-          b.y = GROUND - b.h;
+        if (b.y + b.h >= landY) {
+          b.y = landY - b.h;
           mv.sub = 'erupt';
           mv.subT = 0;
-          eruptFrom(mv, b.x + b.w / 2);
-          burst(b.x + b.w / 2, GROUND, '#ff5f7e', 50, 1.9);
+          eruptFrom(mv, b.x + b.w / 2, surf);
+          burst(b.x + b.w / 2, landY, '#ff5f7e', 50, 1.9);
           state.flash = 0.6;
         }
 
@@ -1179,7 +1182,7 @@
           var bd = mv.beds[i];
           var out = bedOut(mv, bd);
           if (out <= 0.05) continue;
-          var hz = { x: bd.x, y: GROUND - 44 * out, w: bd.w, h: 44 * out };
+          var hz = { x: bd.x, y: mv.surfY - 44 * out, w: bd.w, h: 44 * out };
           if (hits(p, hz)) { die(); return; }
         }
       }
@@ -1914,33 +1917,14 @@
           ctx.fillRect(b.x, b.y + b.h, b.w, down - (b.y + b.h));
           ctx.restore();
         }
-        for (var q = 0; q < mv.blasts.length; q++) {
-          var bl = mv.blasts[q];
-          var reach = bl.t * 700;
-          var fade = 1 - bl.t / 0.6;
-          ctx.save();
-          ctx.globalAlpha = Math.max(0, fade);
-          ctx.fillStyle = '#ff2d55';
-          ctx.shadowColor = '#ff2d55';
-          ctx.shadowBlur = 24;
-          ctx.fillRect(bl.x - reach, bl.y - 34, reach, 34);
-          ctx.fillRect(bl.x, bl.y - 34, reach, 34);
-          /* and a ring off the impact point */
-          ctx.globalAlpha = Math.max(0, fade) * 0.7;
-          ctx.strokeStyle = '#ffd166';
-          ctx.lineWidth = 6 * fade + 2;
-          ctx.beginPath();
-          ctx.arc(bl.x, bl.y, 30 + bl.t * 300, Math.PI, Math.PI * 2);
-          ctx.stroke();
-          ctx.restore();
-        }
 
       } else if (mv.kind === 'spikes') {
         if (mv.sub === 'hang') {
           ctx.save();
           ctx.globalAlpha = 0.35 + 0.4 * Math.sin(state.t * 30);
           ctx.fillStyle = '#ffd166';
-          ctx.fillRect(b.x, b.y + b.h, b.w, GROUND - (b.y + b.h));
+          ctx.fillRect(b.x, b.y + b.h, b.w,
+                       beamFloor(b.x + b.w / 2, b.y) - (b.y + b.h));
           ctx.restore();
         }
         if (mv.beds) {
@@ -1951,7 +1935,7 @@
               ctx.save();
               ctx.globalAlpha = warn;
               ctx.fillStyle = '#ffd166';
-              ctx.fillRect(bd.x + 2, GROUND - 5, bd.w - 4, 5);
+              ctx.fillRect(bd.x + 2, mv.surfY - 5, bd.w - 4, 5);
               ctx.restore();
             }
             var out = bedOut(mv, bd);
@@ -1962,9 +1946,9 @@
             ctx.shadowBlur = 14;
             for (var sx = bd.x; sx < bd.x + bd.w - 1; sx += bd.w / 3) {
               ctx.beginPath();
-              ctx.moveTo(sx, GROUND);
-              ctx.lineTo(sx + bd.w / 6, GROUND - hgt);
-              ctx.lineTo(sx + bd.w / 3, GROUND);
+              ctx.moveTo(sx, mv.surfY);
+              ctx.lineTo(sx + bd.w / 6, mv.surfY - hgt);
+              ctx.lineTo(sx + bd.w / 3, mv.surfY);
               ctx.closePath();
               ctx.fill();
             }

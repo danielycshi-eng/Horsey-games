@@ -1147,28 +1147,30 @@ for (var i = 0; i < 220; i++) {
 }
 ok('standing still under a crash kills you', hitByCrash);
 
-/* Every slam must throw a blast, and the blast must be lethal well away
-   from the impact. The crash homes in on you, so drop it at a fixed spot
-   instead of letting it follow the player into the test. */
+/* The smash has NO blast. Landing next to you must not hurt you — the
+   danger is the thing itself coming down, and stepping aside is the
+   whole answer. The crash homes in, so drop it at a fixed spot rather
+   than letting it follow the player into the test. */
 loadLevel(7); state.running = true;
 B = level.boss; B.moves.length = 0;
-placeOn(1620, GROUND);
+placeOn(1760, GROUND);
 startMove(B, 'crash');
 crash = B.moves[0];
 B.x = 1900; B.y = 96;
 crash.sub = 'drop'; crash.subT = 0;
 
-var sawBlast = false, blastKilled = false;
+var landedNearby = false, killedAnyway = false;
 for (var i = 0; i < 200; i++) {
-  if (!p.dead) { p.x = 1620; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0; }
+  if (!p.dead) { p.x = 1760; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0; }
   if (crash.sub === 'drop') B.x = 1900;      // hold it off the player
   step(1);
-  if (crash.blasts.length > 0) sawBlast = true;
-  if (p.dead) { blastKilled = true; break; }
+  if (crash.done > 0) landedNearby = true;
+  if (p.dead) { killedAnyway = true; break; }
 }
-ok('a slam throws a blast', sawBlast);
-ok('the blast reaches you well clear of the impact',
-   blastKilled, 'slammed at ~1937, player stood at 1620 (300px away)');
+ok('the smash lands', landedNearby);
+ok('standing clear of the smash is safe - there is no blast',
+   !killedAnyway, 'landed at ~1937, player stood at 1760 (140px clear)');
+ok('the smash carries no shockwave state', crash.blasts === undefined);
 
 /* it should keep slamming, not stop after one */
 loadLevel(7); state.running = true;
@@ -1262,8 +1264,11 @@ loadLevel(7); state.running = true;
 B = level.boss; B.moves.length = 0;
 placeOn(400, GROUND);
 startMove(B, 'spikes');
-B.x = 1600;
+B.x = 1900;                                  // open floor, past every platform
+B.y = 100;
 B.moves[0].sub = 'drop'; B.moves[0].subT = 0;
+ok('that spot really is open floor',
+   beamFloor(1937, 100) === GROUND, 'lands on y=' + beamFloor(1937, 100));
 var caught = false;
 for (var i = 0; i < 300; i++) {
   if (!p.dead) { p.x = 400; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0; }
@@ -1290,6 +1295,41 @@ for (var i = 0; i < 300; i++) {
 }
 ok('the eruption actually happened', eruptionRan);
 ok('up on a platform the spikes cannot reach you', safeUpTop);
+
+/* slam a platform instead of the floor and the spikes go on it */
+loadLevel(7); state.running = true;
+B = level.boss; B.moves.length = 0;
+placeOn(120, GROUND);                        // well out of the way
+startMove(B, 'spikes');
+var spP = B.moves[0];
+B.x = bH.x + 120; B.y = 100;                 // right over the high platform
+spP.sub = 'drop'; spP.subT = 0;
+for (var i = 0; i < 150 && spP.sub !== 'erupt'; i++) {
+  p.x = 120; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0;
+  step(1);
+}
+ok('it lands on the platform rather than falling through',
+   spP.sub === 'erupt' && Math.abs((B.y + B.h) - bH.y) < 1,
+   'boss bottom ' + Math.round(B.y + B.h) + ', platform top ' + bH.y);
+ok('the spikes come up on that platform',
+   spP.surfY === bH.y, 'spikes on y=' + spP.surfY);
+
+var offPlatform = false;
+for (var i = 0; i < spP.beds.length; i++) {
+  var bd2 = spP.beds[i];
+  if (bd2.x < bH.x - 1 || bd2.x + bd2.w > bH.x + bH.w + 1) offPlatform = true;
+}
+ok('and they stay within the platform', !offPlatform,
+   spP.beds.length + ' beds across ' + bH.x + '..' + (bH.x + bH.w));
+
+/* standing on that platform is now lethal; the floor below is not */
+var floorSafe = true;
+for (var i = 0; i < 200; i++) {
+  p.x = bH.x + 140; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0;   // underneath it
+  step(1);
+  if (p.dead) { floorSafe = false; break; }
+}
+ok('the floor under that platform stays clear', floorSafe);
 
 WScript.Echo('');
 WScript.Echo('[boss: the saw wall]');
@@ -1353,10 +1393,16 @@ startMove(B, 'saws');
 sw7 = B.moves[0];
 frames = Math.floor(sw7.dur / 0.016) + 10;
 
-/* pick a slot that is definitely a blade, not the gap */
+/* Pick a slot that is a blade AND somewhere the player can actually be.
+   The lowest slot sits below the floor, so a player there gets pushed
+   up out of the ground before the blade ever reaches them. */
 var bladeY = null;
 for (var i = 0; i < sw7.slots.length; i++) {
-  if (sawSlotBlocked(sw7, sw7.slots[i])) { bladeY = sw7.slots[i]; break; }
+  var sy = sw7.slots[i];
+  if (!sawSlotBlocked(sw7, sy)) continue;
+  if (sy > GROUND - 20 || sy < 120) continue;
+  bladeY = sy;
+  break;
 }
 var cut = false;
 for (var i = 0; i < frames; i++) {
