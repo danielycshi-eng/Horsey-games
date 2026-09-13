@@ -44,3 +44,114 @@ h1 {
 }
 
 .back-link:hover { color: #fff; }
+
+/* ---- Passcode gate (gate.js) ---- */
+
+/* While locked, the page behind the gate is laid out but invisible. */
+html.hg-locked body { overflow: hidden; }
+html.hg-locked body > *:not(.hg-gate) { visibility: hidden; }
+
+.hg-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, #16213e 0%, #0b0f24 70%, #06080f 100%);
+  font-family: sans-serif;
+}
+
+.hg-gate-box {
+  width: min(90vw, 380px);
+  padding: 2.2rem 2rem;
+  text-align: center;
+  background: rgba(22, 33, 62, 0.85);
+  border: 2px solid #0f3460;
+  border-radius: 18px;
+  box-shadow: 0 0 40px rgba(78, 127, 255, 0.25), 0 0 120px rgba(78, 127, 255, 0.08);
+  animation: hgGateIn 0.45s cubic-bezier(.2,.7,.2,1) both;
+}
+@keyframes hgGateIn {
+  from { opacity: 0; transform: translateY(16px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.hg-gate-shake { animation: hgGateShake 0.4s ease; }
+@keyframes hgGateShake {
+  0%, 100% { transform: translateX(0); }
+  20%      { transform: translateX(-9px); }
+  40%      { transform: translateX(8px); }
+  60%      { transform: translateX(-5px); }
+  80%      { transform: translateX(3px); }
+}
+
+.hg-gate-lock { font-size: 2.2rem; margin-bottom: 0.6rem; }
+
+.hg-gate-title {
+  font-size: 1.5rem;
+  letter-spacing: 2px;
+  color: #eee;
+  margin-bottom: 0.3rem;
+}
+
+.hg-gate-sub {
+  color: #8ea7d6;
+  font-size: 0.8rem;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  margin-bottom: 1.4rem;
+}
+
+.hg-gate-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  font-family: inherit;
+  font-size: 1.3rem;
+  letter-spacing: 5px;
+  text-align: center;
+  color: #fff;
+  background: #0b0f24;
+  border: 2px solid #0f3460;
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.hg-gate-input:focus {
+  border-color: #4e7fff;
+  box-shadow: 0 0 18px rgba(78, 127, 255, 0.4);
+}
+
+.hg-gate-btn {
+  margin-top: 1rem;
+  width: 100%;
+  padding: 0.7rem 1rem;
+  font-family: inherit;
+  font-size: 1rem;
+  letter-spacing: 3px;
+  color: #fff;
+  background: #e94560;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+.hg-gate-btn:hover { background: #c73652; transform: scale(1.03); }
+
+.hg-gate-err {
+  min-height: 1.2rem;
+  margin-top: 0.7rem;
+  font-size: 0.85rem;
+  letter-spacing: 1px;
+  color: #ff6b6b;
+}
+
+.hg-gate-back {
+  display: inline-block;
+  margin-top: 0.4rem;
+  font-size: 0.9rem;
+  color: #a0c4ff;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.hg-gate-back:hover { color: #fff; }
