@@ -230,7 +230,7 @@
                 home: { x: 2822, y: 358 } },
       door: { x: 3450, y: 300, w: 60, h: 140, needs: 'apple' },
 
-      enemy: null,
+      enemies: [],
       saws: [],
       arrows: [[1180, 330], [1250, 268]],
       hints: [
@@ -269,7 +269,7 @@
                 home: { x: 1960, y: 274 } },
       door: { x: 2300, y: 170, w: 60, h: 130, needs: 'key' },
 
-      enemy: null,
+      enemies: [],
       saws: [],
       arrows: [],
       hints: []          // no labels: they can remember how to pick things up
@@ -299,14 +299,14 @@
       /* y0 is the top of the swing, y1 the bottom. At the bottom the
          blade sits below the platforms and the jump arc is clear. */
       saws: [
-        { x: 490,  y0: 290, y1: 500, r: 26, period: 2.2, phase: 0.00 },
-        { x: 830,  y0: 290, y1: 500, r: 26, period: 2.0, phase: 0.30 },
-        { x: 1170, y0: 290, y1: 500, r: 26, period: 2.4, phase: 0.60 },
-        { x: 1520, y0: 290, y1: 500, r: 26, period: 2.6, phase: 0.00 },
-        { x: 1640, y0: 290, y1: 500, r: 26, period: 2.6, phase: 0.25 }
+        { x0: 490,  x1: 490,  y0: 290, y1: 500, r: 26, period: 2.2, phase: 0.00 },
+        { x0: 830,  x1: 830,  y0: 290, y1: 500, r: 26, period: 2.0, phase: 0.30 },
+        { x0: 1170, x1: 1170, y0: 290, y1: 500, r: 26, period: 2.4, phase: 0.60 },
+        { x0: 1520, x1: 1520, y0: 290, y1: 500, r: 26, period: 2.6, phase: 0.00 },
+        { x0: 1640, x1: 1640, y0: 290, y1: 500, r: 26, period: 2.6, phase: 0.25 }
       ],
 
-      enemy: null,
+      enemies: [],
       pickup: null,
       door: { x: 1900, y: 250, w: 60, h: 130, needs: null },
 
@@ -339,7 +339,7 @@
 
       /* It jumps, it double jumps, and it will follow you anywhere
          in the room. There is no outrunning it forever. */
-      enemy: {
+      enemies: [{
         x: 2400, y: GROUND - 22, w: 22, h: 22,
         vx: 0, vy: 0,
         hp: 3, maxHp: 3,
@@ -351,7 +351,7 @@
         onGround: false,
         airJumps: 1,
         spawn: { x: 2400, y: GROUND - 22 }
-      },
+      }],
 
       /* Hidden until the cube drops it. */
       pickup: { kind: 'key', x: 2400, y: 380, w: 30, h: 26, hidden: true,
@@ -363,7 +363,71 @@
     };
   }
 
-  var BUILDERS = [buildTutorial, buildRoomOne, buildRoomTwo, buildRoomThree];
+  /* One red cube, on a platform, with a saw skating along its top. */
+  function redOn(plat, atX) {
+    return {
+      x: atX, y: plat.y - 22, w: 22, h: 22,
+      vx: 0, vy: 0,
+      hp: 3, maxHp: 3,
+      speed: 235,
+      face: -1,
+      flash: 0,
+      knock: 0,
+      dead: false,
+      onGround: false,
+      airJumps: 1,
+      spawn: { x: atX, y: plat.y - 22 }
+    };
+  }
+
+  /* Room Four. Solid ground underfoot, three platforms climbing away
+     from it, a red on each and a saw sliding along each one. Kill all
+     three and the key appears on the top platform, so the climb is the
+     room. The saws sit ON the platforms and never dip below them. */
+  function buildRoomFour() {
+    var ground = { x: -60,  y: GROUND, w: 2520, h: 160 };
+    var platA  = { x: 560,  y: 350,    w: 260,  h: 26 };
+    var platB  = { x: 1000, y: 270,    w: 260,  h: 26 };
+    var platC  = { x: 1440, y: 190,    w: 260,  h: 26 };
+
+    /* A saw rides with its underside exactly on the platform top, and
+       turns back before either edge, so it never hangs off. */
+    function sawOn(plat, period, phase) {
+      var r = 22;
+      return {
+        x0: plat.x + r, x1: plat.x + plat.w - r,
+        y0: plat.y - r, y1: plat.y - r,
+        r: r, period: period, phase: phase
+      };
+    }
+
+    return {
+      name: 'Room Four',
+      worldW: 2400,
+      start: { x: 80, y: GROUND - SIZE },
+      fallY: 620,
+
+      solids: [ground, platA, platB, platC],
+      hazards: [],
+      saws: [ sawOn(platA, 3.0, 0.00),
+              sawOn(platB, 2.6, 0.35),
+              sawOn(platC, 2.2, 0.70) ],
+
+      enemies: [ redOn(platA, 700), redOn(platB, 1140), redOn(platC, 1580) ],
+
+      /* Appears up top once all three are down. */
+      pickup: { kind: 'key', x: 1560, y: 164, w: 30, h: 26, hidden: true,
+                spawnAt: { x: 1560, y: 164 },
+                home: { x: 1560, y: 164 } },
+      door: { x: 2150, y: 310, w: 60, h: 130, needs: 'key' },
+
+      arrows: [],
+      hints: []
+    };
+  }
+
+  var BUILDERS = [buildTutorial, buildRoomOne, buildRoomTwo,
+                  buildRoomThree, buildRoomFour];
 
   var GRAB_MAX = 2;              // seconds of being held before you die
 
@@ -559,10 +623,15 @@
            a.y < b.y + b.h && a.y + a.h > b.y;
   }
 
-  /* Where a saw sits right now. Phase 0 is the top of its swing. */
-  function sawY(sw) {
-    var u = (state.t / sw.period + sw.phase) * Math.PI * 2;
-    return sw.y0 + (sw.y1 - sw.y0) * (1 - Math.cos(u)) / 2;
+  /* Where a saw sits right now. It slides between (x0,y0) and (x1,y1),
+     so the same thing does both the vertical blades in Room Two and the
+     ones skating along platform tops in Room Four. Phase 0 is end one. */
+  function sawPos(sw) {
+    var u = (1 - Math.cos((state.t / sw.period + sw.phase) * Math.PI * 2)) / 2;
+    return {
+      x: sw.x0 + (sw.x1 - sw.x0) * u,
+      y: sw.y0 + (sw.y1 - sw.y0) * u
+    };
   }
 
   /* Saws are drawn round, so judge them round — squaring them off
@@ -741,9 +810,11 @@
     if (p.atk > 0) {
       p.atk -= dt;
       if (!p.swung) {
-        var hb = { x: p.face > 0 ? p.x + p.w - 4 : p.x - 34,
-                   y: p.y - 2, w: 38, h: p.h + 4 };
-        hitEnemy(hb);
+        /* The swing covers your own body as well as the space in front,
+           so something clamped onto you can always be hit off. */
+        var hb = { x: p.face > 0 ? p.x : p.x - 34,
+                   y: p.y - 2, w: p.w + 34, h: p.h + 4 };
+        hitEnemies(hb);
         if (sc && sc.hp > 0 && hits(hb, sc)) {
           sc.hp--;
           sc.flash = 0.16;
@@ -809,15 +880,16 @@
     }
     for (i = 0; i < level.saws.length; i++) {
       var sw = level.saws[i];
-      sw.cy = sawY(sw);
-      if (circleHitsBox(sw.x, sw.cy, sw.r - 4, p)) { die(); return; }
+      /* Saws are for you only — the reds share their platforms with one
+         and must never be cut by it. */
+      var at = sawPos(sw);
+      if (circleHitsBox(at.x, at.y, sw.r - 4, p)) { die(); return; }
     }
 
     /* --- the red cube's grip: two seconds of contact and you're gone.
            Break away and the meter bleeds back down, slowly. --- */
-    updateEnemy(dt);
-    var e = level.enemy;
-    if (e && !e.dead && hits(p, e)) state.grab += dt;
+    updateEnemies(dt);
+    if (touchingAnyEnemy()) state.grab += dt;
     else state.grab = Math.max(0, state.grab - dt * 0.6);
     if (state.grab >= GRAB_MAX) { die(); return; }
 
@@ -865,9 +937,27 @@
     return false;
   }
 
-  function updateEnemy(dt) {
-    var e = level.enemy;
-    if (!e || e.dead) return;
+  function updateEnemies(dt) {
+    for (var n = 0; n < level.enemies.length; n++) updateEnemy(level.enemies[n], dt);
+  }
+
+  function allDead() {
+    for (var n = 0; n < level.enemies.length; n++) {
+      if (!level.enemies[n].dead) return false;
+    }
+    return true;
+  }
+
+  function touchingAnyEnemy() {
+    for (var n = 0; n < level.enemies.length; n++) {
+      var e = level.enemies[n];
+      if (!e.dead && hits(p, e)) return true;
+    }
+    return false;
+  }
+
+  function updateEnemy(e, dt) {
+    if (e.dead) return;
 
     if (e.flash > 0) e.flash -= dt;
 
@@ -939,36 +1029,47 @@
     }
   }
 
-  /* Three hits and it's done. */
-  function hitEnemy(hb) {
-    var e = level.enemy;
-    if (!e || e.dead || !hits(hb, e)) return;
+  /* Three hits each, and the key only comes when every one is down. */
+  function hitEnemies(hb) {
+    for (var n = 0; n < level.enemies.length; n++) {
+      var e = level.enemies[n];
+      if (e.dead || !hits(hb, e)) continue;
 
-    e.hp--;
-    e.flash = 0.18;
-    e.vx = p.face * 300;               // knocked back, so one swing isn't three
-    e.vy = -260;
-    e.knock = 0.35;
-    burst(e.x + e.w / 2, e.y + e.h / 2, '#ff5f7e', 16);
+      e.hp--;
+      e.flash = 0.18;
+      e.vx = p.face * 300;             // knocked back, so one swing isn't three
+      e.vy = -260;
+      e.knock = 0.35;
+      burst(e.x + e.w / 2, e.y + e.h / 2, '#ff5f7e', 16);
 
-    if (e.hp <= 0) {
-      e.dead = true;
-      burst(e.x + e.w / 2, e.y + e.h / 2, '#ff5f7e', 40, 1.5);
-      dropKey();
+      if (e.hp <= 0) {
+        e.dead = true;
+        burst(e.x + e.w / 2, e.y + e.h / 2, '#ff5f7e', 40, 1.5);
+        if (allDead()) dropKey(e);
+      }
     }
   }
 
-  function dropKey() {
+  /* The key either falls where the last one died, or appears at a fixed
+     spot the room picked out — up on the top platform, say. */
+  function dropKey(e) {
     var it = level.pickup;
-    var e = level.enemy;
     if (!it) return;
     it.hidden = false;
-    it.x = e.x + e.w / 2 - it.w / 2;
-    it.y = e.y + e.h - it.h;      // flush with its feet, not its head
-    it.home = { x: it.x, y: e.y + e.h - it.h };
     it.held = false;
-    it.grounded = false;
-    it.vy = -200;
+
+    if (it.spawnAt) {
+      it.x = it.spawnAt.x;
+      it.y = it.spawnAt.y;
+      it.vy = 0;
+      it.grounded = true;
+    } else {
+      it.x = e.x + e.w / 2 - it.w / 2;
+      it.y = e.y + e.h - it.h;         // flush with its feet, not its head
+      it.vy = -200;
+      it.grounded = false;
+    }
+    it.home = { x: it.x, y: it.y };
     burst(it.x + it.w / 2, it.y, '#ffd166', 22, 1.2);
   }
 
@@ -1077,18 +1178,18 @@
   function drawSaws() {
     for (var i = 0; i < level.saws.length; i++) {
       var sw = level.saws[i];
-      var cy = sawY(sw);
+      var at = sawPos(sw);
 
       /* the rail it rides, so you can read the swing before you jump */
       ctx.strokeStyle = 'rgba(255,95,126,0.16)';
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.moveTo(sw.x, sw.y0);
-      ctx.lineTo(sw.x, sw.y1);
+      ctx.moveTo(sw.x0, sw.y0);
+      ctx.lineTo(sw.x1, sw.y1);
       ctx.stroke();
 
       ctx.save();
-      ctx.translate(sw.x, cy);
+      ctx.translate(at.x, at.y);
       ctx.rotate(state.t * 9);
 
       ctx.fillStyle = '#ff5f7e';
@@ -1171,9 +1272,12 @@
     }
   }
 
-  function drawEnemy() {
-    var e = level.enemy;
-    if (!e || e.dead) return;
+  function drawEnemies() {
+    for (var n = 0; n < level.enemies.length; n++) drawEnemy(level.enemies[n]);
+  }
+
+  function drawEnemy(e) {
+    if (e.dead) return;
 
     ctx.save();
     ctx.translate(e.x + e.w / 2, e.y + e.h / 2);
@@ -1407,7 +1511,7 @@
     drawArrows();
     drawDoor();
     drawScarecrow();
-    drawEnemy();
+    drawEnemies();
     drawPickup();
     drawHints();
     drawPlayer();
@@ -1490,8 +1594,24 @@
   }
 
   /* Reaching a door ends the room and offers the two ways onward. */
+  /* Set when you duck back into the tutorial from a room you'd cleared,
+     so finishing it returns you to that room's screen instead of
+     dumping you at Room One with your place lost. */
+  var returnToDone = null;
+
   function finishLevel() {
-    var finished = levelIndex;
+    state.running = false;
+
+    if (levelIndex === 0 && returnToDone !== null) {
+      var back = returnToDone;
+      returnToDone = null;
+      showDoneFor(back);
+      return;
+    }
+    showDoneFor(levelIndex);
+  }
+
+  function showDoneFor(finished) {
     state.running = false;
 
     if (finished === 0) {
@@ -1501,20 +1621,16 @@
       againBtn.textContent = 'Restart the Tutorial';
       onNext  = function () { loadLevel(1); enterGame(); };
       onAgain = function () { loadLevel(0); enterGame(); };
-    } else if (finished === BUILDERS.length - 1) {
-      doneTitle.textContent = level.name.toUpperCase() + ' CLEARED';
-      doneSub.textContent = 'To be continued';
-      nextBtn.textContent = 'Play It Again';
-      againBtn.textContent = 'Back to the Tutorial';
-      onNext  = function () { loadLevel(finished); enterGame(); };
-      onAgain = function () { loadLevel(0); enterGame(); };
     } else {
-      doneTitle.textContent = level.name.toUpperCase() + ' CLEARED';
-      doneSub.textContent = 'Onward';
-      nextBtn.textContent = 'Next Room';
-      againBtn.textContent = 'Play It Again';
-      onNext  = function () { loadLevel(finished + 1); enterGame(); };
-      onAgain = function () { loadLevel(finished); enterGame(); };
+      var last = finished === BUILDERS.length - 1;
+      doneTitle.textContent = BUILDERS[finished]().name.toUpperCase() + ' CLEARED';
+      doneSub.textContent = last ? 'To be continued' : 'Onward';
+      nextBtn.textContent = last ? 'Play It Again' : 'Next Room';
+      againBtn.textContent = last ? 'Back to the Tutorial' : 'Play It Again';
+      onNext  = function () { loadLevel(last ? finished : finished + 1); enterGame(); };
+      onAgain = last
+        ? function () { returnToDone = finished; loadLevel(0); enterGame(); }
+        : function () { loadLevel(finished); enterGame(); };
     }
 
     doneScreen.classList.remove('hidden');

@@ -382,9 +382,9 @@ for (var i = 0; i < level.saws.length; i++) {
   var sw = level.saws[i];
   for (var j = 0; j < level.solids.length; j++) {
     var s = level.solids[j];
-    if (sw.x > s.x - sw.r && sw.x < s.x + s.w + sw.r) {
+    if (sw.x0 > s.x - sw.r && sw.x0 < s.x + s.w + sw.r) {
       sawsClear = false;
-      sawDetail = 'saw at ' + sw.x + ' overlaps platform ' + s.x + '..' + (s.x + s.w);
+      sawDetail = 'saw at ' + sw.x0 + ' overlaps platform ' + s.x + '..' + (s.x + s.w);
     }
   }
 }
@@ -451,13 +451,13 @@ WScript.Echo('        window: ' + g4double.ok + ' safe, ' + g4double.died + ' fa
 ok('jump 4 can be done with a double jump', g4double.ok > 0,
    g4double.ok + '/' + g4double.total + ' launches survived');
 ok('both saws are in the last gap',
-   level.saws[3].x > r2[3].x + r2[3].w && level.saws[4].x < r2[4].x,
-   'saws at ' + level.saws[3].x + ' and ' + level.saws[4].x);
+   level.saws[3].x0 > r2[3].x + r2[3].w && level.saws[4].x0 < r2[4].x,
+   'saws at ' + level.saws[3].x0 + ' and ' + level.saws[4].x0);
 ok('the last gap is the widest', (r2[4].x - (r2[3].x + r2[3].w)) === 240,
    'gap = ' + (r2[4].x - (r2[3].x + r2[3].w)));
 
 loadLevel(2); state.running = true;
-placeOn(level.saws[0].x - SIZE / 2, 380);   // stand in the saw's path
+placeOn(level.saws[0].x0 - SIZE / 2, 380);   // stand in the saw's path
 p.y = 300;
 state.t = 0;                                 // phase 0 = blade at the top
 step(3);
@@ -484,16 +484,16 @@ WScript.Echo('');
 WScript.Echo('[room three: the cube]');
 loadLevel(3); state.running = true;
 ok('the room loads', level.name === 'Room Three');
-ok('the cube is smaller than you', level.enemy.w < SIZE && level.enemy.h < SIZE);
+ok('the cube is smaller than you', level.enemies[0].w < SIZE && level.enemies[0].h < SIZE);
 ok('the key starts hidden', level.pickup.hidden === true);
 ok('the door wants the key', level.door.needs === 'key');
 
 /* it should come at you */
 placeOn(1600, GROUND);
-var startGap = Math.abs(level.enemy.x - p.x);
+var startGap = Math.abs(level.enemies[0].x - p.x);
 step(40);
-ok('the cube chases you', Math.abs(level.enemy.x - p.x) < startGap,
-   'gap went ' + Math.round(startGap) + ' -> ' + Math.round(Math.abs(level.enemy.x - p.x)));
+ok('the cube chases you', Math.abs(level.enemies[0].x - p.x) < startGap,
+   'gap went ' + Math.round(startGap) + ' -> ' + Math.round(Math.abs(level.enemies[0].x - p.x)));
 
 /* every gap is a double jump */
 loadLevel(3); state.running = true;
@@ -514,28 +514,28 @@ for (var i = 0; i < level.solids.length - 1; i++) {
 /* it has to be able to come and get you, wherever you are */
 loadLevel(3); state.running = true;
 placeOn(200, GROUND);                      // as far from its spawn as possible
-var spawnX = level.enemy.x;
+var spawnX = level.enemies[0].x;
 var reached = false, jumps = 0, wasAir = false;
 for (var i = 0; i < 900; i++) {
   state.grab = 0;                          // don't let it kill us mid-measurement
   p.x = 200; p.y = GROUND - SIZE;          // stand still and wait
   p.vx = 0; p.vy = 0;
   step(1);
-  if (!wasAir && !level.enemy.onGround) { jumps++; wasAir = true; }
-  if (level.enemy.onGround) wasAir = false;
-  if (Math.abs(level.enemy.x - p.x) < 60) { reached = true; break; }
+  if (!wasAir && !level.enemies[0].onGround) { jumps++; wasAir = true; }
+  if (level.enemies[0].onGround) wasAir = false;
+  if (Math.abs(level.enemies[0].x - p.x) < 60) { reached = true; break; }
 }
 ok('the cube jumps', jumps > 0, jumps + ' jumps');
 ok('the cube crosses the room to reach you', reached,
-   'started at ' + Math.round(spawnX) + ', got to ' + Math.round(level.enemy.x));
-ok('it never falls out of the world', level.enemy.y < level.fallY);
+   'started at ' + Math.round(spawnX) + ', got to ' + Math.round(level.enemies[0].x));
+ok('it never falls out of the world', level.enemies[0].y < level.fallY);
 
 /* two seconds of contact kills you */
 loadLevel(3); state.running = true;
-placeOn(level.enemy.x - 4, GROUND);
+placeOn(level.enemies[0].x - 4, GROUND);
 var heldFor = 0;
 for (var i = 0; i < 400; i++) {
-  p.x = level.enemy.x - 4;                 // pinned against it
+  p.x = level.enemies[0].x - 4;                 // pinned against it
   step(1);
   heldFor += 0.016;
   if (p.dead) break;
@@ -546,7 +546,7 @@ ok('it takes about two seconds, not instantly',
 
 /* a brush past should NOT kill you */
 loadLevel(3); state.running = true;
-placeOn(level.enemy.x - 4, GROUND);
+placeOn(level.enemies[0].x - 4, GROUND);
 step(30);                                  // ~0.5s of contact
 var meterAfterTouch = state.grab;
 p.x = 1560;                                // break away
@@ -558,21 +558,21 @@ ok('breaking away bleeds the meter back down',
 WScript.Echo('');
 WScript.Echo('[room three: the fight]');
 loadLevel(3); state.running = true;
-ok('the cube has three hit points', level.enemy.hp === 3);
+ok('the cube has three hit points', level.enemies[0].hp === 3);
 
 var swings = 0;
-for (var i = 0; i < 60 && !level.enemy.dead; i++) {
+for (var i = 0; i < 60 && !level.enemies[0].dead; i++) {
   /* stand just off its side and swing */
-  p.x = level.enemy.x - SIZE - 2;
-  p.y = level.enemy.y + level.enemy.h - SIZE;
+  p.x = level.enemies[0].x - SIZE - 2;
+  p.y = level.enemies[0].y + level.enemies[0].h - SIZE;
   p.face = 1;
   state.grab = 0;                          // isolate the fight from the grip
   release('KeyI'); tap('KeyI');
   if (p.atk > 0) swings++;
   step(24);                                // past the 0.32s swing cooldown
 }
-ok('three swings kill it', level.enemy.dead === true,
-   'hp=' + level.enemy.hp + ' after ' + swings + ' swings');
+ok('three swings kill it', level.enemies[0].dead === true,
+   'hp=' + level.enemies[0].hp + ' after ' + swings + ' swings');
 ok('it took exactly three', swings === 3, swings + ' swings');
 ok('killing it drops the key', level.pickup.hidden === false);
 
@@ -586,12 +586,12 @@ ok('the key drops somewhere in the room',
 
 /* one swing must not count as three */
 loadLevel(3); state.running = true;
-p.x = level.enemy.x - SIZE - 2;
-p.y = level.enemy.y + level.enemy.h - SIZE;
+p.x = level.enemies[0].x - SIZE - 2;
+p.y = level.enemies[0].y + level.enemies[0].h - SIZE;
 p.face = 1;
 tap('KeyI');
 for (var i = 0; i < 12; i++) { state.grab = 0; step(1); }
-ok('a single swing only lands once', level.enemy.hp === 2, 'hp=' + level.enemy.hp);
+ok('a single swing only lands once', level.enemies[0].hp === 2, 'hp=' + level.enemies[0].hp);
 
 WScript.Echo('');
 WScript.Echo('[room three: the way out]');
@@ -600,13 +600,13 @@ placeOn(level.door.x - 40, 380);
 step(6);
 ok('the door stays shut with the cube alive', state.complete === false);
 
-level.enemy.hp = 1;                        // finish it off
-p.x = level.enemy.x - SIZE - 2;
-p.y = level.enemy.y + level.enemy.h - SIZE;
+level.enemies[0].hp = 1;                        // finish it off
+p.x = level.enemies[0].x - SIZE - 2;
+p.y = level.enemies[0].y + level.enemies[0].h - SIZE;
 p.face = 1;
 tap('KeyI');
 for (var i = 0; i < 40; i++) { state.grab = 0; step(1); }
-ok('the cube dies on the last hit', level.enemy.dead === true);
+ok('the cube dies on the last hit', level.enemies[0].dead === true);
 
 p.x = level.pickup.x - 10;
 p.y = level.pickup.y;
@@ -622,6 +622,166 @@ for (var i = 0; i < 120; i++) {
 }
 letGo();
 ok('the key opens the door', out3);
+
+/* ==================================================================
+   ROOM FOUR — three reds, three platforms, three saws
+   ================================================================== */
+WScript.Echo('');
+WScript.Echo('[room four: the layout]');
+loadLevel(4); state.running = true;
+ok('the room loads', level.name === 'Room Four');
+ok('three reds, three saws', level.enemies.length === 3 && level.saws.length === 3);
+ok('there is solid ground under it all',
+   solidAt(-60, GROUND) !== null);
+
+var p4 = [solidAt(560, 350), solidAt(1000, 270), solidAt(1440, 190)];
+ok('three floating platforms', p4[0] && p4[1] && p4[2]);
+
+/* a red starts on each platform */
+var onPlat = 0;
+for (var i = 0; i < 3; i++) {
+  var e = level.enemies[i];
+  if (e.y + e.h === p4[i].y &&
+      e.x >= p4[i].x && e.x + e.w <= p4[i].x + p4[i].w) onPlat++;
+}
+ok('one red on each platform', onPlat === 3, onPlat + ' of 3');
+
+/* saws sit ON the platforms and never poke out underneath */
+var sawsOk = true, sawWhy = '';
+for (var i = 0; i < 3; i++) {
+  var sw = level.saws[i], pl = p4[i];
+  if (sw.y0 !== sw.y1) { sawsOk = false; sawWhy = 'saw ' + i + ' is not horizontal'; }
+  if (sw.y0 + sw.r !== pl.y) {
+    sawsOk = false;
+    sawWhy = 'saw ' + i + ' underside at ' + (sw.y0 + sw.r) + ', platform top ' + pl.y;
+  }
+  if (sw.x0 - sw.r < pl.x - 0.01 || sw.x1 + sw.r > pl.x + pl.w + 0.01) {
+    sawsOk = false;
+    sawWhy = 'saw ' + i + ' overhangs its platform';
+  }
+}
+ok('saws slide along the tops and never stick out underneath', sawsOk, sawWhy);
+
+/* the blades really do travel sideways */
+loadLevel(4); state.running = true;
+var sawXs = [];
+for (var i = 0; i < 3; i++) sawXs.push(sawPos(level.saws[i]).x);
+state.t = 1.2;
+var moved = 0;
+for (var i = 0; i < 3; i++) {
+  if (Math.abs(sawPos(level.saws[i]).x - sawXs[i]) > 20) moved++;
+}
+ok('the saws move left to right', moved === 3, moved + ' of 3 moved');
+
+WScript.Echo('');
+WScript.Echo('[room four: reds and saws]');
+loadLevel(4); state.running = true;
+placeOn(200, GROUND);
+var redsHurt = false;
+for (var i = 0; i < 600; i++) {
+  state.grab = 0;
+  p.x = 200; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0;
+  step(1);
+  for (var n = 0; n < 3; n++) {
+    if (level.enemies[n].dead) redsHurt = true;
+  }
+  if (redsHurt) break;
+}
+ok('saws never kill the reds', !redsHurt);
+
+WScript.Echo('');
+WScript.Echo('[room four: the key]');
+loadLevel(4); state.running = true;
+ok('the key starts hidden', level.pickup.hidden === true);
+
+/* kill two - the key must stay hidden */
+level.enemies[0].dead = true;
+level.enemies[1].dead = true;
+var e3 = level.enemies[2];
+e3.hp = 1;
+p.x = e3.x - SIZE - 2; p.y = e3.y + e3.h - SIZE; p.face = 1;
+state.grab = 0;
+tap('KeyI');
+for (var i = 0; i < 3; i++) { state.grab = 0; step(1); }
+ok('the key only appears when all three are down', level.pickup.hidden === false);
+ok('the key spawns on the top platform',
+   level.pickup.y + level.pickup.h === p4[2].y &&
+   level.pickup.x >= p4[2].x && level.pickup.x + level.pickup.w <= p4[2].x + p4[2].w,
+   'key at ' + level.pickup.x + ',' + level.pickup.y);
+
+step(40);
+ok('the key stays up top rather than falling to the ground',
+   level.pickup.y + level.pickup.h === p4[2].y,
+   'key bottom = ' + (level.pickup.y + level.pickup.h));
+
+/* Climbability splits into two questions: can the jumps be made at all,
+   and is there ever somewhere on a platform the saw isn't. Simulating a
+   naive run-and-jump can't answer either — a blade crossing the run-up
+   kills it regardless of whether a human could time it. */
+loadLevel(4); state.running = true;
+var keptSaws = level.saws;
+level.saws = [];
+var reachOk = canReachFrom(p4[0], p4[1], true) && canReachFrom(p4[1], p4[2], true);
+level.saws = keptSaws;
+ok('the platforms are within double-jump reach', reachOk);
+
+var roomToStand = true, worst = '';
+for (var t0 = 0; t0 < 3.2; t0 += 0.1) {
+  state.t = t0;
+  for (var i = 0; i < 3; i++) {
+    var sw = level.saws[i], pl = p4[i], at = sawPos(sw);
+    var freeLeft = (at.x - sw.r) - pl.x;
+    var freeRight = (pl.x + pl.w) - (at.x + sw.r);
+    if (Math.max(freeLeft, freeRight) < SIZE + 4) {
+      roomToStand = false;
+      worst = 'platform ' + i + ' boxed in at t=' + t0.toFixed(1);
+    }
+  }
+}
+ok('a saw never fills its whole platform', roomToStand, worst);
+
+ok('a saw can be jumped over',
+   level.saws[0].r * 2 < 102, 'saw stands ' + (level.saws[0].r * 2) + 'px proud');
+
+WScript.Echo('');
+WScript.Echo('[hitting something that has hold of you]');
+loadLevel(3); state.running = true;
+var e = level.enemies[0];
+p.x = e.x - 6;                            // overlapping, cube on your right
+p.y = e.y + e.h - SIZE;
+p.face = 1;
+state.grab = 0;
+tap('KeyI');
+for (var i = 0; i < 3; i++) { state.grab = 0; step(1); }
+ok('you can hit it while it is on you, facing it', e.hp === 2, 'hp=' + e.hp);
+
+loadLevel(3); state.running = true;
+e = level.enemies[0];
+p.x = e.x - 6;                            // same, but facing the wrong way
+p.y = e.y + e.h - SIZE;
+p.face = -1;
+state.grab = 0;
+tap('KeyI');
+for (var i = 0; i < 3; i++) { state.grab = 0; step(1); }
+ok('you can hit it while it is on you, facing away', e.hp === 2, 'hp=' + e.hp);
+
+WScript.Echo('');
+WScript.Echo('[back to the tutorial and out again]');
+loadLevel(4); state.running = true;
+showDoneFor(4);
+ok('the last room offers a way back to the tutorial',
+   againBtn.textContent === 'Back to the Tutorial');
+onAgain();
+ok('it drops you into the tutorial', levelIndex === 0);
+ok('it remembers where you came from', returnToDone === 4);
+
+state.picked = true;
+finishLevel();
+ok('finishing the tutorial returns you to that room screen',
+   doneTitle.textContent === 'ROOM FOUR CLEARED',
+   'showed "' + doneTitle.textContent + '"');
+ok('not back to room one',
+   nextBtn.textContent !== 'Start the Game', nextBtn.textContent);
 
 /* ==================================================================
    SAVE / CONTINUE
