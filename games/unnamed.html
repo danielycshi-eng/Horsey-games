@@ -617,45 +617,39 @@
   function buildRoomEight() {
     var TOP = 380;
 
-    function sinker(x, w, chain) {
-      return { x: x, y: TOP, w: w, h: 24, oneWay: true,
+    /* `spike` puts a bed of teeth on part of the platform's own surface,
+       so it rides down with the platform and you have to land clear of
+       it. Sinking stops at `max` — hitting the bottom is a setback, not
+       a death. */
+    function sinker(x, w, chain, spike) {
+      return { x: x, y: TOP, w: w, h: 22, oneWay: true,
                home: TOP, chain: chain || null,
-               rate: 26, back: 44, max: 180, active: false };
+               rate: 58, back: 50, max: 130, active: false,
+               spike: spike || null };
     }
 
-    function spiked(x, w) {
-      return { x: x, y: TOP, w: w, h: 24, oneWay: true, spiked: true };
-    }
-
-    /* Gaps are 240, and 280 where you have to clear a spiked one. A
-       double jump carries 288px spending the second jump at the apex,
-       so everything here is inside comfortable reach. */
+    /* Gaps are 240. A double jump carries 288px spending the second
+       jump at the apex, so they're all inside comfortable reach. */
     var start = { x: -60, y: TOP, w: 300, h: 160 };
-    var p1 = sinker(420, 220);
-    var s1 = spiked(740, 120);
-    var p2 = sinker(920, 220);
-    var p3 = sinker(1380, 220, 'a');          // these two are chained
-    var p4 = sinker(1840, 220, 'a');
-    var s2 = spiked(2160, 120);
-    var p5 = sinker(2340, 220);
-    var p6 = sinker(2800, 220, 'b');          // and so are these
-    var p7 = sinker(3260, 220, 'b');
-    var end = { x: 3720, y: TOP, w: 360, h: 160 };
+    var p1 = sinker(420, 150);
+    var p2 = sinker(810, 150, null, { off: 0,   w: 54 });
+    var p3 = sinker(1200, 150, 'a');          // four on one chain
+    var p4 = sinker(1590, 150, 'a');
+    var p5 = sinker(1980, 150, 'a', { off: 0, w: 54 });
+    var p6 = sinker(2370, 150, 'a');
+    var p7 = sinker(2760, 150, 'b');          // and a pair
+    var p8 = sinker(3150, 150, 'b', { off: 0, w: 54 });
+    var end = { x: 3540, y: TOP, w: 360, h: 160 };
 
     return {
       name: 'Room Eight',
-      worldW: 4080,
+      worldW: 3900,
       start: { x: 60, y: TOP - SIZE },
       fallY: 640,
 
-      solids: [start, p1, s1, p2, p3, p4, s2, p5, p6, p7, end],
-      sinkers: [p1, p2, p3, p4, p5, p6, p7],
-
-      /* the spiked caps sit on top of their platforms */
-      hazards: [
-        { x: s1.x, y: TOP - 24, w: s1.w, h: 24 },
-        { x: s2.x, y: TOP - 24, w: s2.w, h: 24 }
-      ],
+      solids: [start, p1, p2, p3, p4, p5, p6, p7, p8, end],
+      sinkers: [p1, p2, p3, p4, p5, p6, p7, p8],
+      hazards: [],
 
       saws: [],
       waves: [],
@@ -663,7 +657,7 @@
       bombs: [],
       boss: null,
       pickups: [],
-      door: { x: 3870, y: TOP - 130, w: 60, h: 130, needs: null },
+      door: { x: 3690, y: TOP - 130, w: 60, h: 130, needs: null },
 
       arrows: [],
       hints: []
@@ -1627,6 +1621,13 @@
       var wb = waveBox(level.waves[i]);
       if (wb.h > 2 && hits(p, wb)) { die(); return; }
     }
+    /* teeth carried on a sinking platform's own surface */
+    for (i = 0; i < level.sinkers.length; i++) {
+      var sk = level.sinkers[i];
+      if (!sk.spike) continue;
+      if (hits(p, { x: sk.x + sk.spike.off, y: sk.y - 22,
+                    w: sk.spike.w, h: 22 })) { die(); return; }
+    }
     for (i = 0; i < level.saws.length; i++) {
       var sw = level.saws[i];
       /* Saws are for you only — the reds share their platforms with one
@@ -1905,16 +1906,17 @@
       }
     }
 
-    /* spiked caps get their teeth drawn on top */
-    if (s.spiked) {
+    /* teeth sitting on part of the platform's own surface */
+    if (s.spike) {
+      var tx = s.x + s.spike.off, tw = s.spike.w;
       ctx.fillStyle = '#ff5f7e';
       ctx.shadowColor = '#ff5f7e';
       ctx.shadowBlur = 14;
-      for (var sx = s.x; sx < s.x + s.w - 1; sx += s.w / 4) {
+      for (var sx = tx; sx < tx + tw - 1; sx += tw / 3) {
         ctx.beginPath();
         ctx.moveTo(sx, s.y);
-        ctx.lineTo(sx + s.w / 8, s.y - 24);
-        ctx.lineTo(sx + s.w / 4, s.y);
+        ctx.lineTo(sx + tw / 6, s.y - 22);
+        ctx.lineTo(sx + tw / 3, s.y);
         ctx.closePath();
         ctx.fill();
       }

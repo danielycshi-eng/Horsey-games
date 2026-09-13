@@ -1516,6 +1516,8 @@ WScript.Echo('');
 WScript.Echo('[room eight: the sinking platforms]');
 loadLevel(8); state.running = true;
 ok('the room loads', level.name === 'Room Eight');
+ok('the platforms are small', level.sinkers[0].w <= 160,
+   level.sinkers[0].w + 'px wide');
 ok('there are platforms that sink', level.sinkers.length >= 6,
    level.sinkers.length + ' sinkers');
 ok('nothing to land on if you fall', level.fallY > GROUND);
@@ -1525,10 +1527,10 @@ var s1 = level.sinkers[0];
 var startY = s1.y;
 placeOn(s1.x + 60, s1.y);
 step(90);
-ok('it sinks while you stand on it', s1.y > startY + 15,
+ok('it sinks while you stand on it', s1.y > startY + 40,
    'dropped ' + Math.round(s1.y - startY) + 'px in 1.4s');
-ok('but slowly', s1.y - startY < 70,
-   'dropped ' + Math.round(s1.y - startY) + 'px in 1.4s');
+ok('and it drops at a decent clip', s1.rate >= 45,
+   s1.rate + ' px/s');
 ok('and it carries you down with it',
    Math.abs((p.y + p.h) - s1.y) < 3,
    'player bottom ' + Math.round(p.y + p.h) + ', platform ' + Math.round(s1.y));
@@ -1565,7 +1567,8 @@ var chA = [];
 for (var i = 0; i < level.sinkers.length; i++) {
   if (level.sinkers[i].chain === 'a') chA.push(level.sinkers[i]);
 }
-ok('chain a has more than one platform', chA.length >= 2);
+ok('one chain has four platforms on it', chA.length === 4,
+   chA.length + ' on chain a');
 
 var partnerStart = chA[1].y;
 placeOn(chA[0].x + 60, chA[0].y);             // stand on the FIRST one only
@@ -1587,38 +1590,84 @@ ok('unchained platforms stay put', Math.abs(lone.y - lone.home) < 1,
    'moved ' + Math.round(lone.y - lone.home) + 'px');
 
 WScript.Echo('');
-WScript.Echo('[room eight: the spiked ones]');
+WScript.Echo('[room eight: spikes on the platforms themselves]');
 loadLevel(8); state.running = true;
-ok('a couple of platforms are spiked', level.hazards.length >= 2);
-
-var spikedSolids = [];
-for (var i = 0; i < level.solids.length; i++) {
-  if (level.solids[i].spiked) spikedSolids.push(level.solids[i]);
-}
-ok('the spikes sit on top of real platforms', spikedSolids.length >= 2);
-var capsMatch = true;
-for (var i = 0; i < spikedSolids.length; i++) {
-  var found = false;
-  for (var k = 0; k < level.hazards.length; k++) {
-    var hz = level.hazards[k];
-    if (hz.x === spikedSolids[i].x && hz.y + hz.h === spikedSolids[i].y) found = true;
-  }
-  if (!found) capsMatch = false;
-}
-ok('every spiked platform has its spikes where it is', capsMatch);
-
-/* landing on one kills you */
-placeOn(spikedSolids[0].x + 40, spikedSolids[0].y);
-step(4);
-ok('landing on a spiked platform kills you', p.dead === true);
-
-/* spiked ones do not sink - they are only ever something to clear */
-loadLevel(8); state.running = true;
-var sp8 = null;
+var spiky = [];
 for (var i = 0; i < level.sinkers.length; i++) {
-  if (level.sinkers[i].spiked) sp8 = level.sinkers[i];
+  if (level.sinkers[i].spike) spiky.push(level.sinkers[i]);
 }
-ok('spiked platforms are not sinkers', sp8 === null);
+ok('some platforms carry spikes', spiky.length >= 2, spiky.length + ' of them');
+ok('no separate spike platforms any more', level.hazards.length === 0);
+
+var partial = true;
+for (var i = 0; i < spiky.length; i++) {
+  if (spiky[i].spike.w >= spiky[i].w - 40) partial = false;
+}
+ok('the spikes only cover part of the platform', partial,
+   'platform ' + spiky[0].w + 'px, spikes ' + spiky[0].spike.w + 'px');
+
+/* landing on the teeth kills you; landing clear of them does not */
+var sk8 = spiky[0];
+placeOn(sk8.x + sk8.spike.off + 10, sk8.y);
+step(4);
+ok('landing on the spikes kills you', p.dead === true);
+
+loadLevel(8); state.running = true;
+sk8 = null;
+for (var i = 0; i < level.sinkers.length; i++) {
+  if (level.sinkers[i].spike) { sk8 = level.sinkers[i]; break; }
+}
+var clearX = sk8.spike.off === 0 ? sk8.x + sk8.w - SIZE - 6 : sk8.x + 6;
+placeOn(clearX, sk8.y);
+step(10);
+ok('landing clear of them is fine', !p.dead,
+   'stood at ' + Math.round(clearX) + ', teeth ' +
+   (sk8.x + sk8.spike.off) + '..' + (sk8.x + sk8.spike.off + sk8.spike.w));
+
+/* and the teeth ride down with the platform */
+var teethAt = sk8.y;
+step(90);
+ok('a spiked platform sinks like the rest', sk8.y > teethAt + 20,
+   'dropped ' + Math.round(sk8.y - teethAt) + 'px');
+ok('the spikes go down with it - they are part of it',
+   sk8.spike.off !== undefined && !p.dead);
+
+WScript.Echo('');
+WScript.Echo('[room eight: hitting the bottom]');
+loadLevel(8); state.running = true;
+var deep = level.sinkers[0];
+placeOn(deep.x + 60, deep.y);
+for (var i = 0; i < 600; i++) {
+  step(1);
+  if (p.dead) break;
+}
+ok('riding one all the way down does not kill you', !p.dead,
+   'platform ended ' + Math.round(deep.y - deep.home) + 'px down');
+ok('it stopped at its limit', Math.abs(deep.y - (deep.home + deep.max)) < 2,
+   'at ' + Math.round(deep.y - deep.home) + 'px of ' + deep.max);
+ok('the bottom is well clear of the drop', deep.home + deep.max < level.fallY - 60,
+   'bottom at ' + (deep.home + deep.max) + ', you die past ' + level.fallY);
+
+/* The way out of the bottom is to stop standing on it: hop in place and
+   it climbs back while you're in the air. */
+loadLevel(8); state.running = true;
+var d2 = level.sinkers[0];
+placeOn(d2.x + 40, d2.y);
+for (var i = 0; i < 400 && d2.y < d2.home + d2.max - 1; i++) step(1);
+var bottomY = d2.y;
+
+for (var hop = 0; hop < 6; hop++) {
+  release('Space'); tap('Space');
+  for (var i = 0; i < 40; i++) {
+    step(1);
+    if (p.onGround) break;
+  }
+}
+letGo();
+ok('hopping lets a sunk platform climb back up', d2.y < bottomY - 40,
+   'recovered ' + Math.round(bottomY - d2.y) + 'px of ' +
+   Math.round(bottomY - d2.home));
+ok('and you are still alive to do it', !p.dead);
 
 WScript.Echo('');
 WScript.Echo('[room eight: getting across]');
@@ -1646,15 +1695,22 @@ function solidByX(x) {
 function canReachSinking(fromX, toX, useDouble) {
   loadLevel(8);
   var edge = solidByX(fromX).x + solidByX(fromX).w;
-  for (var jx = edge - 150; jx <= edge + 6; jx += 6) {
-    loadLevel(8);
-    state.running = true;
-    var a = solidByX(fromX), b = solidByX(toX);
-    var sx = Math.max(a.x + 2, edge - 320);
-    var r = attempt(sx, a.y, jx, useDouble, 300);
-    if (r.r === 'landed' && Math.abs(r.y - b.y) < 2 &&
-        r.x + SIZE > b.x && r.x < b.x + b.w) {
-      return true;
+  var timings = useDouble ? [true, 150, 300, 450] : [false];
+  for (var m = 0; m < timings.length; m++) {
+    for (var jx = edge - 150; jx <= edge + 6; jx += 6) {
+      loadLevel(8);
+      state.running = true;
+      var a = solidByX(fromX), b = solidByX(toX);
+      var sx = Math.max(a.x + 2, edge - 320);
+      /* never start the run standing on the platform's own teeth */
+      if (a.spike && sx < a.x + a.spike.off + a.spike.w + 4) {
+        sx = a.x + a.spike.off + a.spike.w + 4;
+      }
+      var r = attempt(sx, a.y, jx, timings[m], 300);
+      if (r.r === 'landed' && Math.abs(r.y - b.y) < 3 &&
+          r.x + SIZE > b.x && r.x < b.x + b.w) {
+        return true;
+      }
     }
   }
   return false;
