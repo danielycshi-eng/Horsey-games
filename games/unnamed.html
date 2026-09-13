@@ -226,10 +226,11 @@
                    regen: 0, flash: 0, shake: 0, everBroken: false },
       barrier: { x: 2250, y: 120, w: 26, h: 320, open: false },
 
-      pickup: { kind: 'apple', x: 2822, y: 358, w: 26, h: 28,
-                home: { x: 2822, y: 358 } },
+      pickups: [ { kind: 'apple', x: 2822, y: 358, w: 26, h: 28,
+                   home: { x: 2822, y: 358 } } ],
       door: { x: 3450, y: 300, w: 60, h: 140, needs: 'apple' },
 
+      waves: [],
       enemies: [],
       saws: [],
       arrows: [[1180, 330], [1250, 268]],
@@ -265,10 +266,11 @@
       ],
       hazards: [ { x: 1326, y: 272, w: 228, h: 28 } ],
 
-      pickup: { kind: 'key', x: 1960, y: 274, w: 30, h: 26,
-                home: { x: 1960, y: 274 } },
+      pickups: [ { kind: 'key', x: 1960, y: 274, w: 30, h: 26,
+                   home: { x: 1960, y: 274 } } ],
       door: { x: 2300, y: 170, w: 60, h: 130, needs: 'key' },
 
+      waves: [],
       enemies: [],
       saws: [],
       arrows: [],
@@ -306,8 +308,9 @@
         { x0: 1640, x1: 1640, y0: 290, y1: 500, r: 26, period: 2.6, phase: 0.25 }
       ],
 
+      waves: [],
       enemies: [],
-      pickup: null,
+      pickups: [],
       door: { x: 1900, y: 250, w: 60, h: 130, needs: null },
 
       arrows: [],
@@ -334,6 +337,7 @@
         { x: 2180, y: GROUND, w: 620, h: 160 },   // the arena: 2180 .. 2800
         { x: 3040, y: 380,    w: 320, h: 26  }    // the way out
       ],
+      waves: [],
       hazards: [],
       saws: [],
 
@@ -354,8 +358,8 @@
       }],
 
       /* Hidden until the cube drops it. */
-      pickup: { kind: 'key', x: 2400, y: 380, w: 30, h: 26, hidden: true,
-                home: { x: 2400, y: 380 } },
+      pickups: [ { kind: 'key', x: 2400, y: 380, w: 30, h: 26, hidden: true,
+                   home: { x: 2400, y: 380 } } ],
       door: { x: 3180, y: 250, w: 60, h: 130, needs: 'key' },
 
       arrows: [],
@@ -385,10 +389,12 @@
      three and the key appears on the top platform, so the climb is the
      room. The saws sit ON the platforms and never dip below them. */
   function buildRoomFour() {
-    var ground = { x: -60,  y: GROUND, w: 2520, h: 160 };
-    var platA  = { x: 560,  y: 350,    w: 260,  h: 26 };
-    var platB  = { x: 1000, y: 270,    w: 260,  h: 26 };
-    var platC  = { x: 1440, y: 190,    w: 260,  h: 26 };
+    /* 240px gaps, the same double-jump distance as Room Three, and the
+       undersides pass through so you can come up from below. */
+    var ground = { x: -60,  y: GROUND, w: 2720, h: 160 };
+    var platA  = { x: 560,  y: 350,    w: 260,  h: 26, oneWay: true };
+    var platB  = { x: 1060, y: 270,    w: 260,  h: 26, oneWay: true };
+    var platC  = { x: 1560, y: 190,    w: 260,  h: 26, oneWay: true };
 
     /* A saw rides with its underside exactly on the platform top, and
        turns back before either edge, so it never hangs off. */
@@ -403,23 +409,134 @@
 
     return {
       name: 'Room Four',
-      worldW: 2400,
+      worldW: 2600,
       start: { x: 80, y: GROUND - SIZE },
       fallY: 620,
 
       solids: [ground, platA, platB, platC],
+      waves: [],
       hazards: [],
       saws: [ sawOn(platA, 3.0, 0.00),
               sawOn(platB, 2.6, 0.35),
               sawOn(platC, 2.2, 0.70) ],
 
-      enemies: [ redOn(platA, 700), redOn(platB, 1140), redOn(platC, 1580) ],
+      enemies: [ redOn(platA, 700), redOn(platB, 1200), redOn(platC, 1700) ],
 
       /* Appears up top once all three are down. */
-      pickup: { kind: 'key', x: 1560, y: 164, w: 30, h: 26, hidden: true,
-                spawnAt: { x: 1560, y: 164 },
-                home: { x: 1560, y: 164 } },
-      door: { x: 2150, y: 310, w: 60, h: 130, needs: 'key' },
+      pickups: [ { kind: 'key', x: 1680, y: 164, w: 30, h: 26, hidden: true,
+                   spawnAt: { x: 1680, y: 164 },
+                   home: { x: 1680, y: 164 } } ],
+      door: { x: 2300, y: 310, w: 60, h: 130, needs: 'key' },
+
+      arrows: [],
+      hints: []
+    };
+  }
+
+  /* Room Five. No hazards, no enemies. A green fellow says hello and
+     buries you in apples you can carry around for absolutely no reason. */
+  function buildRoomFive() {
+    var apples = [];
+    for (var i = 0; i < 22; i++) {
+      apples.push({
+        kind: 'apple',
+        x: 780 + (i % 11) * 46 + (i > 10 ? 22 : 0),
+        y: -140 - Math.floor(i / 11) * 90 - (i % 5) * 40,
+        w: 26, h: 28,
+        hidden: true, grounded: false, vy: 0,
+        home: { x: 800 + i * 40, y: GROUND - 28 }
+      });
+    }
+
+    return {
+      name: 'Room Five',
+      worldW: 2200,
+      start: { x: 80, y: GROUND - SIZE },
+      fallY: 620,
+
+      solids: [ { x: -60, y: GROUND, w: 2320, h: 160 } ],
+      hazards: [],
+      saws: [],
+      enemies: [],
+      waves: [],
+
+      npc: {
+        x: 900, y: GROUND - 34, w: 30, h: 34,
+        said: false, t: 0,
+        line: 'You have come here? You must be tired! Here, some apples!'
+      },
+
+      pickups: apples,
+      door: { x: 1900, y: 310, w: 60, h: 130, needs: null },
+
+      arrows: [],
+      hints: []
+    };
+  }
+
+  /* Room Six. Room Four turned all the way up: ten reds, saws on the
+     platforms, another skating along the ground, and spikes surging out
+     of the floor in a travelling wave. You start on a ledge above it. */
+  function buildRoomSix() {
+    var ground = { x: -60,  y: GROUND, w: 3760, h: 160 };
+    var ledge  = { x: 40,   y: 350,    w: 200,  h: 26, oneWay: true };
+    var platA  = { x: 700,  y: 350,    w: 260,  h: 26, oneWay: true };
+    var platB  = { x: 1200, y: 270,    w: 260,  h: 26, oneWay: true };
+    var platC  = { x: 1700, y: 190,    w: 260,  h: 26, oneWay: true };
+
+    function sawOn(plat, period, phase) {
+      var r = 22;
+      return {
+        x0: plat.x + r, x1: plat.x + plat.w - r,
+        y0: plat.y - r, y1: plat.y - r,
+        r: r, period: period, phase: phase
+      };
+    }
+
+    /* A travelling wave: each bed lags the one before it, so the spikes
+       roll along the floor instead of all firing at once. */
+    var waves = [];
+    for (var i = 0; i < 14; i++) {
+      waves.push({
+        x: 420 + i * 200, w: 120, h: 70,
+        period: 2.8, phase: (i * 0.16) % 1
+      });
+    }
+
+    var reds = [];
+    var spots = [[760, platA], [900, platA],
+                 [1260, platB], [1400, platB],
+                 [1760, platC], [1900, platC],
+                 [1500, ground], [2100, ground], [2600, ground], [3000, ground]];
+    for (var j = 0; j < spots.length; j++) {
+      reds.push(redOn(spots[j][1], spots[j][0]));
+    }
+
+    return {
+      name: 'Room Six',
+      worldW: 3700,
+      start: { x: 90, y: 350 - SIZE },     // the ledge, clear of the spikes
+      fallY: 620,
+
+      solids: [ground, ledge, platA, platB, platC],
+      hazards: [],
+      waves: waves,
+
+      saws: [
+        sawOn(platA, 3.0, 0.00),
+        sawOn(platB, 2.6, 0.35),
+        sawOn(platC, 2.2, 0.70),
+        /* and one patrolling the floor, riding on top of it */
+        { x0: 600, x1: 3200, y0: GROUND - 26, y1: GROUND - 26,
+          r: 26, period: 9.0, phase: 0.0 }
+      ],
+
+      enemies: reds,
+
+      pickups: [ { kind: 'key', x: 1820, y: 164, w: 30, h: 26, hidden: true,
+                   spawnAt: { x: 1820, y: 164 },
+                   home: { x: 1820, y: 164 } } ],
+      door: { x: 3450, y: 310, w: 60, h: 130, needs: 'key' },
 
       arrows: [],
       hints: []
@@ -427,7 +544,8 @@
   }
 
   var BUILDERS = [buildTutorial, buildRoomOne, buildRoomTwo,
-                  buildRoomThree, buildRoomFour];
+                  buildRoomThree, buildRoomFour, buildRoomFive,
+                  buildRoomSix];
 
   var GRAB_MAX = 2;              // seconds of being held before you die
 
@@ -579,27 +697,34 @@
   }
 
   function toggleCarry() {
-    var item = level.pickup;
-    if (!item) return;
-
     if (p.holding) {
-      item.x = p.x + p.w / 2 - item.w / 2 + p.face * 18;
-      item.y = p.y;
-      item.held = false;
-      item.grounded = false;
-      item.vy = 0;
+      var held = p.holding;
+      held.x = p.x + p.w / 2 - held.w / 2 + p.face * 18;
+      held.y = p.y;
+      held.held = false;
+      held.grounded = false;
+      held.vy = 0;
       p.holding = null;
       return;
     }
-    if (item.hidden) return;
-    if (!item.held && near(p, item, 58)) {
-      item.held = true;
-      p.holding = item.kind;
-      state.picked = true;
-      burst(item.x + item.w / 2, item.y + item.h / 2,
-            item.kind === 'key' ? '#ffd166' : '#ff5f7e', 12);
-      saveGame();
+
+    /* grab whichever loose thing is nearest */
+    var best = null, bestD = 1e9;
+    for (var i = 0; i < level.pickups.length; i++) {
+      var c = level.pickups[i];
+      if (c.hidden || c.held) continue;
+      if (!near(p, c, 58)) continue;
+      var d = Math.abs((p.x + p.w / 2) - (c.x + c.w / 2));
+      if (d < bestD) { bestD = d; best = c; }
     }
+    if (!best) return;
+
+    best.held = true;
+    p.holding = best;
+    if (level.door.needs && best.kind === level.door.needs) state.picked = true;
+    burst(best.x + best.w / 2, best.y + best.h / 2,
+          best.kind === 'key' ? '#ffd166' : '#ff5f7e', 12);
+    saveGame();
   }
 
   function near(a, b, d) {
@@ -634,6 +759,18 @@
     };
   }
 
+  /* How far a bed of spikes is out of the floor right now, 0 to 1.
+     They spend longer down than up, so there's always a way through. */
+  function waveOut(wv) {
+    var u = (1 - Math.cos((state.t / wv.period + wv.phase) * Math.PI * 2)) / 2;
+    return Math.max(0, (u - 0.35) / 0.65);
+  }
+
+  function waveBox(wv) {
+    var out = waveOut(wv);
+    return { x: wv.x, y: GROUND - wv.h * out, w: wv.w, h: wv.h * out };
+  }
+
   /* Saws are drawn round, so judge them round — squaring them off
      would kill you for near misses that visibly cleared the blade. */
   function circleHitsBox(cx, cy, r, b) {
@@ -655,6 +792,7 @@
     p.x += p.vx * dt;
     for (i = 0; i < list.length; i++) {
       s = list[i];
+      if (s.oneWay) continue;                   // never blocks from the side
       if (!hits(p, s)) continue;
       if (p.vx > 0) p.x = s.x - p.w;
       else if (p.vx < 0) p.x = s.x + s.w;
@@ -662,11 +800,15 @@
     }
 
     var wasAir = !p.onGround;
+    var prevBottom = p.y + p.h;
     p.onGround = false;
     p.y += p.vy * dt;
     for (i = 0; i < list.length; i++) {
       s = list[i];
       if (!hits(p, s)) continue;
+      /* A one-way platform only exists when you're coming down onto it,
+         so you can jump up through the underside and land on top. */
+      if (s.oneWay && (p.vy <= 0 || prevBottom > s.y + 0.5)) continue;
       if (p.vy > 0) {
         p.y = s.y - p.h;
         if (wasAir && p.vy > 320) burst(p.x + p.w / 2, p.y + p.h, '#4ec3ff', 8, 0.5);
@@ -837,9 +979,10 @@
       }
     }
 
-    /* --- the carried / dropped item --- */
-    var item = level.pickup;
-    if (item) {
+    /* --- carried and dropped things --- */
+    for (var pi = 0; pi < level.pickups.length; pi++) {
+      var item = level.pickups[pi];
+      if (item.hidden) continue;
       if (item.held) {
         item.x = p.x + p.w / 2 - item.w / 2;
         item.y = p.y - item.h - 8;
@@ -874,9 +1017,30 @@
       }
     }
 
+    /* --- the green fellow, and his apples --- */
+    var npc = level.npc;
+    if (npc && !npc.said && Math.abs((p.x + p.w / 2) - (npc.x + npc.w / 2)) < 190) {
+      npc.said = true;
+      npc.t = 0;
+    }
+    if (npc && npc.said) {
+      var before = npc.t;
+      npc.t += dt;
+      if (before < 1.1 && npc.t >= 1.1) {       // the apples arrive
+        for (i = 0; i < level.pickups.length; i++) {
+          level.pickups[i].hidden = false;
+          level.pickups[i].grounded = false;
+        }
+      }
+    }
+
     /* --- hazards --- */
     for (i = 0; i < level.hazards.length; i++) {
       if (hits(p, level.hazards[i])) { die(); return; }
+    }
+    for (i = 0; i < level.waves.length; i++) {
+      var wb = waveBox(level.waves[i]);
+      if (wb.h > 2 && hits(p, wb)) { die(); return; }
     }
     for (i = 0; i < level.saws.length; i++) {
       var sw = level.saws[i];
@@ -978,6 +1142,7 @@
     var blocked = false;
     for (i = 0; i < level.solids.length; i++) {
       s = level.solids[i];
+      if (s.oneWay) continue;
       if (!hits(e, s)) continue;
       if (e.vx > 0) e.x = s.x - e.w;
       else if (e.vx < 0) e.x = s.x + s.w;
@@ -987,12 +1152,14 @@
 
     e.vy += GRAVITY * dt;
     if (e.vy > MAX_FALL) e.vy = MAX_FALL;
+    var ePrevBottom = e.y + e.h;
     e.y += e.vy * dt;
 
     e.onGround = false;
     for (i = 0; i < level.solids.length; i++) {
       s = level.solids[i];
       if (!hits(e, s)) continue;
+      if (s.oneWay && (e.vy <= 0 || ePrevBottom > s.y + 0.5)) continue;
       if (e.vy > 0) { e.y = s.y - e.h; e.onGround = true; e.airJumps = 1; }
       else if (e.vy < 0) { e.y = s.y + s.h; }
       e.vy = 0;
@@ -1053,7 +1220,10 @@
   /* The key either falls where the last one died, or appears at a fixed
      spot the room picked out — up on the top platform, say. */
   function dropKey(e) {
-    var it = level.pickup;
+    var it = null;
+    for (var i = 0; i < level.pickups.length; i++) {
+      if (level.pickups[i].kind === level.door.needs) { it = level.pickups[i]; break; }
+    }
     if (!it) return;
     it.hidden = false;
     it.held = false;
@@ -1172,6 +1342,95 @@
       ctx.lineTo(marks[i][0] + 18, marks[i][1] + 16);
       ctx.stroke();
       ctx.restore();
+    }
+  }
+
+  function drawWaves() {
+    for (var i = 0; i < level.waves.length; i++) {
+      var wv = level.waves[i];
+      var out = waveOut(wv);
+
+      /* the slot they come out of, so you can see where they'll be */
+      ctx.fillStyle = 'rgba(255,95,126,0.10)';
+      ctx.fillRect(wv.x, GROUND - 4, wv.w, 4);
+      if (out <= 0.02) continue;
+
+      var h = wv.h * out;
+      ctx.fillStyle = '#ff5f7e';
+      ctx.shadowColor = '#ff5f7e';
+      ctx.shadowBlur = 14;
+      var n = 3;
+      var each = wv.w / n;
+      for (var k = 0; k < n; k++) {
+        var x = wv.x + k * each;
+        ctx.beginPath();
+        ctx.moveTo(x, GROUND);
+        ctx.lineTo(x + each / 2, GROUND - h);
+        ctx.lineTo(x + each, GROUND);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  function drawNpc() {
+    var n = level.npc;
+    if (!n) return;
+
+    ctx.save();
+    ctx.translate(n.x + n.w / 2, n.y + n.h / 2);
+    var bob = Math.sin(state.t * 2) * 2;
+    ctx.fillStyle = '#7bffb2';
+    ctx.shadowColor = '#7bffb2';
+    ctx.shadowBlur = 18;
+    rr(-n.w / 2, -n.h / 2 + bob, n.w, n.h, 7);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#05323a';
+    ctx.fillRect(-8, -7 + bob, 5, 7);
+    ctx.fillRect(3, -7 + bob, 5, 7);
+    ctx.strokeStyle = '#05323a';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 3 + bob, 6, 0.15 * Math.PI, 0.85 * Math.PI);   // a big grin
+    ctx.stroke();
+    ctx.restore();
+
+    if (!n.said) return;
+
+    /* speech bubble, typed out a character at a time */
+    var shown = n.line.substring(0, Math.floor(n.t * 34));
+    var bw = 330, bh = 74;
+    var bx = n.x + n.w / 2 - bw / 2, by = n.y - bh - 22;
+
+    ctx.fillStyle = 'rgba(5,7,15,0.88)';
+    ctx.strokeStyle = '#7bffb2';
+    ctx.lineWidth = 2;
+    rr(bx, by, bw, bh, 10);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(n.x + n.w / 2 - 8, by + bh);
+    ctx.lineTo(n.x + n.w / 2, by + bh + 12);
+    ctx.lineTo(n.x + n.w / 2 + 8, by + bh);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(5,7,15,0.88)';
+    ctx.fill();
+
+    ctx.fillStyle = '#bfffe0';
+    ctx.font = '13px sans-serif';
+    ctx.textAlign = 'center';
+    var words = shown.split(' ');
+    var line = '', lines = [];
+    for (var i = 0; i < words.length; i++) {
+      var test = line ? line + ' ' + words[i] : words[i];
+      if (test.length > 38) { lines.push(line); line = words[i]; }
+      else line = test;
+    }
+    if (line) lines.push(line);
+    for (i = 0; i < lines.length && i < 3; i++) {
+      ctx.fillText(lines[i], n.x + n.w / 2, by + 26 + i * 18);
     }
   }
 
@@ -1298,10 +1557,13 @@
     }
   }
 
-  function drawPickup() {
-    var it = level.pickup;
-    if (!it || it.hidden) return;
-    var bob = it.held ? 0 : Math.sin(state.t * 3) * 3;
+  function drawPickups() {
+    for (var i = 0; i < level.pickups.length; i++) drawPickup(level.pickups[i]);
+  }
+
+  function drawPickup(it) {
+    if (it.hidden) return;
+    var bob = it.held ? 0 : Math.sin(state.t * 3 + it.x) * 3;
     ctx.save();
     ctx.translate(it.x + it.w / 2, it.y + it.h / 2 + bob);
 
@@ -1465,7 +1727,7 @@
       ctx.textAlign = 'right';
       ctx.fillStyle = '#8ea7d6';
       ctx.font = '12px sans-serif';
-      ctx.fillText('CARRYING: ' + p.holding.toUpperCase() + '  —  PRESS B TO DROP', W - 18, 30);
+      ctx.fillText('CARRYING: ' + p.holding.kind.toUpperCase() + '  —  PRESS B TO DROP', W - 18, 30);
     }
     ctx.restore();
 
@@ -1505,14 +1767,16 @@
 
     var i;
     for (i = 0; i < level.hazards.length; i++) drawHazard(level.hazards[i]);
+    drawWaves();
     for (i = 0; i < level.solids.length; i++) drawSolid(level.solids[i]);
     drawSaws();
     drawBarrier();
     drawArrows();
     drawDoor();
     drawScarecrow();
+    drawNpc();
     drawEnemies();
-    drawPickup();
+    drawPickups();
     drawHints();
     drawPlayer();
     drawParticles();

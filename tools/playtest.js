@@ -202,6 +202,40 @@ WScript.Echo('=== ??? headless playtest ===');
 WScript.Echo('');
 
 /* ==================================================================
+   EVERY ROOM IS WELL FORMED
+   The engine loops over these on every frame, so a room that forgets
+   one crashes the moment you enter it — and only that room. Cheap to
+   check here, expensive to find by hand.
+   ================================================================== */
+WScript.Echo('[every room]');
+var NEEDED = ['name', 'worldW', 'start', 'fallY', 'solids', 'hazards',
+              'saws', 'waves', 'enemies', 'pickups', 'door', 'arrows', 'hints'];
+var missing = '';
+for (var li = 0; li < BUILDERS.length; li++) {
+  var built = BUILDERS[li]();
+  for (var f = 0; f < NEEDED.length; f++) {
+    if (built[NEEDED[f]] === undefined) {
+      missing += built.name + ' has no ' + NEEDED[f] + '; ';
+    }
+  }
+}
+ok('every room defines every field the engine walks', missing === '', missing);
+
+/* and every room must survive simply being entered and left running */
+for (var li = 0; li < BUILDERS.length; li++) {
+  var threw = '';
+  try {
+    loadLevel(li);
+    state.running = true;
+    step(150);
+  } catch (err) {
+    threw = String(err.message || err);
+  }
+  ok('running ' + BUILDERS[li]().name + ' for 2.5s never throws', threw === '', threw);
+}
+WScript.Echo('');
+
+/* ==================================================================
    TUTORIAL
    ================================================================== */
 loadLevel(0);
@@ -210,17 +244,17 @@ WScript.Echo('[tutorial: the apple]');
 
 placeOn(2765, GROUND);
 tap('KeyB');
-ok('B near the pedestal picks the apple up', p.holding === 'apple');
+ok('B near the pedestal picks the apple up', p.holding && p.holding.kind === 'apple');
 step(3);
 
 die();
 step(60);                                   // respawn fires after 0.7s
 ok('death returns the apple to its pedestal',
-   level.pickup.x === level.pickup.home.x && level.pickup.y === level.pickup.home.y,
-   'at ' + level.pickup.x + ',' + level.pickup.y);
+   level.pickups[0].x === level.pickups[0].home.x && level.pickups[0].y === level.pickups[0].home.y,
+   'at ' + level.pickups[0].x + ',' + level.pickups[0].y);
 ok('the apple never lands on the scarecrow',
-   !hits(box(level.pickup), box(level.scarecrow)),
-   'apple x=' + level.pickup.x + ' scarecrow x=' + level.scarecrow.x);
+   !hits(box(level.pickups[0]), box(level.scarecrow)),
+   'apple x=' + level.pickups[0].x + ' scarecrow x=' + level.scarecrow.x);
 
 WScript.Echo('');
 WScript.Echo('[tutorial: the pit]');
@@ -326,8 +360,8 @@ WScript.Echo('');
 WScript.Echo('[room one: beat 4, the key and the door]');
 loadLevel(1); state.running = true;
 ok('the key starts on a platform you can stand on',
-   level.pickup.y + level.pickup.h === platE.y,
-   'key bottom = ' + (level.pickup.y + level.pickup.h) + ' platform top = ' + platE.y);
+   level.pickups[0].y + level.pickups[0].h === platE.y,
+   'key bottom = ' + (level.pickups[0].y + level.pickups[0].h) + ' platform top = ' + platE.y);
 
 placeOn(level.door.x - 40, 300);
 step(6);
@@ -336,7 +370,7 @@ ok('the door stays shut without the key', state.complete === false);
 loadLevel(1); state.running = true;
 placeOn(1930, 300);
 tap('KeyB');
-ok('B picks the key up', p.holding === 'key', 'holding=' + p.holding);
+ok('B picks the key up', p.holding && p.holding.kind === 'key');
 ok('picking it up flags the door', state.picked === true);
 
 hold('ArrowRight');
@@ -485,7 +519,7 @@ WScript.Echo('[room three: the cube]');
 loadLevel(3); state.running = true;
 ok('the room loads', level.name === 'Room Three');
 ok('the cube is smaller than you', level.enemies[0].w < SIZE && level.enemies[0].h < SIZE);
-ok('the key starts hidden', level.pickup.hidden === true);
+ok('the key starts hidden', level.pickups[0].hidden === true);
 ok('the door wants the key', level.door.needs === 'key');
 
 /* it should come at you */
@@ -574,15 +608,15 @@ for (var i = 0; i < 60 && !level.enemies[0].dead; i++) {
 ok('three swings kill it', level.enemies[0].dead === true,
    'hp=' + level.enemies[0].hp + ' after ' + swings + ' swings');
 ok('it took exactly three', swings === 3, swings + ' swings');
-ok('killing it drops the key', level.pickup.hidden === false);
+ok('killing it drops the key', level.pickups[0].hidden === false);
 
 step(60);                                  // let the key fall
 ok('the key lands on something solid',
-   level.pickup.grounded === true && level.pickup.y + level.pickup.h <= GROUND + 1,
-   'key at y=' + level.pickup.y);
+   level.pickups[0].grounded === true && level.pickups[0].y + level.pickups[0].h <= GROUND + 1,
+   'key at y=' + level.pickups[0].y);
 ok('the key drops somewhere in the room',
-   level.pickup.x > 0 && level.pickup.x < level.worldW,
-   'key x=' + level.pickup.x);
+   level.pickups[0].x > 0 && level.pickups[0].x < level.worldW,
+   'key x=' + level.pickups[0].x);
 
 /* one swing must not count as three */
 loadLevel(3); state.running = true;
@@ -608,10 +642,10 @@ tap('KeyI');
 for (var i = 0; i < 40; i++) { state.grab = 0; step(1); }
 ok('the cube dies on the last hit', level.enemies[0].dead === true);
 
-p.x = level.pickup.x - 10;
-p.y = level.pickup.y;
+p.x = level.pickups[0].x - 10;
+p.y = level.pickups[0].y;
 tap('KeyB');
-ok('you can pick the dropped key up', p.holding === 'key', 'holding=' + p.holding);
+ok('you can pick the dropped key up', p.holding && p.holding.kind === 'key');
 
 placeOn(level.door.x - 40, 380);
 hold('ArrowRight');
@@ -634,7 +668,7 @@ ok('three reds, three saws', level.enemies.length === 3 && level.saws.length ===
 ok('there is solid ground under it all',
    solidAt(-60, GROUND) !== null);
 
-var p4 = [solidAt(560, 350), solidAt(1000, 270), solidAt(1440, 190)];
+var p4 = [solidAt(560, 350), solidAt(1060, 270), solidAt(1560, 190)];
 ok('three floating platforms', p4[0] && p4[1] && p4[2]);
 
 /* a red starts on each platform */
@@ -692,7 +726,7 @@ ok('saws never kill the reds', !redsHurt);
 WScript.Echo('');
 WScript.Echo('[room four: the key]');
 loadLevel(4); state.running = true;
-ok('the key starts hidden', level.pickup.hidden === true);
+ok('the key starts hidden', level.pickups[0].hidden === true);
 
 /* kill two - the key must stay hidden */
 level.enemies[0].dead = true;
@@ -703,16 +737,16 @@ p.x = e3.x - SIZE - 2; p.y = e3.y + e3.h - SIZE; p.face = 1;
 state.grab = 0;
 tap('KeyI');
 for (var i = 0; i < 3; i++) { state.grab = 0; step(1); }
-ok('the key only appears when all three are down', level.pickup.hidden === false);
+ok('the key only appears when all three are down', level.pickups[0].hidden === false);
 ok('the key spawns on the top platform',
-   level.pickup.y + level.pickup.h === p4[2].y &&
-   level.pickup.x >= p4[2].x && level.pickup.x + level.pickup.w <= p4[2].x + p4[2].w,
-   'key at ' + level.pickup.x + ',' + level.pickup.y);
+   level.pickups[0].y + level.pickups[0].h === p4[2].y &&
+   level.pickups[0].x >= p4[2].x && level.pickups[0].x + level.pickups[0].w <= p4[2].x + p4[2].w,
+   'key at ' + level.pickups[0].x + ',' + level.pickups[0].y);
 
 step(40);
 ok('the key stays up top rather than falling to the ground',
-   level.pickup.y + level.pickup.h === p4[2].y,
-   'key bottom = ' + (level.pickup.y + level.pickup.h));
+   level.pickups[0].y + level.pickups[0].h === p4[2].y,
+   'key bottom = ' + (level.pickups[0].y + level.pickups[0].h));
 
 /* Climbability splits into two questions: can the jumps be made at all,
    and is there ever somewhere on a platform the saw isn't. Simulating a
@@ -744,6 +778,191 @@ ok('a saw can be jumped over',
    level.saws[0].r * 2 < 102, 'saw stands ' + (level.saws[0].r * 2) + 'px proud');
 
 WScript.Echo('');
+WScript.Echo('[room four: platforms you can pass up through]');
+loadLevel(4); state.running = true;
+ok('the floating platforms are one-way',
+   p4[0].oneWay && p4[1].oneWay && p4[2].oneWay);
+
+/* Stand under one and jump: you should end up on top, not bonk. Clear
+   the saw and the red off it first — this is about the platform, and
+   landing into a blade proves nothing either way. */
+level.saws = [];
+level.enemies = [];
+placeOn(p4[0].x + 100, GROUND);
+tap('Space');
+for (var i = 0; i < 6; i++) { step(1); release('Space'); tap('Space'); }
+var landedOnTop = false;
+for (var i = 0; i < 90; i++) {
+  step(1);
+  if (p.onGround && p.y + p.h === p4[0].y) { landedOnTop = true; break; }
+}
+letGo();
+ok('you can jump up through the underside and land on top', landedOnTop,
+   'ended at y=' + p.y);
+
+/* and it must not block you sideways */
+loadLevel(4); state.running = true;
+p.x = p4[0].x + 40; p.y = p4[0].y - 10;      // overlapping the slab
+p.vx = 0; p.vy = 0; p.dead = false; p.onGround = false;
+hold('ArrowRight');
+var startedAt = p.x;
+step(20);
+letGo();
+ok('a one-way platform never blocks you sideways', p.x > startedAt + 20,
+   'moved ' + Math.round(p.x - startedAt) + 'px');
+
+WScript.Echo('');
+WScript.Echo('[room five: the green fellow]');
+loadLevel(5); state.running = true;
+ok('the room loads', level.name === 'Room Five');
+ok('nothing in here can hurt you',
+   level.enemies.length === 0 && level.saws.length === 0 &&
+   level.hazards.length === 0 && level.waves.length === 0);
+ok('he has his line', level.npc.line.indexOf('some apples') !== -1);
+ok('a buttload of apples', level.pickups.length >= 20, level.pickups.length + ' apples');
+ok('the door needs nothing', level.door.needs === null);
+
+var allHidden = true;
+for (var i = 0; i < level.pickups.length; i++) {
+  if (!level.pickups[i].hidden) allHidden = false;
+}
+ok('the apples start out of sight', allHidden);
+
+placeOn(200, GROUND);                        // too far away to trigger him
+step(5);
+ok('he keeps quiet until you come near', level.npc.said === false);
+
+placeOn(level.npc.x - 120, GROUND);
+step(3);
+ok('walking up to him sets him talking', level.npc.said === true);
+
+step(90);                                    // past the 1.1s before they drop
+var dropped = 0;
+for (var i = 0; i < level.pickups.length; i++) {
+  if (!level.pickups[i].hidden) dropped++;
+}
+ok('the apples fall out of nowhere', dropped === level.pickups.length,
+   dropped + ' of ' + level.pickups.length);
+
+step(200);                                   // let them all land
+var landed = 0;
+for (var i = 0; i < level.pickups.length; i++) {
+  if (level.pickups[i].grounded) landed++;
+}
+ok('they all land on the ground', landed === level.pickups.length,
+   landed + ' of ' + level.pickups.length);
+
+/* carry one around, drop it, pick up another */
+var near1 = level.pickups[0];
+p.x = near1.x - 10; p.y = near1.y - 4;
+tap('KeyB');
+ok('you can pick an apple up', p.holding !== null);
+release('KeyB'); tap('KeyB');
+ok('and put it down again', p.holding === null);
+ok('picking apples up does not unlock anything', state.picked === false);
+
+placeOn(level.door.x - 40, GROUND);
+hold('ArrowRight');
+var out5 = false;
+for (var i = 0; i < 120; i++) { step(1); if (state.complete) { out5 = true; break; } }
+letGo();
+ok('you can just walk out when you are done', out5);
+
+WScript.Echo('');
+WScript.Echo('[room six: everything at once]');
+loadLevel(6); state.running = true;
+ok('the room loads', level.name === 'Room Six');
+ok('ten reds', level.enemies.length === 10, level.enemies.length + ' reds');
+ok('saws on the platforms and one on the floor', level.saws.length === 4);
+ok('spikes come out of the ground in a wave', level.waves.length > 6,
+   level.waves.length + ' beds');
+
+var ledge6 = solidAt(40, 350);
+ok('you spawn on a ledge, not in the spikes',
+   ledge6 !== null && level.start.y + SIZE === ledge6.y,
+   'start y=' + level.start.y);
+
+/* the spawn ledge must be clear of every spike bed */
+var spawnSafe = true;
+for (var i = 0; i < level.waves.length; i++) {
+  var wv = level.waves[i];
+  if (wv.x < ledge6.x + ledge6.w + 40 && wv.x + wv.w > ledge6.x - 40) spawnSafe = false;
+}
+ok('no spikes under the spawn ledge', spawnSafe);
+
+/* The point of the ledge is that the ROOM doesn't kill you the instant
+   you appear. The reds will come for you, and should — so take them out
+   of it and check the terrain alone is survivable. */
+level.enemies = [];
+placeOn(level.start.x, 350);
+step(320);
+ok('the spawn ledge is safe from spikes and saws', !p.dead,
+   'died standing still at x=' + Math.round(p.x));
+
+/* the floor saw really does patrol */
+var floorSaw = level.saws[3];
+ok('the floor saw runs along the ground',
+   floorSaw.y0 === floorSaw.y1 && floorSaw.y0 + floorSaw.r === GROUND &&
+   Math.abs(floorSaw.x1 - floorSaw.x0) > 1000,
+   'from ' + floorSaw.x0 + ' to ' + floorSaw.x1);
+
+/* the wave has to actually rise and fall, and leave gaps */
+var everUp = false, everDown = false;
+for (var t0 = 0; t0 < 3.0; t0 += 0.05) {
+  state.t = t0;
+  var o = waveOut(level.waves[0]);
+  if (o > 0.8) everUp = true;
+  if (o <= 0.001) everDown = true;
+}
+ok('the spikes rise all the way and retract all the way', everUp && everDown);
+
+var neverAllUp = true;
+for (var t0 = 0; t0 < 3.0; t0 += 0.05) {
+  state.t = t0;
+  var up = 0;
+  for (var i = 0; i < level.waves.length; i++) {
+    if (waveOut(level.waves[i]) > 0.5) up++;
+  }
+  if (up === level.waves.length) neverAllUp = false;
+}
+ok('they travel as a wave, never all up at once', neverAllUp);
+
+/* spikes must kill when out, and not when down */
+loadLevel(6); state.running = true;
+var wv0 = level.waves[0];
+placeOn(wv0.x + wv0.w / 2 - SIZE / 2, GROUND);
+state.t = wv0.period * (0.5 - wv0.phase);    // that bed fully out
+step(3);
+ok('raised spikes kill you', p.dead === true);
+
+loadLevel(6); state.running = true;
+wv0 = level.waves[0];
+placeOn(wv0.x + wv0.w / 2 - SIZE / 2, GROUND);
+state.t = wv0.period * (1 - wv0.phase);      // same bed fully down
+step(3);
+ok('retracted spikes are safe to stand on', p.dead === false);
+
+loadLevel(6); state.running = true;
+ok('the key starts hidden', level.pickups[0].hidden === true);
+var plat6C = solidAt(1700, 190);
+ok('the key is set to spawn on the tallest platform',
+   level.pickups[0].spawnAt.y + level.pickups[0].h === plat6C.y,
+   'key bottom ' + (level.pickups[0].spawnAt.y + level.pickups[0].h) +
+   ' vs platform ' + plat6C.y);
+
+for (var i = 0; i < 9; i++) level.enemies[i].dead = true;
+ok('nine down is not enough', level.pickups[0].hidden === true);
+var last6 = level.enemies[9];
+last6.hp = 1;
+p.x = last6.x - SIZE - 2; p.y = last6.y + last6.h - SIZE; p.face = 1;
+state.grab = 0;
+tap('KeyI');
+for (var i = 0; i < 3; i++) { state.grab = 0; step(1); }
+ok('the tenth drops the key', level.pickups[0].hidden === false);
+ok('and it appears up on the tallest platform',
+   level.pickups[0].y + level.pickups[0].h === plat6C.y);
+
+WScript.Echo('');
 WScript.Echo('[hitting something that has hold of you]');
 loadLevel(3); state.running = true;
 var e = level.enemies[0];
@@ -768,17 +987,17 @@ ok('you can hit it while it is on you, facing away', e.hp === 2, 'hp=' + e.hp);
 WScript.Echo('');
 WScript.Echo('[back to the tutorial and out again]');
 loadLevel(4); state.running = true;
-showDoneFor(4);
+showDoneFor(BUILDERS.length - 1);
 ok('the last room offers a way back to the tutorial',
    againBtn.textContent === 'Back to the Tutorial');
 onAgain();
 ok('it drops you into the tutorial', levelIndex === 0);
-ok('it remembers where you came from', returnToDone === 4);
+ok('it remembers where you came from', returnToDone === BUILDERS.length - 1);
 
 state.picked = true;
 finishLevel();
 ok('finishing the tutorial returns you to that room screen',
-   doneTitle.textContent === 'ROOM FOUR CLEARED',
+   doneTitle.textContent === 'ROOM SIX CLEARED',
    'showed "' + doneTitle.textContent + '"');
 ok('not back to room one',
    nextBtn.textContent !== 'Start the Game', nextBtn.textContent);
