@@ -1927,7 +1927,523 @@ for (var i = 0; i < level.saws.length; i++) {
   ok('saw ' + (i + 1) + ' leaves it clear some of the time', clearEver);
 }
 
+
+/* ==================================================================
+   ROOM TEN — every trick the orb has, in one room
+   ================================================================== */
 WScript.Echo('');
+WScript.Echo('[room ten: the room]');
+loadLevel(10); state.running = true;
+ok('the room loads', level.name === 'Room Ten');
+ok('it sits where Room Ten should', levelIndex === 10);
+ok('the pads sag faster than Room Nine', level.sinkers[0].rate > 78,
+   level.sinkers[0].rate + ' px/s');
+ok('and they never stop either', level.sinkers[0].max > 1000);
+
+var shelfTen = solidByX(2350);
+ok('the shelf in the middle is solid', shelfTen !== null);
+var shelfCovered = false;
+for (var i = 0; i < level.hazards.length; i++) {
+  var hz = level.hazards[i];
+  if (hz.x <= shelfTen.x && hz.x + hz.w >= shelfTen.x + shelfTen.w) {
+    shelfCovered = true;
+  }
+}
+ok('and every inch of it is teeth - you cannot land there', shelfCovered);
+
+WScript.Echo('');
+WScript.Echo('[room ten: letting go of the dash]');
+
+/* fire the first orb and ride the dash for `hold` seconds, then let go */
+function dashFor(holdFor) {
+  loadLevel(10); state.running = true;
+  var o = level.orbs[0];
+  p.x = o.x - SIZE / 2; p.y = o.y - SIZE / 2;
+  p.vx = 0; p.vy = 0; p.dead = false; p.onGround = false;
+  p.face = 1;
+  release('Space'); tap('Space');
+  var from = p.x, spent = 0;
+  for (var i = 0; i < 60 && p.dash > 0; i++) {
+    if (spent >= holdFor) release('Space');
+    step(1);
+    spent += 0.016;
+  }
+  release('Space');
+  return p.x - from;
+}
+
+var fullDash = dashFor(99);
+var shortDash = dashFor(0.14);
+ok('riding the dash out carries you the full length', fullDash > 330,
+   Math.round(fullDash) + 'px');
+ok('letting go early cuts it short', shortDash < fullDash - 120,
+   Math.round(shortDash) + 'px vs ' + Math.round(fullDash) + 'px');
+ok('but an early release still moves you somewhere', shortDash > 60,
+   Math.round(shortDash) + 'px');
+
+WScript.Echo('');
+WScript.Echo('[room ten: every gap goes]');
+
+var landTen = [-60, 1000, 1610, 2110, 2640, 3570, 4180];
+
+/* One honest attempt at a gap: sprint right, jump as the lip goes by,
+   fire every orb you touch, and let go of the dash after `cut` seconds
+   (99 = ride it out). */
+
+/* Is there another live orb straight ahead, close enough to fly into?
+   While there is, a player rides the dash out rather than cutting it.
+   `limitX` is the platform being aimed at: an orb sitting past it
+   belongs to the next gap, and letting it talk you out of cutting is
+   how you sail over a short landing. */
+function orbOnTheLine(limitX) {
+  for (var q = 0; q < level.orbs.length; q++) {
+    var oo = level.orbs[q];
+    if (oo.cool <= 0 && oo.x > p.x + p.w && oo.x < p.x + 380 &&
+        (limitX === undefined || oo.x < limitX) &&
+        Math.abs(oo.y - (p.y + SIZE / 2)) < 60) return true;
+  }
+  return false;
+}
+/* Which room these gap-crossers work in, and whether the room's own
+   safety net is allowed to help. */
+var GAPLVL   = 10;
+var NORESCUE = false;
+
+function tenRun(fromX, toX, jx, cut, t0, sxAt) {
+  loadLevel(GAPLVL); state.running = true;
+  if (NORESCUE) level.rescue = null;
+  var aT = solidByX(fromX), bT = solidByX(toX);
+  var edge = aT.x + aT.w;
+  var sx = sxAt !== undefined ? sxAt
+           : Math.max(aT.x + (aT.spike ? aT.spike.off + aT.spike.w + 8 : 4),
+                      edge - 340);
+  placeOn(sx, aT.y);
+  state.t = t0 || 0;              /* blades do not care when you arrive */
+  hold('ArrowRight');
+  var jumped = false, dashes = 0, spent = 0;
+  for (var i = 0; i < 420; i++) {
+    if (!jumped && p.x + p.w >= edge + jx) { tap('Space'); jumped = true; }
+    else if (jumped) {
+      var fired = false;
+      for (var q = 0; q < level.orbs.length; q++) {
+        var oo = level.orbs[q];
+        if (oo.cool <= 0 && circleHitsBox(oo.x, oo.y, oo.r + 17, p)) {
+          release('Space'); tap('Space');
+          if (p.dash > 0) { dashes++; spent = 0; fired = true; }
+        }
+      }
+      if (!fired && p.dash > 0 && spent >= cut && !orbOnTheLine(bT.x)) {
+        release('Space');           /* nothing left to chain into */
+      }
+    }
+    step(1);
+    if (p.dash > 0) spent += 0.016;
+    if (p.dead) { letGo(); return { r: 'died', n: dashes }; }
+    if (jumped && p.onGround) {
+      letGo();
+      return { r: 'landed', x: p.x, y: p.y + p.h, n: dashes, on: standingOnX() };
+    }
+  }
+  letGo();
+  return { r: 'stuck', n: dashes };
+}
+
+/* Which solid you are actually standing on, asked while you are still
+   standing on it. A pad has sunk by the time you land, so its y is no
+   longer the one the builder handed out — only its x still says who
+   it is. */
+function standingOnX() {
+  for (var k = 0; k < level.solids.length; k++) {
+    var s = level.solids[k];
+    if (Math.abs((p.y + p.h) - s.y) > 4) continue;
+    if (p.x + p.w > s.x && p.x < s.x + s.w) return s.x;
+  }
+  return null;
+}
+
+function landedOn(r, toX) {
+  return r.r === 'landed' && r.on === toX;
+}
+
+var CUTS = [99, 0.10, 0.14, 0.18, 0.22, 0.26, 0.32, 0.40];
+var ARRIVE = [0, 0.25, 0.5, 0.75, 1.0, 1.25];   /* when you reach the lip */
+
+/* Where on a pad you might be standing when you start the next gap.
+   This matters because the pads sag under you: dawdle at the back of
+   one and it has dropped far enough that the orb is out of reach by
+   the time you jump. You arrive on a pad from a dash, near its far
+   end, and you go again straight away — so try there first and work
+   backwards towards the teeth. */
+function startSpots(fromX) {
+  var aT = solidByX(fromX);
+  var edge = aT.x + aT.w;
+  var lo = aT.x + (aT.spike ? aT.spike.off + aT.spike.w + 8 : 4);
+  var hi = Math.max(lo, edge - 60);
+  var out = [];
+  for (var f = 0; f < 5; f++) out.push(hi - (hi - lo) * (f / 4));
+  return out;
+}
+
+function tenGapGoes(fromX, toX, sxAt) {
+  loadLevel(GAPLVL);
+  var spots = sxAt !== undefined ? [sxAt] : startSpots(fromX);
+  for (var si = 0; si < spots.length; si++) {
+    for (var jx = -160; jx <= 8; jx += 20) {
+      for (var c = 0; c < CUTS.length; c++) {
+        for (var ti = 0; ti < ARRIVE.length; ti++) {
+          var r = tenRun(fromX, toX, jx, CUTS[c], ARRIVE[ti], spots[si]);
+          if (landedOn(r, toX)) {
+            return { ok: true, cut: CUTS[c], jx: jx, n: r.n,
+                     t: ARRIVE[ti], sx: Math.round(spots[si]) };
+          }
+        }
+      }
+    }
+  }
+  return { ok: false };
+}
+
+var tenAll = true;
+for (var i = 0; i < landTen.length - 1; i++) {
+  var res = tenGapGoes(landTen[i], landTen[i + 1]);
+  var gapW = 0;
+  loadLevel(10);
+  gapW = solidByX(landTen[i + 1]).x -
+         (solidByX(landTen[i]).x + solidByX(landTen[i]).w);
+  ok('gap ' + (i + 1) + ' (' + gapW + 'px) can be crossed', res.ok,
+     'no jump, dash or release timing lands it');
+  if (!res.ok) tenAll = false;
+}
+ok('so the room can actually be finished', tenAll);
+WScript.Echo('');
+
+/* ==================================================================
+   ROOM ELEVEN — the mixture, and the gap that needs somebody else
+   ================================================================== */
+WScript.Echo('');
+WScript.Echo('[room eleven: the room]');
+loadLevel(11); state.running = true;
+ok('the room loads', level.name === 'Room Eleven');
+ok('it is the last room before the door out',
+   BUILDERS.length === 12 && levelIndex === 11);
+ok('it has all four of the hazards the game owns, at once',
+   level.waves.length > 0 && level.saws.length > 0 &&
+   level.orbs.length > 0 && level.sinkers.length > 0,
+   level.waves.length + ' beds, ' + level.saws.length + ' blades, ' +
+   level.orbs.length + ' orbs, ' + level.sinkers.length + ' pads');
+
+var g11 = solidByX(-60);
+ok('you start on solid ground, not on a pad',
+   g11 !== null && level.start.y + SIZE === g11.y);
+ok('the pads sit on the floor own line, so the wave reads right',
+   level.sinkers[0].y === g11.y && g11.y === GROUND);
+
+var shelf11 = solidByX(3050);
+ok('the shelf in the middle is solid', shelf11 !== null);
+var covered11 = false;
+for (var i = 0; i < level.hazards.length; i++) {
+  var hz11 = level.hazards[i];
+  if (hz11.x <= shelf11.x && hz11.x + hz11.w >= shelf11.x + shelf11.w) {
+    covered11 = true;
+  }
+}
+ok('and every inch of it is teeth - there is no landing on it', covered11);
+
+/* ---------------- part one: the ground, and what is on it -------- */
+WScript.Echo('');
+WScript.Echo('[room eleven: walking the wave]');
+
+var nogap11 = '';
+for (var i = 0; i < level.waves.length - 1; i++) {
+  if (Math.abs((level.waves[i].x + level.waves[i].w) -
+               level.waves[i + 1].x) > 0.01) {
+    nogap11 = 'gap after bed ' + i;
+  }
+}
+ok('the wave is one unbroken carpet', nogap11 === '', nogap11);
+
+var fw11 = level.waves[0], lw11 = level.waves[level.waves.length - 1];
+ok('it starts clear of the spawn', fw11.x > level.start.x + 200,
+   'spawn ' + level.start.x + ', spikes from ' + fw11.x);
+ok('and stops short of the lip, so there is a run-up',
+   g11.x + g11.w - (lw11.x + lw11.w) >= 200,
+   (g11.x + g11.w - (lw11.x + lw11.w)) + 'px of clear floor');
+
+/* the troughs: a bed has to spend real time down, and they must never
+   all be up together or there is nowhere left to stand */
+var stuckUp11 = '';
+for (var i = 0; i < level.waves.length; i++) {
+  var down11 = 0;
+  for (var s = 0; s < 460; s++) {
+    state.t = s * 0.01;
+    if (waveOut(level.waves[i]) <= 0.02) down11++;
+  }
+  if (down11 < 180) stuckUp11 = 'bed ' + i + ' down only ' + down11 + '/460';
+}
+ok('every bed is down for about half the time', stuckUp11 === '', stuckUp11);
+
+/* This wave rolls at running pace, so unlike Room Six's you never stand
+   about in it — you read it from the edge and run it in one go. That
+   means its crest is allowed to cover every bed at once, as it must
+   when the whole thing fires within half a cycle. What matters is that
+   the crest passes quickly, so committing to a run is never a trap. */
+var allUp11 = 0, widest11 = 0;
+for (var s = 0; s < 460; s++) {
+  state.t = s * 0.01;
+  var run11 = 0, best11 = 0;
+  for (var i = 0; i < level.waves.length; i++) {
+    if (waveOut(level.waves[i]) <= 0.02) {
+      run11++;
+      if (run11 > best11) best11 = run11;
+    } else run11 = 0;
+  }
+  if (best11 === 0) allUp11++;
+  if (best11 > widest11) widest11 = best11;
+}
+ok('its crest does not sit over the whole wave for long', allUp11 < 100,
+   (allUp11 / 100).toFixed(2) + 's of every ' + level.waves[0].period + 's');
+ok('and most of the time there is a wide trough in it', widest11 >= 3,
+   widest11 + ' beds at its widest');
+
+/* the two blades over the ground have to lift clear sometimes */
+loadLevel(11);
+for (var i = 0; i < 2; i++) {
+  var sw11 = level.saws[i];
+  var clear11 = 0;
+  for (var s = 0; s < 400; s++) {
+    state.t = s * 0.01;
+    if (sawPos(sw11).y + sw11.r < g11.y - SIZE - 20) clear11++;
+  }
+  ok('blade ' + (i + 1) + ' lifts clear of the floor often enough',
+     clear11 > 90, clear11 + '/400 frames');
+}
+
+/* Which bed of the wave covers a given x, if any. */
+function bedAt(x) {
+  for (var k = 0; k < level.waves.length; k++) {
+    var wv = level.waves[k];
+    if (x >= wv.x && x < wv.x + wv.w) return wv;
+  }
+  return null;
+}
+
+/* Is a blade hanging across the way ahead, now or in the next moment?
+   You watch one swing before you commit, and you never stop standing
+   underneath it — so it only counts while it is still a way ahead. */
+function bladeAhead(floorY) {
+  var was = state.t, found = false;
+  for (var s = 0; s <= 0.85 && !found; s += 0.05) {
+    state.t = was + s;
+    for (var k = 0; k < level.saws.length; k++) {
+      var sw = level.saws[k], at = sawPos(sw);
+      if (at.x > p.x + 40 && at.x < p.x + 190 && at.y + sw.r > floorY - 110) {
+        found = true;
+      }
+    }
+  }
+  state.t = was;
+  return found;
+}
+
+/* Standing at the near edge of the wave, reading it: if you set off now
+   and keep running, is every bed still down as you reach it? This is
+   the whole skill of the beat — the wave rolls right at about the speed
+   you run, so leaving on the right beat carries you the whole way. */
+function waveRunClear() {
+  var was = state.t, clear = true;
+  for (var k = 0; k < level.waves.length && clear; k++) {
+    var wv = level.waves[k];
+    var tIn  = (wv.x - (p.x + SIZE)) / MOVE_SPD;
+    var tOut = (wv.x + wv.w - p.x) / MOVE_SPD;
+    for (var s = Math.max(0, tIn); s <= tOut; s += 0.04) {
+      state.t = was + s;
+      if (waveOut(wv) > 0.02) { clear = false; break; }
+    }
+  }
+  state.t = was;
+  return clear;
+}
+
+/* Play the whole ground stretch the way a person would: walk up, wait
+   out the first blade, stand at the near edge of the spikes until the
+   wave is rolling your way, run it in one go without stopping, then
+   wait out the second blade on the clear floor past it. */
+function crossPartOne(t0) {
+  loadLevel(11); state.running = true;
+  var g = solidByX(-60);
+  var first = level.waves[0];
+  var last  = level.waves[level.waves.length - 1];
+  var lipX  = g.x + g.w;
+  placeOn(120, g.y);
+  state.t = t0;
+
+  var running = false;
+  for (var i = 0; i < 2600; i++) {
+    /* once you are in the spikes you do not stop for anything */
+    if (p.x + SIZE > first.x + 8) running = true;
+    if (p.x > last.x + last.w + 20) running = false;
+
+    var blocked = bladeAhead(g.y);
+    var atEdge = !running && p.x + SIZE > first.x - 80 && p.x < first.x;
+
+    release('ArrowRight'); release('ArrowLeft'); release('Space');
+    if (running) hold('ArrowRight');
+    else if (atEdge) { if (!blocked && waveRunClear()) hold('ArrowRight'); }
+    else if (!blocked) hold('ArrowRight');
+
+    step(1);
+    if (p.dead) { letGo(); return 'died at x=' + Math.round(p.x); }
+    if (p.x + SIZE > lipX - 40) { letGo(); return 'ok'; }
+  }
+  letGo();
+  return 'stuck at x=' + Math.round(p.x);
+}
+
+/* The wave has to roll the way you run, or no start time survives it. */
+loadLevel(11);
+var stepPh = ((level.waves[0].phase - level.waves[1].phase) % 1 + 1) % 1;
+var waveSpd = level.waves[0].w / (stepPh * level.waves[0].period);
+ok('the wave rolls rightwards, at about the speed you run',
+   Math.abs(waveSpd - MOVE_SPD) < 60,
+   Math.round(waveSpd) + ' px/s vs your ' + MOVE_SPD + ' px/s');
+
+/* both ground blades need clear floor around them to wait on */
+for (var i = 0; i < 2; i++) {
+  var bx11 = level.saws[i].x0;
+  var onSpikes = false;
+  for (var k = 0; k < level.waves.length; k++) {
+    var wv11 = level.waves[k];
+    if (bx11 + 60 > wv11.x && bx11 - 190 < wv11.x + wv11.w) onSpikes = true;
+  }
+  ok('blade ' + (i + 1) + ' has clear floor to wait on', !onSpikes,
+     'its waiting room overlaps the spikes');
+}
+
+/* and it must be crossable — sweep a whole wave cycle of start times */
+var crossedAt = '', crossNote = '';
+for (var i = 0; i < 24 && crossedAt === ''; i++) {
+  var c11 = crossPartOne(i * 0.2);
+  if (c11 === 'ok') crossedAt = 't=' + (i * 0.2).toFixed(1);
+  else crossNote = 'from t=' + (i * 0.2).toFixed(1) + ': ' + c11;
+}
+ok('the ground stretch can be crossed end to end', crossedAt !== '', crossNote);
+
+/* ---------------- part two: the gaps you are meant to cross ------ */
+WScript.Echo('');
+WScript.Echo('[room eleven: the gaps you are meant to cross]');
+GAPLVL = 11;
+
+var land11 = [-60, 1780, 2730, 3340];
+var starts11 = [1300, undefined, undefined];   // gap 1 launches past the wave
+var all11 = true;
+for (var i = 0; i < land11.length - 1; i++) {
+  loadLevel(11);
+  var a11 = solidByX(land11[i]), b11 = solidByX(land11[i + 1]);
+  var gw11 = b11.x - (a11.x + a11.w);
+  var r11 = tenGapGoes(land11[i], land11[i + 1], starts11[i]);
+  ok('gap ' + (i + 1) + ' (' + gw11 + 'px) can be crossed', r11.ok,
+     'no jump, dash or release timing lands it');
+  if (!r11.ok) all11 = false;
+}
+ok('so everything up to the last pad goes on your own', all11);
+
+/* ---------------- part three: the gap that is not a gap ---------- */
+WScript.Echo('');
+WScript.Echo('[room eleven: the gap that is not a gap]');
+loadLevel(11);
+var pad11 = solidByX(3340), end11 = solidByX(4700);
+var lastGap11 = end11.x - (pad11.x + pad11.w);
+ok('the last gap is far past anything you own', lastGap11 > 1000,
+   lastGap11 + 'px');
+
+var past11 = [];
+for (var i = 0; i < level.orbs.length; i++) {
+  if (level.orbs[i].x > pad11.x + pad11.w) past11.push(level.orbs[i]);
+}
+ok('there is exactly one orb in it', past11.length === 1,
+   past11.length + ' orbs');
+ok('and it sits exactly where every other orb in the room sat',
+   past11.length === 1 && past11[0].x - (pad11.x + pad11.w) === 160,
+   past11.length === 1
+     ? (past11[0].x - (pad11.x + pad11.w)) + 'px past the lip'
+     : '');
+ok('nothing marks it out - no hint, no arrow',
+   level.hints.length === 0 && level.arrows.length === 0);
+
+/* with the net taken away, nothing the player has crosses it */
+NORESCUE = true;
+var tried11 = tenGapGoes(3340, 4700);
+NORESCUE = false;
+ok('and on your own it cannot be crossed', !tried11.ok,
+   'crossed it with cut=' + tried11.cut + ' jx=' + tried11.jx);
+
+/* ---------------- and somebody catches you ----------------------- */
+WScript.Echo('');
+WScript.Echo('[room eleven: somebody catches you]');
+
+loadLevel(11); state.running = true;
+p.x = pad11.x + pad11.w + 60;
+p.y = pad11.y - 12;
+p.vx = 260; p.vy = 0;
+p.onGround = false; p.dead = false;
+
+var saw11 = {}, fellTo11 = 0;
+for (var i = 0; i < 600; i++) {
+  step(1);
+  saw11[level.rescue.phase] = true;
+  if (p.y > fellTo11) fellTo11 = p.y;
+  if (level.rescue.phase === 'leaving' || level.rescue.phase === 'done') break;
+}
+ok('you get a moment of falling first', fellTo11 > pad11.y + 60,
+   'fell to y=' + Math.round(fellTo11));
+ok('he comes up out of the dark and gets you', saw11['swoop'] === true);
+ok('and carries you across', saw11['carry'] === true);
+ok('you are alive at the end of it', !p.dead);
+ok('and standing on the far side',
+   p.onGround && p.x >= end11.x && p.x + SIZE <= end11.x + end11.w &&
+   Math.abs(p.y + SIZE - end11.y) < 2,
+   'x=' + Math.round(p.x) + ' y=' + Math.round(p.y));
+ok('set down short of the door, so you still walk the last bit',
+   p.x + SIZE < level.door.x,
+   'you at ' + Math.round(p.x) + ', door at ' + level.door.x);
+ok('he lets go once you are down', !rescueHolding());
+ok('and never has to do it twice', level.rescue.phase !== 'waiting');
+
+hold('ArrowRight');
+for (var i = 0; i < 500 && !state.complete; i++) step(1);
+letGo();
+ok('you can walk from where he put you to the door out', state.complete);
+
+/* the net is under that one gap and nowhere else */
+loadLevel(11); state.running = true;
+p.x = 2300; p.y = 470; p.vx = 0; p.vy = 300;
+p.onGround = false; p.dead = false;
+for (var i = 0; i < 300 && !p.dead; i++) step(1);
+ok('falling anywhere earlier in the room still kills you',
+   p.dead && level.rescue.phase === 'waiting');
+
+loadLevel(11); state.running = true;
+placeOn(pad11.x + 120, pad11.y);
+for (var i = 0; i < 400 && !p.dead; i++) step(1);
+ok('and standing still on the last pad rides it down to nothing, same as ever',
+   p.dead && level.rescue.phase === 'waiting',
+   'phase=' + level.rescue.phase + ' dead=' + p.dead);
+
+/* ---------------- the green fellow ------------------------------- */
+WScript.Echo('');
+WScript.Echo('[the green fellow]');
+loadLevel(5);
+ok('in Room Five he is the same size and shape as you are',
+   level.npc.w === SIZE && level.npc.h === SIZE,
+   level.npc.w + 'x' + level.npc.h + ' vs your ' + SIZE + 'x' + SIZE);
+ok('and stands on the floor rather than in it',
+   level.npc.y + level.npc.h === GROUND);
+loadLevel(11);
+ok('the one who catches you is that same cube again',
+   level.rescue.w === SIZE && level.rescue.h === SIZE);
+ok('and he says the one thing', level.rescue.line === 'Up you go!',
+   level.rescue.line);
+
 WScript.Echo('[hitting something that has hold of you]');
 loadLevel(3); state.running = true;
 var e = level.enemies[0];
@@ -1962,7 +2478,7 @@ ok('it remembers where you came from', returnToDone === BUILDERS.length - 1);
 state.picked = true;
 finishLevel();
 ok('finishing the tutorial returns you to that room screen',
-   doneTitle.textContent === 'ROOM NINE CLEARED',
+   doneTitle.textContent === 'ROOM ELEVEN CLEARED',
    'showed "' + doneTitle.textContent + '"');
 ok('not back to room one',
    nextBtn.textContent !== 'Start the Game', nextBtn.textContent);
