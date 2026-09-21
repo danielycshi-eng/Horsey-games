@@ -817,12 +817,20 @@
     var TOP  = GROUND;                // the floor and the pads share a line
     var LINE = TOP - 92;              // the height a dash flies at
 
+    /* `teeth` is 1 for a bed on the near lip, 2 for a bed at each end —
+       and two beds means the landing is the strip between them, which
+       you only hit by letting go of the dash at the right moment. These
+       sag half again as fast as Room Ten's: there is no reading the
+       room from on top of one. */
     function pad(x, w, chain, teeth) {
+      var bed = null;
+      if (teeth === 1) bed = { off: 0, w: 50 };
+      if (teeth === 2) bed = [{ off: 0, w: 50 }, { off: w - 50, w: 50 }];
       return { x: x, y: TOP, w: w, h: 22, oneWay: true,
                home: TOP, chain: chain || null,
-               rate: 84, back: 60, max: 99999,
+               rate: 120, back: 70, max: 99999,
                active: false,
-               spike: teeth ? { off: 0, w: 50 } : null };
+               spike: bed };
     }
     function orb(x) { return { x: x, y: LINE, r: 17, cool: 0 }; }
     function blade(x, period, phase) {
@@ -830,29 +838,44 @@
                r: 22, period: period, phase: phase };
     }
 
-    /* --- part one: solid ground, with a wave rolling along it. Each
-           bed lags the one before it, so the spikes travel and you ride
-           the trough along with them. A blade guards each end of the
-           wave, standing over clear floor you can wait on — nothing in
-           here asks you to dodge two things from the same spot. --- */
+    /* --- part one: the gate, then the wave.
+
+           The gate is two blades with a bed of floor spikes between
+           them, so there is nowhere to stand in the middle: you wait on
+           the near side until both have swung up, then clear the whole
+           248px of it in one go. One jump carries 176px. You need the
+           second one.
+
+           Then the wave, and it runs all the way to the lip now — no
+           landing strip at the end to gather yourself on. Each bed
+           fires a beat LATER than the one to its left, which sends the
+           whole thing rolling rightwards at about 275px/s, exactly how
+           fast you run. Set off with it and the trough carries you to
+           the edge and straight off it. Set off wrong and it is teeth
+           the whole way. --- */
     var ground = { x: -60, y: TOP, w: 1420, h: 160 };      // lip at 1360
+    var gate   = { x: 240, y: TOP - 34, w: 90, h: 34 };    // nowhere to stand
+
     var waves = [];
-    /* Each bed fires a beat LATER than the one to its left, which sends
-       the wave rolling rightwards at 275px/s — exactly how fast you run.
-       Set off with it and the trough carries you the whole way; set off
-       wrong and it is teeth all the way across. */
-    for (var i = 0; i < 5; i++) {
-      waves.push({ x: 380 + i * 120, w: 120, h: 34,
-                   period: 4.6, phase: (1 - i * 0.095) % 1 });
+    for (var i = 0; i < 8; i++) {
+      waves.push({ x: 480 + i * 110, w: 110, h: 34,        // 480 .. 1360
+                   period: 4.6, phase: (1 - i * 0.087) % 1 });
     }
 
     /* --- part two: the ground runs out and the orbs take over. The
            gaps are the ones Room Ten taught — 420 for one dash, 760 for
            two chained — and a shelf of teeth you go over, never on. --- */
-    var p1    = pad(1780, 190, null, true);   // 420: one dash, one blade
-    var p2    = pad(2730, 190, 'a',  true);   // 760: chain them
-    var shelf = { x: 3050, y: TOP, w: 200, h: 200 };
-    var p3    = pad(3340, 170, 'a',  true);   // 420, straight over the shelf
+    var p1    = pad(1780, 190, null, 1);   // 420: one dash, one blade
+    var p2    = pad(2730, 190, 'a',  1);   // 760: chain them
+    var shelf = { x: 2990, y: TOP, w: 180, h: 200 };
+
+    /* 330, not 420 — the orb still sits 160 out from the lip, because
+       that is where a jump arc crosses the line a dash flies at, but
+       the pad is close enough that riding the dash out sails over it
+       entirely. Teeth at both ends, so the landing is the strip in the
+       middle and the only way onto it is to let go early, and to let
+       go at the right moment. */
+    var p3    = pad(3250, 200, 'a',  2);
 
     /* --- part three: one more orb, sitting exactly where the last four
            sat, and 670px of nothing after the dash gives out. --- */
@@ -866,25 +889,26 @@
 
       solids: [ground, p1, p2, shelf, p3, end],
       sinkers: [p1, p2, p3],
-      hazards: [ { x: shelf.x, y: TOP - 34, w: shelf.w, h: 34 } ],
+      hazards: [ gate,
+                 { x: shelf.x, y: TOP - 34, w: shelf.w, h: 34 } ],
       waves: waves,
 
       orbs: [ orb(1520),               // 1. off the ground and across
               orb(2130), orb(2450),    // 2. chained
               orb(3080),               // 3. over the teeth
-              orb(3670) ],             // 4. and this one is a lie
+              orb(3610) ],             // 4. and this one is a lie
 
-      saws: [ blade(200,  2.6, 0.00),  // one either side of the wave, on
-              blade(1240, 2.2, 0.40),  // floor you can stand on and wait
+      saws: [ blade(200, 2.6, 0.00),   // the gate: both have to be up
+              blade(380, 2.3, 0.45),   // before the jump is on
               blade(1600, 1.7, 0.00),  // and two hanging in the gaps
               blade(2600, 1.9, 0.35) ],
 
-      /* The gap after p3 is 1190px with one orb in it. Nothing you have
+      /* The gap after p3 is 1160px with one orb in it. Nothing you have
          crosses that, and the pads sag the moment you touch them, so
          there is no waiting it out either. You have to jump, and then
          somebody else has to do the rest. */
       rescue: {
-        atX: 3530,                     // only once you are past the last pad
+        atX: 3470,                     // only once you are past the last pad
         atY: 520,                      // how far you get to fall first
         to: { x: 4790, y: TOP },
         line: 'Up you go!',
@@ -1251,6 +1275,14 @@
      off. Chained ones move as one, so stepping on either sinks both.
      The player rides whatever they're standing on.
      ============================================================ */
+  /* A platform's teeth. One bed is written as a plain { off, w }; a
+     platform with teeth at both ends gives an array of them, and then
+     the only safe landing is the strip in the middle. */
+  function teethOf(s) {
+    if (!s.spike) return [];
+    return s.spike.length === undefined ? [s.spike] : s.spike;
+  }
+
   function standingOn(s) {
     if (!p.onGround) return false;
     if (Math.abs((p.y + p.h) - s.y) > 2) return false;
@@ -1999,9 +2031,11 @@
     /* teeth carried on a sinking platform's own surface */
     for (i = 0; i < level.sinkers.length; i++) {
       var sk = level.sinkers[i];
-      if (!sk.spike) continue;
-      if (hits(p, { x: sk.x + sk.spike.off, y: sk.y - 22,
-                    w: sk.spike.w, h: 22 })) { die(); return; }
+      var teeth = teethOf(sk);
+      for (var ti = 0; ti < teeth.length; ti++) {
+        if (hits(p, { x: sk.x + teeth[ti].off, y: sk.y - 22,
+                      w: teeth[ti].w, h: 22 })) { die(); return; }
+      }
     }
     for (i = 0; i < level.saws.length; i++) {
       var sw = level.saws[i];
@@ -2286,8 +2320,9 @@
     }
 
     /* teeth sitting on part of the platform's own surface */
-    if (s.spike) {
-      var tx = s.x + s.spike.off, tw = s.spike.w;
+    var bed = teethOf(s);
+    for (var bi = 0; bi < bed.length; bi++) {
+      var tx = s.x + bed[bi].off, tw = bed[bi].w;
       ctx.fillStyle = '#ff5f7e';
       ctx.shadowColor = '#ff5f7e';
       ctx.shadowBlur = 14;
