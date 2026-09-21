@@ -2524,8 +2524,8 @@ WScript.Echo('');
 WScript.Echo('[room twelve: the room]');
 loadLevel(12); state.running = true;
 ok('the room loads', level.name === 'Room Twelve');
-ok('it is the last room before the door out',
-   BUILDERS.length === 13 && levelIndex === 12);
+ok('it is the second to last room now',
+   BUILDERS.length === 14 && levelIndex === 12);
 
 var kinds12 = { dash: 0, up: 0, high: 0 };
 for (var i = 0; i < level.orbs.length; i++) {
@@ -2861,6 +2861,200 @@ letGo();
 ok('walking into it with the key ends the room', state.complete);
 
 
+/* ==================================================================
+   ROOM THIRTEEN — the course
+   Everything at once, so every section is checked the hard way: run it
+   with real input, sweeping take-off points AND the blade phase, and
+   ask whether any timing at all gets across.
+   ================================================================== */
+WScript.Echo('');
+WScript.Echo('[room thirteen: the room]');
+loadLevel(13); state.running = true;
+ok('the room loads', level.name === 'Room Thirteen');
+ok('it is the last room now', BUILDERS.length === 14 && levelIndex === 13);
+
+var ground13 = solidByX(-60);
+ok('you start on the one piece of real ground',
+   level.start.y + SIZE === ground13.y &&
+   level.start.x > ground13.x && level.start.x < ground13.x + ground13.w,
+   'start ' + level.start.x + ',' + level.start.y);
+
+var kinds13 = { dash: 0, up: 0, high: 0 };
+for (var i = 0; i < level.orbs.length; i++) {
+  kinds13[level.orbs[i].kind || 'dash']++;
+}
+ok('it uses all three rings',
+   kinds13.dash > 0 && kinds13.up > 0 && kinds13.high > 0,
+   kinds13.dash + ' dash, ' + kinds13.up + ' yellow, ' + kinds13.high + ' red');
+ok('and sagging pads', level.sinkers.length === 4,
+   level.sinkers.length + ' pads');
+ok('and blades', level.saws.length === 6, level.saws.length + ' blades');
+ok('nothing is explained - no hint, no arrow',
+   level.hints.length === 0 && level.arrows.length === 0);
+ok('the door wants nothing but getting there', level.door.needs === null);
+
+/* the pads never stop going down - there is no waiting one out */
+var stops13 = '';
+for (var i = 0; i < level.sinkers.length; i++) {
+  if (level.sinkers[i].max < 1000) {
+    stops13 = 'a pad stops at ' + level.sinkers[i].max;
+  }
+}
+ok('a pad you stand on never stops sinking', stops13 === '', stops13);
+
+/* part one's gaps are inside a double jump; the blade is the problem */
+var lips13 = [[-60, 480], [480, 870], [870, 1260]];
+var wideGap = '';
+for (var i = 0; i < lips13.length; i++) {
+  var a13 = solidByX(lips13[i][0]), b13 = solidByX(lips13[i][1]);
+  var g13 = b13.x - (a13.x + a13.w);
+  if (g13 !== 220) wideGap = 'gap ' + (i + 1) + ' is ' + g13;
+}
+ok('every gap in part one is 220 - inside a double jump', wideGap === '',
+   wideGap);
+
+/* a blade hangs in each of those gaps */
+var bladeless = '';
+for (var i = 0; i < lips13.length; i++) {
+  var a13 = solidByX(lips13[i][0]), b13 = solidByX(lips13[i][1]);
+  var found = false;
+  for (var q = 0; q < level.saws.length; q++) {
+    if (level.saws[q].x0 > a13.x + a13.w && level.saws[q].x0 < b13.x) {
+      found = true;
+    }
+  }
+  if (!found) bladeless = 'gap ' + (i + 1) + ' has no blade';
+}
+ok('and a blade swinging in every one of them', bladeless === '', bladeless);
+
+/* the teeth on padD sit on its near lip, so the dash has to carry past */
+var padD13 = solidByX(1850);
+ok('the dash landing has teeth on its near lip',
+   padD13.spike !== null && padD13.spike.off === 0,
+   padD13.spike ? 'off ' + padD13.spike.off : 'no teeth');
+
+/* and the void the chain crosses is the one Room Twelve proved */
+var void13 = solidByX(5410).x - (solidByX(3770).x + solidByX(3770).w);
+ok('the chain crosses 1400px of nothing', void13 === 1400, void13 + 'px');
+
+/* ---------------- every section actually goes ---------------------- */
+WScript.Echo('');
+WScript.Echo('[room thirteen: every section goes]');
+
+var used13 = {};
+function fireAny13() {
+  for (var q = 0; q < level.orbs.length; q++) {
+    var o = level.orbs[q];
+    if (used13['x' + o.x]) continue;
+    if (circleHitsBox(o.x, o.y, ORB_CATCH, p)) {
+      used13['x' + o.x] = true;
+      release('Space'); tap('Space');
+      return true;
+    }
+  }
+  return false;
+}
+
+/* Start clear of the platform's own teeth, run right, take every ring
+   once, and spend the second jump on the way down. `wait` stands still
+   first, which is how the blade phase gets swept: loadLevel puts the
+   clock back to zero on every attempt, so the blades start in the same
+   place each time and only the waiting moves them. */
+function run13(fromX, jx, wait, noOrbs) {
+  loadLevel(13); state.running = true;
+  /* Pressing jump inside a ring fires it, so asking what your legs
+     alone would do means taking the rings out of the room. */
+  if (noOrbs) level.orbs = [];
+  used13 = {};
+  var a = solidByX(fromX);
+  var edge = a.x + a.w;
+  var clear = a.x + 4;
+  if (a.spike) {
+    var bed13 = a.spike.length === undefined ? [a.spike] : a.spike;
+    for (var t = 0; t < bed13.length; t++) {
+      var te = a.x + bed13[t].off + bed13[t].w + 6;
+      if (te > clear && a.x + bed13[t].off < edge - 40) clear = te;
+    }
+  }
+  placeOn(Math.max(clear, edge - 300), a.y);
+  for (var w = 0; w < wait; w++) step(1);
+  hold('ArrowRight');
+  var jumped = false, used2 = false, air = false, fired = 0;
+  for (var i = 0; i < 700; i++) {
+    if (fireAny13()) { jumped = true; fired++; }
+    else if (!jumped && p.x + p.w >= edge + jx) { tap('Space'); jumped = true; }
+    else if (jumped && !used2 && !p.onGround && p.vy > -60) {
+      release('Space'); tap('Space'); used2 = true;
+    }
+    step(1);
+    if (!p.onGround) air = true;
+    if (p.dead) { letGo(); return { r: 'died' }; }
+    if (jumped && air && p.onGround) {
+      letGo();
+      return { r: 'landed', on: standingOnX(), n: fired };
+    }
+  }
+  letGo();
+  return { r: 'stuck' };
+}
+
+function thirteenGoes(fromX, toX, noOrbs) {
+  var hits = 0, rings = 0;
+  for (var wait = 0; wait <= 144; wait += 18) {
+    for (var jx = -200; jx <= 10; jx += 20) {
+      var r = run13(fromX, jx, wait, noOrbs);
+      if (r.r === 'landed' && r.on === toX) { hits++; rings = r.n; }
+    }
+  }
+  return { ok: hits > 0, n: hits, rings: rings };
+}
+
+var s1 = thirteenGoes(-60, 480);
+ok('the ground gets you to the first pad', s1.ok, s1.n + ' timings work');
+var s2 = thirteenGoes(480, 870);
+ok('and the first pad to the second, while it sags', s2.ok,
+   s2.n + ' timings work');
+var s3 = thirteenGoes(870, 1260);
+ok('and the second to the third, with its chain already dropping', s3.ok,
+   s3.n + ' timings work');
+var s4 = thirteenGoes(1260, 1850);
+ok('one dash carries you over the teeth', s4.ok && s4.rings === 1,
+   s4.n + ' timings work, ' + s4.rings + ' rings');
+var s5 = thirteenGoes(1850, 2800);
+ok('two chained carry you the 760', s5.ok && s5.rings === 2,
+   s5.n + ' timings work, ' + s5.rings + ' rings');
+var s6 = thirteenGoes(2800, 3040);
+ok('the yellow ring gets you 310 up', s6.ok && s6.rings === 1,
+   s6.n + ' timings work');
+var s7 = thirteenGoes(3260, 3520);
+ok('the red one gets you 370 up, past the blade', s7.ok && s7.rings === 1,
+   s7.n + ' timings work');
+var s8 = thirteenGoes(3770, 5410);
+ok('and the chain carries you to the floor by the door',
+   s8.ok && s8.rings === 4, s8.n + ' timings work, ' + s8.rings + ' rings');
+
+/* every one of those must actually need its rings */
+var legsOnly = '';
+var needs13 = [[1260, 1850], [1850, 2800], [2800, 3040],
+               [3260, 3520], [3770, 5410]];
+for (var i = 0; i < needs13.length; i++) {
+  if (thirteenGoes(needs13[i][0], needs13[i][1], true).ok) {
+    legsOnly += needs13[i][0] + ' ';
+  }
+}
+ok('and none of them go on your legs alone', legsOnly === '',
+   'got across without a ring from ' + legsOnly);
+
+/* and the door finishes it */
+loadLevel(13); state.running = true;
+var endF13 = solidByX(5410);
+placeOn(endF13.x + 40, endF13.y);
+hold('ArrowRight');
+for (var i = 0; i < 500 && !state.complete; i++) step(1);
+letGo();
+ok('walking into the door ends the room', state.complete);
+
+
 WScript.Echo('[hitting something that has hold of you]');
 loadLevel(3); state.running = true;
 var e = level.enemies[0];
@@ -2895,7 +3089,8 @@ ok('it remembers where you came from', returnToDone === BUILDERS.length - 1);
 state.picked = true;
 finishLevel();
 ok('finishing the tutorial returns you to that room screen',
-   doneTitle.textContent === 'ROOM TWELVE CLEARED',
+   doneTitle.textContent ===
+     BUILDERS[BUILDERS.length - 1]().name.toUpperCase() + ' CLEARED',
    'showed "' + doneTitle.textContent + '"');
 ok('not back to room one',
    nextBtn.textContent !== 'Start the Game', nextBtn.textContent);
