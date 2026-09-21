@@ -192,6 +192,8 @@
   var ATK_COOL = 0.32;
   var DASH_SPD  = 700;           // a dash orb throws you flat and fast
   var DASH_TIME = 0.52;          // 364px of it
+  var UP_V      = 950;           // a yellow orb: 225px straight up
+  var HIGH_V    = 1250;          // a red one: 390px, and nothing else reaches
 
   /* ============================================================
      LEVELS
@@ -928,10 +930,82 @@
     };
   }
 
+  /* Room Twelve. The two launcher orbs, taught the only way this game
+     teaches anything: by putting something in your way that your legs
+     cannot do, and leaving one lit ring next to it.
+
+     A yellow one hangs at the height a jump tops out at, and throws
+     you 225px further. A red one is hung low, down where you run,
+     because 390px from the top of a jump would put you through the
+     ceiling — and that low hang is the tell for how hard it kicks. */
+  function buildRoomTwelve() {
+    function orb(x, y, kind) {
+      return { x: x, y: y, r: 17, cool: 0, kind: kind };
+    }
+
+    /* --- one: a shelf 310px up. A double jump gets 224 and stops. --- */
+    var groundA = { x: -60,  y: GROUND, w: 940, h: 160 };   // lip at 880
+    var shelfB  = { x: 880,  y: 130,    w: 440, h: 420 };   // 310 up
+
+    /* --- two: the same idea, 370px up, and the ring is red and low.
+           Yellow off this one tops out 145px short of it. --- */
+    var groundC = { x: 1320, y: GROUND, w: 960, h: 160 };   // lip at 2280
+    var shelfD  = { x: 2280, y: 70,     w: 420, h: 480 };   // 370 up
+
+    /* --- three: walk off D, drop to the last of the floor, and then
+           there is nothing underneath for a thousand pixels. Dash out,
+           fall into a red, fall into a yellow, fall into a red. Each
+           ring is hung where the fall from the one before arrives. --- */
+    var ledgeE  = { x: 2700, y: GROUND, w: 300, h: 160 };   // lip at 3000
+    var floorG  = { x: 4400, y: GROUND, w: 700, h: 160 };   // lip at 5100
+
+    /* --- and out: three reds on that floor, the key when they are
+           down, and one more low ring to get up to the door. --- */
+    var shelfH  = { x: 5200, y: 200,    w: 420, h: 340 };
+
+    return {
+      name: 'Room Twelve',
+      worldW: 5800,
+      start: { x: 80, y: GROUND - SIZE },
+      fallY: 620,
+
+      solids: [groundA, shelfB, groundC, shelfD, ledgeE, floorG, shelfH],
+
+      orbs: [ orb(780,  300, 'up'),     // 1. jump into it
+              orb(2150, 400, 'high'),   // 2. run into it
+
+              orb(3160, 348, 'dash'),   // 3. the chain, and it is all
+              orb(3580, 430, 'high'),   //    one held breath: miss any
+              orb(3930, 300, 'up'),     //    one of them and the floor
+              orb(4270, 430, 'high'),   //    is 200px below you
+
+              orb(5060, 400, 'high') ], // 4. and up to the door
+
+      enemies: [ redOn(floorG, 4600), redOn(floorG, 4800),
+                 redOn(floorG, 5000) ],
+
+      pickups: [ { kind: 'key', x: 4740, y: 404, w: 30, h: 26, hidden: true,
+                   spawnAt: { x: 4740, y: 404 },
+                   home: { x: 4740, y: 404 } } ],
+      door: { x: 5420, y: 70, w: 60, h: 130, needs: 'key' },
+
+      hazards: [],
+      saws: [],
+      waves: [],
+      sinkers: [],
+      bombs: [],
+      boss: null,
+
+      arrows: [],
+      hints: []
+    };
+  }
+
   var BUILDERS = [buildTutorial, buildRoomOne, buildRoomTwo,
                   buildRoomThree, buildRoomFour, buildRoomFive,
                   buildRoomSix, buildRoomSeven, buildRoomEight,
-                  buildRoomNine, buildRoomTen, buildRoomEleven];
+                  buildRoomNine, buildRoomTen, buildRoomEleven,
+                  buildRoomTwelve];
 
   var GRAB_MAX = 2;              // seconds of being held before you die
 
@@ -1069,20 +1143,40 @@
   window.addEventListener('keyup', function (e) { keys[e.code] = false; });
   window.addEventListener('blur', function () { keys = {}; });
 
-  /* Hit jump inside a dash orb and it throws you forward instead of up.
-     It's the only way across the gaps in Room Nine. */
-  function tryDash() {
+  /* Three kinds of orb, and hitting jump inside one does its thing
+     instead of jumping:
+
+       dash (green)  throws you flat and fast — Room Nine's gaps
+       up   (yellow) throws you 225px straight up, past a double jump
+       high (red)    throws you 390px, and nothing else in the game
+                     goes that high
+
+     A red one is hung low, down where you run, because 390px from a
+     jump's apex would put you through the ceiling. A yellow one hangs
+     at the height a jump tops out at. Between them that is the whole
+     grammar, and nobody has to be told it. */
+  var ORB_COLOR = { dash: '#7bffb2', up: '#ffd166', high: '#ff5f7e' };
+
+  function orbColor(o) { return ORB_COLOR[o.kind || 'dash']; }
+
+  function tryOrb() {
     for (var i = 0; i < level.orbs.length; i++) {
       var o = level.orbs[i];
       if (o.cool > 0) continue;
       /* the ring is small, the catch is forgiving — same as Geometry Dash */
       if (!circleHitsBox(o.x, o.y, o.r + 17, p)) continue;
+      var kind = o.kind || 'dash';
       o.cool = 1.4;
-      p.dash = DASH_TIME;
-      p.dashDir = p.face;
-      p.vy = 0;
+      if (kind === 'dash') {
+        p.dash = DASH_TIME;
+        p.dashDir = p.face;
+        p.vy = 0;
+      } else {
+        p.dash = 0;
+        p.vy = -(kind === 'high' ? HIGH_V : UP_V);
+      }
       p.airJumps = 1;                  // the orb hands your air jump back
-      burst(o.x, o.y, '#7bffb2', 26, 1.4);
+      burst(o.x, o.y, orbColor(o), 26, 1.4);
       return true;
     }
     return false;
@@ -1091,7 +1185,7 @@
   function press(code) {
     if (p.dead || state.complete) return;
     if (code === 'Space' || code === 'ArrowUp' || code === 'KeyW') {
-      if (tryDash()) return;
+      if (tryOrb()) return;
       state.buffer = BUFFER;
     }
     if (code === 'KeyI') attack();
@@ -2723,6 +2817,8 @@
       var o = level.orbs[i];
       var ready = o.cool <= 0;
       var pulse = 0.82 + Math.sin(state.t * 6 + o.x) * 0.18;
+      var col = orbColor(o);
+      var kind = o.kind || 'dash';
 
       ctx.save();
       ctx.translate(o.x, o.y);
@@ -2730,38 +2826,57 @@
 
       if (ready) {                             // soft halo
         ctx.globalAlpha = 0.22 * pulse;
-        ctx.fillStyle = '#7bffb2';
+        ctx.fillStyle = col;
         ctx.beginPath();
         ctx.arc(0, 0, o.r * 1.75, 0, Math.PI * 2);
         ctx.fill();
         ctx.globalAlpha = 1;
       }
 
-      ctx.strokeStyle = '#7bffb2';             // the ring
-      ctx.shadowColor = '#7bffb2';
+      ctx.strokeStyle = col;                   // the ring
+      ctx.shadowColor = col;
       ctx.shadowBlur = ready ? 16 : 0;
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.arc(0, 0, o.r, 0, Math.PI * 2);
       ctx.stroke();
 
-      ctx.fillStyle = ready ? '#d6ffe9' : '#4c7a63';   // the core
+      ctx.fillStyle = ready ? col : '#3a4668';          // the core
+      ctx.globalAlpha = ready ? 0.8 : 0.28;
       ctx.beginPath();
       ctx.arc(0, 0, o.r * 0.46, 0, Math.PI * 2);
       ctx.fill();
+      ctx.globalAlpha = ready ? 1 : 0.28;
       ctx.shadowBlur = 0;
 
-      if (ready) {                             // ticks turning around it
-        ctx.rotate(state.t * 2.2);
-        ctx.strokeStyle = '#7bffb2';
+      if (ready) {
+        /* The ticks say which way it throws you: a dash orb's lie flat,
+           and the two launchers point up — one arrow for the yellow,
+           two for the red, which is as much explaining as the room
+           is going to do. */
+        ctx.strokeStyle = col;
         ctx.lineWidth = 2.5;
         ctx.lineCap = 'round';
-        for (var k = 0; k < 4; k++) {
-          ctx.rotate(Math.PI / 2);
-          ctx.beginPath();
-          ctx.moveTo(o.r + 4, 0);
-          ctx.lineTo(o.r + 9, 0);
-          ctx.stroke();
+        if (kind === 'dash') {
+          ctx.rotate(state.t * 2.2);
+          for (var k = 0; k < 4; k++) {
+            ctx.rotate(Math.PI / 2);
+            ctx.beginPath();
+            ctx.moveTo(o.r + 4, 0);
+            ctx.lineTo(o.r + 9, 0);
+            ctx.stroke();
+          }
+        } else {
+          var lift = Math.sin(state.t * 5) * 2;
+          var tips = kind === 'high' ? 2 : 1;
+          for (var k = 0; k < tips; k++) {
+            var ty = -o.r - 4 - k * 7 + lift;
+            ctx.beginPath();
+            ctx.moveTo(-6, ty + 5);
+            ctx.lineTo(0, ty - 1);
+            ctx.lineTo(6, ty + 5);
+            ctx.stroke();
+          }
         }
       }
       ctx.restore();

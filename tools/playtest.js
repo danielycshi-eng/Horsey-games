@@ -2141,8 +2141,7 @@ WScript.Echo('');
 WScript.Echo('[room eleven: the room]');
 loadLevel(11); state.running = true;
 ok('the room loads', level.name === 'Room Eleven');
-ok('it is the last room before the door out',
-   BUILDERS.length === 12 && levelIndex === 11);
+ok('it sits where Room Eleven should', levelIndex === 11);
 ok('it has all four of the hazards the game owns, at once',
    level.waves.length > 0 && level.saws.length > 0 &&
    level.orbs.length > 0 && level.sinkers.length > 0,
@@ -2494,6 +2493,301 @@ ok('the one who catches you is that same cube again',
 ok('and he says the one thing', level.rescue.line === 'Up you go!',
    level.rescue.line);
 
+/* ==================================================================
+   ROOM TWELVE — the two launcher rings
+   ================================================================== */
+WScript.Echo('');
+WScript.Echo('[room twelve: the room]');
+loadLevel(12); state.running = true;
+ok('the room loads', level.name === 'Room Twelve');
+ok('it is the last room before the door out',
+   BUILDERS.length === 13 && levelIndex === 12);
+
+var kinds12 = { dash: 0, up: 0, high: 0 };
+for (var i = 0; i < level.orbs.length; i++) {
+  kinds12[level.orbs[i].kind || 'dash']++;
+}
+ok('there are rings of all three kinds',
+   kinds12.dash > 0 && kinds12.up > 0 && kinds12.high > 0,
+   kinds12.dash + ' dash, ' + kinds12.up + ' yellow, ' + kinds12.high + ' red');
+ok('three reds stand between you and the key', level.enemies.length === 3);
+ok('and the door wants that key', level.door.needs === 'key');
+ok('nothing is explained - no hint, no arrow',
+   level.hints.length === 0 && level.arrows.length === 0);
+
+/* ---------------- what the rings actually do --------------------- */
+WScript.Echo('');
+WScript.Echo('[room twelve: what the rings do]');
+
+/* Stand still, put one ring right on top of you, and press jump. */
+function launchRise(kind) {
+  loadLevel(12); state.running = true;
+  placeOn(400, GROUND);
+  level.orbs = [{ x: p.x + SIZE / 2, y: p.y + SIZE / 2,
+                  r: 17, cool: 0, kind: kind }];
+  var y0 = p.y, best = p.y;
+  release('Space'); tap('Space');
+  for (var i = 0; i < 200; i++) {
+    step(1);
+    if (p.y < best) best = p.y;
+    if (i > 4 && p.onGround) break;
+  }
+  letGo();
+  return Math.round(y0 - best);
+}
+
+/* The same, with no ring and both jumps spent as well as they can be. */
+function doubleRise() {
+  loadLevel(12); state.running = true;
+  placeOn(400, GROUND);
+  level.orbs = [];
+  var y0 = p.y, best = p.y, used = false;
+  release('Space'); tap('Space');
+  for (var i = 0; i < 200; i++) {
+    if (!used && !p.onGround && p.vy > -60) {
+      release('Space'); tap('Space'); used = true;
+    }
+    step(1);
+    if (p.y < best) best = p.y;
+    if (i > 4 && p.onGround) break;
+  }
+  letGo();
+  return Math.round(y0 - best);
+}
+
+/* The lift off a standing start is only half the story: the rings are
+   hung to be taken in mid-air, so what you can actually get up to is a
+   jump PLUS the ring. That is the sum the shelves are cut against. */
+function reachWith(kind) {
+  loadLevel(12); state.running = true;
+  placeOn(400, GROUND);
+  level.orbs = [];
+  var y0 = p.y, best = p.y, fired = false;
+  release('Space'); tap('Space');
+  for (var i = 0; i < 200; i++) {
+    if (!fired && !p.onGround && p.vy > -60) {
+      level.orbs = [{ x: p.x + SIZE / 2, y: p.y + SIZE / 2,
+                      r: 17, cool: 0, kind: kind }];
+      release('Space'); tap('Space');
+      fired = true;
+    }
+    step(1);
+    if (p.y < best) best = p.y;
+    if (i > 4 && p.onGround) break;
+  }
+  letGo();
+  return Math.round(y0 - best);
+}
+
+var rise2 = doubleRise(), riseUp = launchRise('up'), riseHi = launchRise('high');
+var reachUp = reachWith('up'), reachHi = reachWith('high');
+ok('a yellow ring lifts you better than twice as high as a jump',
+   riseUp > 200, riseUp + 'px of lift');
+ok('and a red one better than half as high again as the yellow',
+   riseHi > riseUp * 1.5, riseHi + 'px vs the yellow\'s ' + riseUp + 'px');
+ok('so jumping into a yellow gets you past what two jumps reach',
+   reachUp > rise2 + 80,
+   reachUp + 'px up vs a double jump\'s ' + rise2 + 'px');
+ok('and jumping into a red gets you past what the yellow reaches',
+   reachHi > reachUp + 120,
+   reachHi + 'px up vs the yellow\'s ' + reachUp + 'px');
+ok('a dash ring still goes flat, not up', launchRise('dash') < 8,
+   launchRise('dash') + 'px of lift');
+
+/* Where they hang is the tell: yellow up where a jump tops out, red
+   down at knee height, because red from an apex would go off the top
+   of the screen. */
+loadLevel(12);
+var jumpTop = GROUND - SIZE - rise2 / 2;    // roughly one jump's apex
+var hangOk = '';
+for (var i = 0; i < level.orbs.length; i++) {
+  var o12 = level.orbs[i];
+  if (o12.kind === 'high' && o12.y < GROUND - 120) {
+    hangOk = 'a red ring hangs at y=' + o12.y;
+  }
+  if (o12.kind === 'up' && o12.y > GROUND - 100) {
+    hangOk = 'a yellow ring hangs at y=' + o12.y;
+  }
+}
+ok('every red ring hangs low and every yellow one hangs high',
+   hangOk === '', hangOk);
+
+/* and firing one hands your air jump back, same as a dash ring */
+loadLevel(12); state.running = true;
+placeOn(400, GROUND);
+level.orbs = [{ x: 600, y: GROUND - 40, r: 17, cool: 0, kind: 'high' }];
+p.airJumps = 0;
+p.x = 585; p.y = GROUND - SIZE;
+release('Space'); tap('Space');
+step(1);
+ok('firing one hands your air jump back', p.airJumps === 1);
+letGo();
+
+/* ---------------- the shelves ------------------------------------ */
+WScript.Echo('');
+WScript.Echo('[room twelve: two shelves your legs cannot reach]');
+
+function fireAnyOrb12() {
+  for (var q = 0; q < level.orbs.length; q++) {
+    var o = level.orbs[q];
+    if (o.cool <= 0 && circleHitsBox(o.x, o.y, o.r + 17, p)) {
+      release('Space'); tap('Space');
+      return true;
+    }
+  }
+  return false;
+}
+
+/* One attempt: run right, jump as the lip goes by, fire every ring you
+   touch, and spend the second jump at the top. `only` keeps just one
+   kind of ring, so we can ask what yellow alone would manage; `drop`
+   names a single ring to take away. */
+function twelveRun(fromX, toX, jx, only, drop) {
+  loadLevel(12); state.running = true;
+  if (only !== undefined) {
+    var keep = [];
+    for (var q = 0; q < level.orbs.length; q++) {
+      var oq = level.orbs[q];
+      if (only !== null && oq.kind === only) keep.push(oq);
+      else if (only === null) continue;
+    }
+    level.orbs = keep;
+  }
+  if (drop !== undefined) {
+    var rest = [];
+    for (var q = 0; q < level.orbs.length; q++) {
+      if (level.orbs[q].x !== drop) rest.push(level.orbs[q]);
+    }
+    level.orbs = rest;
+  }
+  var a = solidByX(fromX);
+  var edge = a.x + a.w;
+  placeOn(Math.max(a.x + 4, edge - 320), a.y);
+  hold('ArrowRight');
+  var jumped = false, used2 = false, air = false, fired = 0;
+  for (var i = 0; i < 900; i++) {
+    if (fireAnyOrb12()) { jumped = true; fired++; }
+    else if (!jumped && p.x + p.w >= edge + jx) { tap('Space'); jumped = true; }
+    else if (jumped && !used2 && !p.onGround && p.vy > -60) {
+      release('Space'); tap('Space'); used2 = true;
+    }
+    step(1);
+    if (!p.onGround) air = true;
+    if (p.dead) { letGo(); return { r: 'died', n: fired }; }
+    if (jumped && air && p.onGround) {
+      letGo();
+      return { r: 'landed', x: p.x, on: standingOnX(), n: fired };
+    }
+  }
+  letGo();
+  return { r: 'stuck', n: fired };
+}
+
+function twelveGoes(fromX, toX, only, drop) {
+  for (var jx = -200; jx <= 10; jx += 10) {
+    var r = twelveRun(fromX, toX, jx, only, drop);
+    if (r.r === 'landed' && r.on === toX) return { ok: true, n: r.n, jx: jx };
+  }
+  return { ok: false };
+}
+
+var b1 = twelveGoes(-60, 880);
+ok('the first shelf goes, with the yellow ring', b1.ok);
+ok('and not on your legs alone', !twelveGoes(-60, 880, null).ok);
+
+var b2 = twelveGoes(1320, 2280);
+ok('the second shelf goes, with the red one', b2.ok);
+ok('a yellow ring would not have reached it',
+   !twelveGoes(1320, 2280, 'up').ok);
+ok('and neither do your legs', !twelveGoes(1320, 2280, null).ok);
+
+/* the shelves really are past what you can jump */
+loadLevel(12);
+var shelfB12 = solidByX(880), shelfD12 = solidByX(2280);
+ok('the first shelf is higher than a double jump gets',
+   GROUND - shelfB12.y > rise2, (GROUND - shelfB12.y) + 'px up vs ' +
+   rise2 + 'px of jump');
+ok('and the second is higher than a yellow ring gets',
+   GROUND - shelfD12.y > riseUp, (GROUND - shelfD12.y) + 'px up vs ' +
+   riseUp + 'px of yellow');
+
+/* ---------------- the chain -------------------------------------- */
+WScript.Echo('');
+WScript.Echo('[room twelve: dash, red, yellow, red]');
+
+loadLevel(12);
+var chainGap = solidByX(4400).x - (solidByX(2700).x + solidByX(2700).w);
+ok('there is nothing at all underneath for ' + chainGap + 'px',
+   chainGap > 1200, chainGap + 'px');
+
+var chain12 = twelveGoes(2700, 4400);
+ok('the chain carries you across it', chain12.ok);
+ok('and it takes every one of the four rings to do it',
+   chain12.ok && chain12.n === 4, chain12.ok ? chain12.n + ' rings fired' : '');
+ok('with nothing but your legs you are gone',
+   !twelveGoes(2700, 4400, null).ok);
+
+/* take any single ring out of the chain and the crossing dies */
+var chainX = [3160, 3580, 3930, 4270];
+var survived = '';
+for (var i = 0; i < chainX.length; i++) {
+  if (twelveGoes(2700, 4400, undefined, chainX[i]).ok) {
+    survived += chainX[i] + ' ';
+  }
+}
+ok('miss any one of them and there is no recovering', survived === '',
+   'crossed it anyway without the ring at ' + survived);
+
+/* ---------------- the reds, the key, the way out ----------------- */
+WScript.Echo('');
+WScript.Echo('[room twelve: the key and the way out]');
+
+loadLevel(12); state.running = true;
+var floorG12 = solidByX(4400);
+var onFloor = true;
+for (var i = 0; i < level.enemies.length; i++) {
+  var en = level.enemies[i];
+  if (en.x < floorG12.x || en.x > floorG12.x + floorG12.w) onFloor = false;
+}
+ok('all three reds stand on the last floor', onFloor);
+ok('the key is not there to begin with', level.pickups[0].hidden === true);
+
+/* put two down, then actually swing at the third */
+level.enemies[0].dead = true;
+level.enemies[1].dead = true;
+var last12 = level.enemies[2];
+ok('and it is still not there with one red left', level.pickups[0].hidden);
+
+placeOn(last12.x - 40, GROUND);
+for (var i = 0; i < 600 && !last12.dead; i++) {
+  p.x = last12.x - 34; p.vx = 0;     // stay in reach, and do not get shoved
+  state.grab = 0;                    // this is about the key, not the grip
+  if (p.cool <= 0 && p.atk <= 0) { release('KeyI'); tap('KeyI'); }
+  step(1);
+}
+letGo();
+ok('put the last one down and the key turns up',
+   last12.dead && level.pickups[0].hidden === false,
+   'dead=' + last12.dead + ' hidden=' + level.pickups[0].hidden);
+
+var out12 = twelveGoes(4400, 5200);
+ok('one more red ring gets you up to the door shelf', out12.ok);
+ok('a yellow one would leave you short', !twelveGoes(4400, 5200, 'up').ok);
+ok('and your legs do not come close', !twelveGoes(4400, 5200, null).ok);
+
+/* and the door itself finishes the room */
+loadLevel(12); state.running = true;
+var shelfH12 = solidByX(5200);
+placeOn(shelfH12.x + 40, shelfH12.y);
+state.picked = true;
+level.pickups[0].hidden = false;
+p.holding = level.pickups[0];
+hold('ArrowRight');
+for (var i = 0; i < 400 && !state.complete; i++) step(1);
+letGo();
+ok('walking into it with the key ends the room', state.complete);
+
+
 WScript.Echo('[hitting something that has hold of you]');
 loadLevel(3); state.running = true;
 var e = level.enemies[0];
@@ -2528,7 +2822,7 @@ ok('it remembers where you came from', returnToDone === BUILDERS.length - 1);
 state.picked = true;
 finishLevel();
 ok('finishing the tutorial returns you to that room screen',
-   doneTitle.textContent === 'ROOM ELEVEN CLEARED',
+   doneTitle.textContent === 'ROOM TWELVE CLEARED',
    'showed "' + doneTitle.textContent + '"');
 ok('not back to room one',
    nextBtn.textContent !== 'Start the Game', nextBtn.textContent);
