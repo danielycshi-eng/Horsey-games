@@ -1799,7 +1799,7 @@ p.vx = 0; p.vy = 0; p.dead = false; p.onGround = false;
 release('Space'); tap('Space');
 ok('pressing jump inside an orb dashes instead', p.dash > 0,
    'dash ' + p.dash.toFixed(2) + 's');
-ok('the orb goes on cooldown', o9.cool > 0);
+ok('the orb is spent until you are back on your feet', o9.spent === true);
 
 var dashFrom = p.x, heldLevel = p.y;
 for (var i = 0; i < 40 && p.dash > 0; i++) step(1);
@@ -1860,7 +1860,7 @@ function crossesWithOrb(gi) {
       else if (jumped && !dashed) {
         for (var q = 0; q < level.orbs.length; q++) {
           var oo = level.orbs[q];
-          if (oo.cool <= 0 && circleHitsBox(oo.x, oo.y, oo.r + 17, p)) {
+          if (!oo.spent && circleHitsBox(oo.x, oo.y, ORB_CATCH, p)) {
             release('Space'); tap('Space');
             if (p.dash > 0) dashed = true;
           }
@@ -1886,9 +1886,11 @@ ok('every gap can be crossed using its orb', everyGap,
 WScript.Echo('');
 WScript.Echo('[room nine: the orb itself]');
 loadLevel(9); state.running = true;
-ok('the orb is small', level.orbs[0].r <= 20, 'radius ' + level.orbs[0].r);
-ok('but the catch is forgiving', level.orbs[0].r + 17 >= level.orbs[0].r * 1.7,
-   'catch radius ' + (level.orbs[0].r + 17));
+ok('the orb is small', level.orbs[0].r <= 14, 'radius ' + level.orbs[0].r);
+ok('smaller than the cube itself', level.orbs[0].r * 2 < SIZE,
+   level.orbs[0].r * 2 + 'px across vs a ' + SIZE + 'px cube');
+ok('but the catch is forgiving', ORB_CATCH >= level.orbs[0].r * 2.5,
+   'catch radius ' + ORB_CATCH + ' around a ' + level.orbs[0].r + 'px ring');
 
 WScript.Echo('');
 WScript.Echo('[room nine: the saws at the end]');
@@ -1998,7 +2000,7 @@ var landTen = [-60, 1000, 1610, 2110, 2640, 3570, 4180];
 function orbOnTheLine(limitX) {
   for (var q = 0; q < level.orbs.length; q++) {
     var oo = level.orbs[q];
-    if (oo.cool <= 0 && oo.x > p.x + p.w && oo.x < p.x + 380 &&
+    if (!oo.spent && oo.x > p.x + p.w && oo.x < p.x + 380 &&
         (limitX === undefined || oo.x < limitX) &&
         Math.abs(oo.y - (p.y + SIZE / 2)) < 60) return true;
   }
@@ -2032,7 +2034,7 @@ function tenRun(fromX, toX, jx, cut, t0, sxAt) {
       var fired = false;
       for (var q = 0; q < level.orbs.length; q++) {
         var oo = level.orbs[q];
-        if (oo.cool <= 0 && circleHitsBox(oo.x, oo.y, oo.r + 17, p)) {
+        if (!oo.spent && circleHitsBox(oo.x, oo.y, ORB_CATCH, p)) {
           release('Space'); tap('Space');
           if (p.dash > 0) { dashes++; spent = 0; fired = true; }
         }
@@ -2524,7 +2526,7 @@ function launchRise(kind) {
   loadLevel(12); state.running = true;
   placeOn(400, GROUND);
   level.orbs = [{ x: p.x + SIZE / 2, y: p.y + SIZE / 2,
-                  r: 17, cool: 0, kind: kind }];
+                  r: ORB_R, kind: kind }];
   var y0 = p.y, best = p.y;
   release('Space'); tap('Space');
   for (var i = 0; i < 200; i++) {
@@ -2567,7 +2569,7 @@ function reachWith(kind) {
   for (var i = 0; i < 200; i++) {
     if (!fired && !p.onGround && p.vy > -60) {
       level.orbs = [{ x: p.x + SIZE / 2, y: p.y + SIZE / 2,
-                      r: 17, cool: 0, kind: kind }];
+                      r: ORB_R, kind: kind }];
       release('Space'); tap('Space');
       fired = true;
     }
@@ -2615,12 +2617,59 @@ ok('every red ring hangs low and every yellow one hangs high',
 /* and firing one hands your air jump back, same as a dash ring */
 loadLevel(12); state.running = true;
 placeOn(400, GROUND);
-level.orbs = [{ x: 600, y: GROUND - 40, r: 17, cool: 0, kind: 'high' }];
+level.orbs = [{ x: 600, y: GROUND - 40, r: ORB_R, kind: 'high' }];
 p.airJumps = 0;
 p.x = 585; p.y = GROUND - SIZE;
 release('Space'); tap('Space');
 step(1);
 ok('firing one hands your air jump back', p.airJumps === 1);
+letGo();
+
+/* A ring hung down at knee height is the dangerous case: fire it, come
+   back down inside it, and without a re-arm you could stand there
+   bouncing on the spot for ever. */
+loadLevel(12); state.running = true;
+placeOn(400, GROUND);
+level.orbs = [{ x: 415, y: GROUND - 10, r: ORB_R, kind: 'high' }];
+var fires = 0;
+for (var i = 0; i < 700; i++) {
+  if (p.onGround) {
+    release('Space'); tap('Space');
+    if (p.vy <= -HIGH_V + 1) fires++;     // a launch, not an ordinary jump
+  }
+  step(1);
+}
+letGo();
+ok('a ring you are standing in fires once, not for ever', fires <= 1,
+   'it launched you ' + fires + ' times without your feet ever leaving it');
+
+/* but stepping off it and back on re-arms it, as it should */
+loadLevel(12); state.running = true;
+placeOn(400, GROUND);
+level.orbs = [{ x: 415, y: GROUND - 10, r: ORB_R, kind: 'up' }];
+release('Space'); tap('Space');
+var flew = p.vy <= -UP_V + 1;
+release('Space');
+p.x = 200; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0; p.onGround = true;
+step(4);                                  // clear of it now
+p.x = 400; p.y = GROUND - SIZE; p.vy = 0; p.onGround = true;
+step(1);
+release('Space'); tap('Space');
+ok('and leaving it and coming back re-arms it',
+   flew && p.vy <= -UP_V + 1);
+letGo();
+
+/* and no timer on top of that: land clear of it and it is lit again
+   on the very next frame, not a second and a half later. */
+loadLevel(12); state.running = true;
+placeOn(400, GROUND);
+level.orbs = [{ x: 415, y: GROUND - 10, r: ORB_R, kind: 'up' }];
+release('Space'); tap('Space'); step(1);
+release('Space');
+p.x = 200; p.y = GROUND - SIZE; p.vx = 0; p.vy = 0; p.onGround = true;
+step(1);                                  // one frame, standing clear
+ok('and nothing is counting down on top of that',
+   level.orbs[0].spent === false);
 letGo();
 
 /* ---------------- the shelves ------------------------------------ */
@@ -2630,7 +2679,7 @@ WScript.Echo('[room twelve: two shelves your legs cannot reach]');
 function fireAnyOrb12() {
   for (var q = 0; q < level.orbs.length; q++) {
     var o = level.orbs[q];
-    if (o.cool <= 0 && circleHitsBox(o.x, o.y, o.r + 17, p)) {
+    if (!o.spent && circleHitsBox(o.x, o.y, ORB_CATCH, p)) {
       release('Space'); tap('Space');
       return true;
     }
@@ -2691,19 +2740,19 @@ function twelveGoes(fromX, toX, only, drop) {
   return { ok: false };
 }
 
-var b1 = twelveGoes(-60, 880);
+var b1 = twelveGoes(-60, 600);
 ok('the first shelf goes, with the yellow ring', b1.ok);
-ok('and not on your legs alone', !twelveGoes(-60, 880, null).ok);
+ok('and not on your legs alone', !twelveGoes(-60, 600, null).ok);
 
-var b2 = twelveGoes(1320, 2280);
+var b2 = twelveGoes(960, 1380);
 ok('the second shelf goes, with the red one', b2.ok);
 ok('a yellow ring would not have reached it',
-   !twelveGoes(1320, 2280, 'up').ok);
-ok('and neither do your legs', !twelveGoes(1320, 2280, null).ok);
+   !twelveGoes(960, 1380, 'up').ok);
+ok('and neither do your legs', !twelveGoes(960, 1380, null).ok);
 
 /* the shelves really are past what you can jump */
 loadLevel(12);
-var shelfB12 = solidByX(880), shelfD12 = solidByX(2280);
+var shelfB12 = solidByX(600), shelfD12 = solidByX(1380);
 ok('the first shelf is higher than a double jump gets',
    GROUND - shelfB12.y > rise2, (GROUND - shelfB12.y) + 'px up vs ' +
    rise2 + 'px of jump');
@@ -2716,22 +2765,22 @@ WScript.Echo('');
 WScript.Echo('[room twelve: dash, red, yellow, red]');
 
 loadLevel(12);
-var chainGap = solidByX(4400).x - (solidByX(2700).x + solidByX(2700).w);
+var chainGap = solidByX(3420).x - (solidByX(1720).x + solidByX(1720).w);
 ok('there is nothing at all underneath for ' + chainGap + 'px',
    chainGap > 1200, chainGap + 'px');
 
-var chain12 = twelveGoes(2700, 4400);
+var chain12 = twelveGoes(1720, 3420);
 ok('the chain carries you across it', chain12.ok);
 ok('and it takes every one of the four rings to do it',
    chain12.ok && chain12.n === 4, chain12.ok ? chain12.n + ' rings fired' : '');
 ok('with nothing but your legs you are gone',
-   !twelveGoes(2700, 4400, null).ok);
+   !twelveGoes(1720, 3420, null).ok);
 
 /* take any single ring out of the chain and the crossing dies */
-var chainX = [3160, 3580, 3930, 4270];
+var chainX = [2180, 2600, 2950, 3290];
 var survived = '';
 for (var i = 0; i < chainX.length; i++) {
-  if (twelveGoes(2700, 4400, undefined, chainX[i]).ok) {
+  if (twelveGoes(1720, 3420, undefined, chainX[i]).ok) {
     survived += chainX[i] + ' ';
   }
 }
@@ -2743,7 +2792,7 @@ WScript.Echo('');
 WScript.Echo('[room twelve: the key and the way out]');
 
 loadLevel(12); state.running = true;
-var floorG12 = solidByX(4400);
+var floorG12 = solidByX(3420);
 var onFloor = true;
 for (var i = 0; i < level.enemies.length; i++) {
   var en = level.enemies[i];
@@ -2770,14 +2819,14 @@ ok('put the last one down and the key turns up',
    last12.dead && level.pickups[0].hidden === false,
    'dead=' + last12.dead + ' hidden=' + level.pickups[0].hidden);
 
-var out12 = twelveGoes(4400, 5200);
+var out12 = twelveGoes(3420, 4220);
 ok('one more red ring gets you up to the door shelf', out12.ok);
-ok('a yellow one would leave you short', !twelveGoes(4400, 5200, 'up').ok);
-ok('and your legs do not come close', !twelveGoes(4400, 5200, null).ok);
+ok('a yellow one would leave you short', !twelveGoes(3420, 4220, 'up').ok);
+ok('and your legs do not come close', !twelveGoes(3420, 4220, null).ok);
 
 /* and the door itself finishes the room */
 loadLevel(12); state.running = true;
-var shelfH12 = solidByX(5200);
+var shelfH12 = solidByX(4220);
 placeOn(shelfH12.x + 40, shelfH12.y);
 state.picked = true;
 level.pickups[0].hidden = false;
