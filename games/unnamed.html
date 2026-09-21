@@ -1552,7 +1552,9 @@
 
     var from = surf ? surf.x : -60;
     var to   = surf ? surf.x + surf.w : level.worldW + 60;
-    var BED = 110;
+    /* One tooth to a bed, so they come up out of the floor one at a
+       time rather than in threes. */
+    var BED = 36;
     for (var x = from; x < to - 18; x += BED) {
       var w = Math.min(BED, to - x);
       mv.beds.push({ x: x, w: w,
@@ -2622,14 +2624,12 @@
             ctx.fillStyle = '#ff2d55';
             ctx.shadowColor = '#ff2d55';
             ctx.shadowBlur = 14;
-            for (var sx = bd.x; sx < bd.x + bd.w - 1; sx += bd.w / 3) {
-              ctx.beginPath();
-              ctx.moveTo(sx, mv.surfY);
-              ctx.lineTo(sx + bd.w / 6, mv.surfY - hgt);
-              ctx.lineTo(sx + bd.w / 3, mv.surfY);
-              ctx.closePath();
-              ctx.fill();
-            }
+            ctx.beginPath();                       // the one tooth
+            ctx.moveTo(bd.x, mv.surfY);
+            ctx.lineTo(bd.x + bd.w / 2, mv.surfY - hgt);
+            ctx.lineTo(bd.x + bd.w, mv.surfY);
+            ctx.closePath();
+            ctx.fill();
             ctx.shadowBlur = 0;
           }
         }

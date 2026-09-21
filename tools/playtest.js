@@ -1246,6 +1246,13 @@ for (var i = 0; i < sp.beds.length; i++) {
 ok('spikes are laid out on both sides of the impact',
    leftBed !== null && rightBed !== null);
 
+/* one tooth to a bed: they come up one at a time, not in threes */
+var wideBed = '';
+for (var i = 0; i < sp.beds.length; i++) {
+  if (sp.beds[i].w > 40) wideBed = sp.beds[i].w + 'px wide';
+}
+ok('each bed of the eruption is a single spike', wideBed === '', wideBed);
+
 /* nearer beds must come up before farther ones */
 var nearBed = sp.beds[0], farBed = sp.beds[0];
 for (var i = 0; i < sp.beds.length; i++) {
