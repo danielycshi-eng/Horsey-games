@@ -896,6 +896,13 @@ ok('no saws anywhere in this room', level.saws.length === 0,
 ok('spikes come out of the ground in a wave', level.waves.length > 6,
    level.waves.length + ' beds');
 
+/* one tooth to a bed: they come up one at a time, not in threes */
+var fatBed6 = '';
+for (var i = 0; i < level.waves.length; i++) {
+  if (level.waves[i].w > 45) fatBed6 = level.waves[i].w + 'px wide';
+}
+ok('each bed of the carpet is a single spike', fatBed6 === '', fatBed6);
+
 var ledge6 = solidAt(40, 350);
 ok('you spawn on a ledge, not in the spikes',
    ledge6 !== null && level.start.y + SIZE === ledge6.y,
@@ -2269,6 +2276,13 @@ for (var i = 0; i < level.waves.length - 1; i++) {
   }
 }
 ok('the wave is one unbroken carpet', nogap11 === '', nogap11);
+
+/* one tooth to a bed here too */
+var fatBed11 = '';
+for (var i = 0; i < level.waves.length; i++) {
+  if (level.waves[i].w > 45) fatBed11 = level.waves[i].w + 'px wide';
+}
+ok('each bed of it is a single spike', fatBed11 === '', fatBed11);
 
 var fw11 = level.waves[0], lw11 = level.waves[level.waves.length - 1];
 ok('it starts past the gate', fw11.x > level.saws[1].x0 + 40,

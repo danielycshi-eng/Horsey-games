@@ -537,11 +537,11 @@
        room. Each bed lags the one before it, so the whole thing rolls
        past as a travelling wave and you move with the troughs. */
     var waves = [];
-    var BED = 120;
+    var BED = 40;                        // one tooth to a bed
     for (var i = 0; i * BED - 60 < 3760; i++) {
       waves.push({
         x: -60 + i * BED, w: BED, h: 34,   // low, and slow, with a tell
-        period: 4.6, phase: (i * 0.26) % 1
+        period: 4.6, phase: (i * (0.26 / 3)) % 1
       });
     }
 
@@ -870,9 +870,10 @@
     var gate   = { x: 240, y: TOP - 34, w: 90, h: 34 };    // nowhere to stand
 
     var waves = [];
-    for (var i = 0; i < 8; i++) {
-      waves.push({ x: 480 + i * 110, w: 110, h: 34,        // 480 .. 1360
-                   period: 4.6, phase: (1 - i * 0.087) % 1 });
+    var BED = 110 / 3;                   // one tooth to a bed
+    for (var i = 0; i < 24; i++) {
+      waves.push({ x: 480 + i * BED, w: BED, h: 34,      // 480 .. 1360
+                   period: 4.6, phase: (1 - i * (0.087 / 3)) % 1 });
     }
 
     /* --- part two: the ground runs out and the orbs take over. The
@@ -2517,15 +2518,13 @@
         ctx.shadowBlur = 12;
         ctx.fillRect(wv.x + 2, GROUND - 5, wv.w - 4, 5);
         var nub = 3 + warn * 5;
-        for (var t = 0; t < 3; t++) {
-          var nx = wv.x + (t + 0.5) * (wv.w / 3);
-          ctx.beginPath();
-          ctx.moveTo(nx - 7, GROUND);
-          ctx.lineTo(nx, GROUND - nub);
-          ctx.lineTo(nx + 7, GROUND);
-          ctx.closePath();
-          ctx.fill();
-        }
+        var nx = wv.x + wv.w / 2;             // the one nub
+        ctx.beginPath();
+        ctx.moveTo(nx - 7, GROUND);
+        ctx.lineTo(nx, GROUND - nub);
+        ctx.lineTo(nx + 7, GROUND);
+        ctx.closePath();
+        ctx.fill();
         ctx.restore();
       }
 
@@ -2535,17 +2534,12 @@
       ctx.fillStyle = '#ff5f7e';
       ctx.shadowColor = '#ff5f7e';
       ctx.shadowBlur = 14;
-      var n = 3;
-      var each = wv.w / n;
-      for (var k = 0; k < n; k++) {
-        var x = wv.x + k * each;
-        ctx.beginPath();
-        ctx.moveTo(x, GROUND);
-        ctx.lineTo(x + each / 2, GROUND - h);
-        ctx.lineTo(x + each, GROUND);
-        ctx.closePath();
-        ctx.fill();
-      }
+      ctx.beginPath();                        // the one tooth
+      ctx.moveTo(wv.x, GROUND);
+      ctx.lineTo(wv.x + wv.w / 2, GROUND - h);
+      ctx.lineTo(wv.x + wv.w, GROUND);
+      ctx.closePath();
+      ctx.fill();
       ctx.shadowBlur = 0;
     }
   }
