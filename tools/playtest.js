@@ -3107,6 +3107,141 @@ letGo();
 ok('walking into the door ends the room', state.complete);
 
 
+
+/* ==================================================================
+   CHECKPOINTS
+   P drops one under your feet; dying puts you back on it instead of
+   at the top of the room.
+   ================================================================== */
+WScript.Echo('');
+WScript.Echo('[checkpoints: putting one down]');
+
+loadLevel(13); state.running = true;
+ok('a room starts with no checkpoint', checkpoint === null);
+
+placeOn(120, GROUND);
+tap('KeyP');
+ok('P on your feet puts one down', checkpoint !== null);
+ok('and it lands where you are standing',
+   checkpoint !== null && checkpoint.x === p.x &&
+   checkpoint.y + SIZE === GROUND,
+   checkpoint ? checkpoint.x + ',' + checkpoint.y : 'none');
+
+/* in the air it must do nothing - a checkpoint hanging over a void
+   would respawn you into the same fall for ever */
+loadLevel(13); state.running = true;
+placeOn(120, GROUND);
+release('Space'); tap('Space'); step(4);
+var wasUp = !p.onGround;
+tap('KeyP');
+ok('P in mid-air puts nothing down', wasUp && checkpoint === null,
+   'airborne=' + wasUp);
+
+/* and standing on it again picks it up */
+loadLevel(13); state.running = true;
+placeOn(120, GROUND);
+tap('KeyP');
+var down = checkpoint !== null;
+tap('KeyP');
+ok('P again while standing on it picks it back up',
+   down && checkpoint === null);
+
+/* moving away and pressing P moves it rather than clearing it */
+loadLevel(13); state.running = true;
+placeOn(120, GROUND);
+tap('KeyP');
+placeOn(220, GROUND);
+tap('KeyP');
+ok('but away from it, P moves it', checkpoint !== null &&
+   checkpoint.x === 220, checkpoint ? 'at ' + checkpoint.x : 'none');
+
+WScript.Echo('');
+WScript.Echo('[checkpoints: dying onto one]');
+
+/* no checkpoint: dying still rewinds the room to the top */
+loadLevel(13); state.running = true;
+placeOn(600, GROUND);
+die();
+for (var i = 0; i < 60 && p.dead; i++) step(1);
+ok('with no checkpoint, dying puts you back at the start',
+   Math.round(p.x) === level.start.x, 'x=' + Math.round(p.x));
+
+/* with one: dying puts you on it */
+loadLevel(13); state.running = true;
+placeOn(150, GROUND);
+tap('KeyP');
+placeOn(600, GROUND);
+die();
+for (var i = 0; i < 60 && p.dead; i++) step(1);
+ok('with one, dying puts you back on it', Math.round(p.x) === 150,
+   'x=' + Math.round(p.x));
+ok('on your feet, not falling', p.onGround && p.vy === 0);
+ok('and the checkpoint is still there for the next go',
+   checkpoint !== null && checkpoint.x === 150);
+
+/* dying still rewinds everything else about the room */
+loadLevel(13); state.running = true;
+placeOn(150, GROUND);
+tap('KeyP');
+var padA13 = solidByX(480);
+placeOn(padA13.x + 40, padA13.y);
+for (var i = 0; i < 40; i++) step(1);          // let it sag
+var sagged = padA13.y > padA13.home;
+die();
+for (var i = 0; i < 60 && p.dead; i++) step(1);
+ok('the pads go back up when you respawn on a checkpoint',
+   sagged && solidByX(480).y === solidByX(480).home,
+   'sagged=' + sagged);
+ok('and the blades start over', state.t === 0, 't=' + state.t);
+
+/* a checkpoint on a sinking pad remembers the pad's home height, not
+   how far it had sunk - otherwise you respawn buried inside it */
+loadLevel(13); state.running = true;
+var padB13 = solidByX(870);
+placeOn(padB13.x + 40, padB13.y);
+for (var i = 0; i < 40; i++) step(1);
+var sankTo = padB13.y;
+tap('KeyP');
+ok('a checkpoint on a sinking pad stores its home, not its sag',
+   checkpoint !== null && checkpoint.y + SIZE === padB13.home &&
+   sankTo > padB13.home,
+   checkpoint ? 'cp y=' + checkpoint.y + ' home=' + padB13.home +
+                ' sank to=' + Math.round(sankTo) : 'none');
+die();
+for (var i = 0; i < 60 && p.dead; i++) step(1);
+ok('so you come back standing on top of it, not inside it',
+   p.y + SIZE === solidByX(870).home,
+   'y=' + Math.round(p.y) + ' pad top=' + solidByX(870).home);
+
+/* leaving the room drops it */
+loadLevel(13); state.running = true;
+placeOn(120, GROUND);
+tap('KeyP');
+var carried = checkpoint !== null;
+loadLevel(12);
+ok('leaving the room drops the checkpoint',
+   carried && checkpoint === null);
+
+/* R goes to it too, so you can retry the hard bit without dying */
+loadLevel(13); state.running = true;
+placeOn(150, GROUND);
+tap('KeyP');
+placeOn(600, GROUND);
+tap('KeyR');
+ok('R takes you back to it as well', Math.round(p.x) === 150,
+   'x=' + Math.round(p.x));
+
+/* and it must never leave you somewhere that is not solid */
+loadLevel(13); state.running = true;
+placeOn(150, GROUND);
+tap('KeyP');
+placeOn(600, GROUND);
+die();
+for (var i = 0; i < 60 && p.dead; i++) step(1);
+for (var i = 0; i < 30; i++) step(1);          // stand there a moment
+ok('and you are still alive standing on it a moment later', !p.dead);
+letGo();
+
 WScript.Echo('[hitting something that has hold of you]');
 loadLevel(3); state.running = true;
 var e = level.enemies[0];

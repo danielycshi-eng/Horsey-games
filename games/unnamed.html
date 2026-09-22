@@ -1177,6 +1177,14 @@
      saved, so Continue can never drop you into a pit or mid-air. */
   var safeSpot = { x: 0, y: 0 };
 
+  /* P drops a checkpoint where you are standing, and dying puts you
+     back on it instead of at the top of the room. It lives here rather
+     than in `level` so that respawning - which rebuilds the room from
+     scratch, blades and pads and all - does not wipe it. Leaving the
+     room does: a checkpoint is for the attempt you are in the middle
+     of, not something you carry around. */
+  var checkpoint = null;
+
   /* ============================================================
      LOADING A ROOM
      ============================================================ */
@@ -1207,14 +1215,66 @@
 
     safeSpot.x = level.start.x;
     safeSpot.y = level.start.y;
+    checkpoint = null;
 
     particles.length = 0;
     cam.x = Math.max(0, Math.min(level.worldW - W, p.x + p.w / 2 - W / 2));
   }
 
-  /* No checkpoints: dying rewinds the whole room. */
+  /* Which solid you are standing on, or null. */
+  function solidUnderFeet() {
+    for (var i = 0; i < level.solids.length; i++) {
+      if (standingOn(level.solids[i])) return level.solids[i];
+    }
+    return null;
+  }
+
+  /* P drops a checkpoint under your feet, and P again while you are
+     standing on it picks it back up — so a clean run of the room is
+     always one keypress away.
+
+     It only goes down when you are on your feet. A checkpoint hanging
+     in mid-air over one of the voids would respawn you falling, into
+     the same death, for ever.
+
+     What gets stored is the top of the platform you are on, not your
+     own y: a pad you are standing on is sinking, and respawning
+     rebuilds the room with it back at its home height. Store where you
+     are and you would come back buried inside it. */
+  var CP_REACH = 26;
+
+  function placeCheckpoint() {
+    if (!p.onGround) return;
+
+    if (checkpoint && Math.abs(checkpoint.x - p.x) < CP_REACH &&
+        Math.abs(checkpoint.y - p.y) < CP_REACH) {
+      burst(checkpoint.x + SIZE / 2, checkpoint.y + SIZE / 2,
+            '#4ec3ff', 14, 0.9);
+      checkpoint = null;
+      return;
+    }
+
+    var s = solidUnderFeet();
+    var top = s ? (s.home !== undefined ? s.home : s.y) : p.y + p.h;
+    checkpoint = { x: p.x, y: top - SIZE };
+    burst(p.x + p.w / 2, p.y + p.h, '#4ec3ff', 20, 1.1);
+  }
+
+  /* Dying rewinds the whole room — every pad back up, every blade back
+     to where it started. A checkpoint does not stop that; it only
+     changes where you are standing when it is done. */
   function respawn() {
+    var cp = checkpoint;
     loadLevel(levelIndex);
+    if (!cp) return;
+    checkpoint = cp;
+    p.x = cp.x;
+    p.y = cp.y;
+    p.vx = 0; p.vy = 0;
+    p.onGround = true;
+    p.airJumps = 1;
+    safeSpot.x = p.x;
+    safeSpot.y = p.y;
   }
 
   /* ============================================================
@@ -1318,6 +1378,7 @@
     }
     if (code === 'KeyI') attack();
     if (code === 'KeyB') toggleCarry();
+    if (code === 'KeyP') placeCheckpoint();
     if (code === 'KeyR') respawn();
   }
 
@@ -3210,6 +3271,44 @@
     }
   }
 
+  /* The checkpoint: a post with a flag on it, in the one blue nothing
+     else in the game uses, so it never reads as something to catch or
+     something to dodge. */
+  function drawCheckpoint() {
+    if (!checkpoint) return;
+    var x = checkpoint.x + SIZE / 2;
+    var y = checkpoint.y + SIZE;
+    var wave = Math.sin(state.t * 4) * 2;
+
+    ctx.save();
+    ctx.globalAlpha = 0.18;                  // a patch of light on the floor
+    ctx.fillStyle = '#4ec3ff';
+    ctx.beginPath();
+    ctx.ellipse(x, y, 22, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    ctx.strokeStyle = '#4ec3ff';             // the post
+    ctx.shadowColor = '#4ec3ff';
+    ctx.shadowBlur = 10;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, y - 40);
+    ctx.stroke();
+
+    ctx.fillStyle = '#4ec3ff';               // and the flag
+    ctx.beginPath();
+    ctx.moveTo(x, y - 40);
+    ctx.lineTo(x + 20 + wave, y - 33);
+    ctx.lineTo(x, y - 26);
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
   function drawPlayer() {
     if (p.dead) return;
     var cx = p.x + p.w / 2, cy = p.y + p.h / 2;
@@ -3350,6 +3449,7 @@
     drawEnemies();
     drawPickups();
     drawHints();
+    drawCheckpoint();
     drawPlayer();
     drawParticles();
 
