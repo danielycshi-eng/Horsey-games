@@ -2933,9 +2933,61 @@ ok('the dash landing has teeth on its near lip',
    padD13.spike !== null && padD13.spike.off === 0,
    padD13.spike ? 'off ' + padD13.spike.off : 'no teeth');
 
-/* and the void the chain crosses is the one Room Twelve proved */
-var void13 = solidByX(5410).x - (solidByX(3770).x + solidByX(3770).w);
-ok('the chain crosses 1400px of nothing', void13 === 1400, void13 + 'px');
+/* the last lip, to the one thing left in the room to land on */
+var void13 = solidByX(4500).x - (solidByX(2800).x + solidByX(2800).w);
+ok('the rings carry you over 1460px of nothing', void13 === 1460,
+   void13 + 'px');
+
+/* the four rings after the last lip all hang over nothing */
+var lastLip13 = solidByX(2800).x + solidByX(2800).w;
+var padded13 = '';
+for (var i = 0; i < level.orbs.length; i++) {
+  var o13 = level.orbs[i];
+  if (o13.x < lastLip13) continue;
+  for (var k = 0; k < level.solids.length; k++) {
+    var s13 = level.solids[k];
+    if (o13.x > s13.x && o13.x < s13.x + s13.w && s13.y > o13.y) {
+      padded13 = 'a ring at ' + o13.x + ' has floor under it';
+    }
+  }
+}
+ok('every ring past the last lip hangs over nothing', padded13 === '',
+   padded13);
+
+/* two yellows in a row, with the one horizontal blade between them */
+var yellows13 = [];
+for (var i = 0; i < level.orbs.length; i++) {
+  if (level.orbs[i].kind === 'up') yellows13.push(level.orbs[i].x);
+}
+ok('there are two yellow rings', yellows13.length === 2,
+   yellows13.length + ' yellow rings');
+
+var flat13 = null, upright13 = 0;
+for (var i = 0; i < level.saws.length; i++) {
+  var sw13 = level.saws[i];
+  if (sw13.y0 === sw13.y1 && sw13.x0 !== sw13.x1) flat13 = sw13;
+  if (sw13.x0 === sw13.x1) upright13++;
+}
+ok('one blade runs along your line, not across it', flat13 !== null);
+ok('and the rest still swing up and down', upright13 === 5,
+   upright13 + ' upright blades');
+ok('the flat one sits between the two yellow rings',
+   flat13 !== null && flat13.x0 > yellows13[0] && flat13.x1 < yellows13[1],
+   flat13 ? flat13.x0 + '..' + flat13.x1 + ' vs rings at ' +
+            yellows13[0] + ' and ' + yellows13[1] : 'no flat blade');
+
+/* and nothing to stand on between the last lip and the door */
+var betweenLip13 = '';
+for (var i = 0; i < level.solids.length; i++) {
+  var s13 = level.solids[i];
+  if (s13.x >= lastLip13 && s13.x < level.door.x) {
+    betweenLip13 += s13.x + ' ';
+  }
+}
+ok('there is exactly one thing to land on, and the door is on it',
+   betweenLip13 === '4500 ', 'solids at ' + betweenLip13);
+ok('and almost no ground in front of the door',
+   level.door.x - 4500 <= 60, (level.door.x - 4500) + 'px of it');
 
 /* ---------------- every section actually goes ---------------------- */
 WScript.Echo('');
@@ -2960,7 +3012,7 @@ function fireAny13() {
    first, which is how the blade phase gets swept: loadLevel puts the
    clock back to zero on every attempt, so the blades start in the same
    place each time and only the waiting moves them. */
-function run13(fromX, jx, wait, noOrbs) {
+function run13(fromX, jx, wait, noOrbs, noDouble) {
   loadLevel(13); state.running = true;
   /* Pressing jump inside a ring fires it, so asking what your legs
      alone would do means taking the rings out of the room. */
@@ -2983,7 +3035,7 @@ function run13(fromX, jx, wait, noOrbs) {
   for (var i = 0; i < 700; i++) {
     if (fireAny13()) { jumped = true; fired++; }
     else if (!jumped && p.x + p.w >= edge + jx) { tap('Space'); jumped = true; }
-    else if (jumped && !used2 && !p.onGround && p.vy > -60) {
+    else if (jumped && !used2 && !noDouble && !p.onGround && p.vy > -60) {
       release('Space'); tap('Space'); used2 = true;
     }
     step(1);
@@ -2998,11 +3050,11 @@ function run13(fromX, jx, wait, noOrbs) {
   return { r: 'stuck' };
 }
 
-function thirteenGoes(fromX, toX, noOrbs) {
+function thirteenGoes(fromX, toX, noOrbs, noDouble) {
   var hits = 0, rings = 0;
   for (var wait = 0; wait <= 144; wait += 18) {
     for (var jx = -200; jx <= 10; jx += 20) {
-      var r = run13(fromX, jx, wait, noOrbs);
+      var r = run13(fromX, jx, wait, noOrbs, noDouble);
       if (r.r === 'landed' && r.on === toX) { hits++; rings = r.n; }
     }
   }
@@ -3023,20 +3075,20 @@ ok('one dash carries you over the teeth', s4.ok && s4.rings === 1,
 var s5 = thirteenGoes(1850, 2800);
 ok('two chained carry you the 760', s5.ok && s5.rings === 2,
    s5.n + ' timings work, ' + s5.rings + ' rings');
-var s6 = thirteenGoes(2800, 3040);
-ok('the yellow ring gets you 310 up', s6.ok && s6.rings === 1,
+/* and then the whole tail in one go, over nothing the entire way: off
+   the lip, dash, yellow, past the flat blade, yellow, red, and the
+   second jump to cover what the red one deliberately leaves short */
+var s6 = thirteenGoes(2800, 4500);
+ok('the rings over the void carry you to the door pad', s6.ok,
    s6.n + ' timings work');
-var s7 = thirteenGoes(3260, 3520);
-ok('the red one gets you 370 up, past the blade', s7.ok && s7.rings === 1,
-   s7.n + ' timings work');
-var s8 = thirteenGoes(3770, 5410);
-ok('and the chain carries you to the floor by the door',
-   s8.ok && s8.rings === 4, s8.n + ' timings work, ' + s8.rings + ' rings');
+
+var s7 = thirteenGoes(2800, 4500, false, true);
+ok('and not unless you spend the second jump after the red one',
+   !s7.ok, s7.n + ' timings got there without it');
 
 /* every one of those must actually need its rings */
 var legsOnly = '';
-var needs13 = [[1260, 1850], [1850, 2800], [2800, 3040],
-               [3260, 3520], [3770, 5410]];
+var needs13 = [[1260, 1850], [1850, 2800], [2800, 4500]];
 for (var i = 0; i < needs13.length; i++) {
   if (thirteenGoes(needs13[i][0], needs13[i][1], true).ok) {
     legsOnly += needs13[i][0] + ' ';
@@ -3047,7 +3099,7 @@ ok('and none of them go on your legs alone', legsOnly === '',
 
 /* and the door finishes it */
 loadLevel(13); state.running = true;
-var endF13 = solidByX(5410);
+var endF13 = solidByX(4500);
 placeOn(endF13.x + 40, endF13.y);
 hold('ArrowRight');
 for (var i = 0; i < 500 && !state.complete; i++) step(1);

@@ -1024,14 +1024,14 @@
 
      Pads that sag the moment you touch them, with a blade swinging in
      every gap between them. Then the dashes, over teeth and past more
-     blades. Then both launchers, with a blade crossing the line the
-     red one throws you along. Then the chain from Room Twelve, over
-     fourteen hundred pixels of nothing, to the door.
+     blades. Then the floor stops for good, and the last four rings all
+     hang over nothing: miss one and there is no landing to be had.
 
      Every measurement in here is one the game has already proved
-     somewhere else - 240 gaps, 420 for a dash, 760 for two chained,
-     310 up on a yellow, 370 on a red. Nothing is new. It is the
-     blades, and having to do it all without stopping, that is new. */
+     somewhere else - 220 and 240 gaps, 420 for a dash, 760 for two
+     chained, 225 off a yellow, 390 off a red. What is new is the
+     blades, that none of the last rings has floor under it, and that
+     the red one at the end deliberately does not reach the door. */
   function buildRoomThirteen() {
     var TOP  = GROUND;
     var LINE = TOP - 92;              // the height a dash flies at
@@ -1075,47 +1075,48 @@
            between the second orb and the landing. --- */
     var ledgeI = { x: 2800, y: TOP, w: 240, h: 160 };      // lip at 3040
 
-    /* --- four: both launchers. Yellow to a shelf 310 up, then down the
-           far side and red to one 370 up - and the red one has a blade
-           crossing the line it throws you along. --- */
-    var shelfE = { x: 3040, y: 130, w: 220, h: 420 };      // 310 up
-    var ledgeF = { x: 3260, y: TOP, w: 260, h: 160 };      // lip at 3520
-    var shelfG = { x: 3520, y: 70,  w: 250, h: 480 };      // 370 up
+    /* --- and out: past this lip there is no more floor. Every ring
+           from here hangs over nothing, so missing one is not a
+           setback, it is the end of the run.
 
-    /* --- and out: the chain, over fourteen hundred pixels of nothing.
-           Dash, red, yellow, red, and the floor is 200px below you the
-           whole way. --- */
-    var ledgeH = { x: 3770, y: TOP, w: 240, h: 160 };      // lip at 4010
-    var endF   = { x: 5410, y: TOP, w: 400, h: 160 };
+           Dash out, fall into a yellow, and you are thrown 225 up with
+           a blade sweeping sideways across the top of that arc - the
+           only thing in the room that moves along your line rather
+           than across it. Fall into a second yellow, then a red, and
+           the red does not reach: it puts you short, and the second
+           jump is what covers the rest. There is no ground before the
+           door to land on and gather yourself. --- */
+    var doorPad = { x: 4500, y: TOP, w: 260, h: 160 };
 
     return {
       name: 'Room Thirteen',
-      worldW: 5930,
+      worldW: 4940,
       start: { x: 60, y: TOP - SIZE },
       fallY: 640,
 
-      solids: [ground0, padA, padB, padC, padD,
-               ledgeI, shelfE, ledgeF, shelfG, ledgeH, endF],
+      solids: [ground0, padA, padB, padC, padD, ledgeI, doorPad],
       sinkers: [padA, padB, padC, padD],
 
       orbs: [ orb(1590, LINE, 'dash'),   // 2. one dash, over the teeth
               orb(2200, LINE, 'dash'),   // 3. and two chained
               orb(2520, LINE, 'dash'),
 
-              orb(2940, 300, 'up'),      // 4. 310 up
-              orb(3390, 400, 'high'),    //    and 370, through a blade
-
-              orb(4170, LINE, 'dash'),   // 5. the chain, and it is all
-              orb(4590, 430, 'high'),    //    one held breath
-              orb(4940, 300, 'up'),
-              orb(5280, 430, 'high') ],
+              orb(3200, LINE, 'dash'),   // 4. out over the void
+              orb(3620, 430,  'up'),     //    up, and across the blade
+              orb(3880, 430,  'up'),     //    up again
+              orb(4140, 430,  'high') ], //    and this one lands short
 
       saws: [ blade(370,  2.0, 0.00),    // one in every gap of part one
               blade(760,  1.7, 0.35),
               blade(1150, 2.3, 0.60),
               blade(1670, 1.7, 0.00),    // and one in each dash gap
               blade(2670, 1.9, 0.35),
-              blade(3460, 2.1, 0.50) ],  // and one across the red launch
+
+              /* The only horizontal one. It rides the line between the
+                 two yellows, at the height their arc tops out, and it
+                 is fastest through the middle where you need to be. */
+              { x0: 3660, y0: 230, x1: 3840, y1: 230,
+                r: 22, period: 1.8, phase: 0.00 } ],
 
       hazards: [],
       waves: [],
@@ -1123,7 +1124,7 @@
       bombs: [],
       boss: null,
       pickups: [],
-      door: { x: 5590, y: TOP - 130, w: 60, h: 130, needs: null },
+      door: { x: 4540, y: TOP - 130, w: 60, h: 130, needs: null },
 
       arrows: [],
       hints: []
