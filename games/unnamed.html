@@ -1153,11 +1153,82 @@
     };
   }
 
+  /* Room Fourteen. The boss room's three platforms with no boss in it,
+     ten reds instead, and Room Six's spikes rolling along the floor -
+     and along the top of every platform too. Kill all ten and the key
+     drops where the last one died. */
+  function buildRoomFourteen() {
+    var ground = { x: -60,  y: GROUND, w: 2520, h: 160 };
+    var ledge  = { x: 40,   y: 350,    w: 200,  h: 26, oneWay: true };
+    var lowL   = { x: 420,  y: 330,    w: 320,  h: 24, oneWay: true };
+    var high   = { x: 880,  y: 210,    w: 320,  h: 24, oneWay: true };
+    var lowR   = { x: 1340, y: 330,    w: 320,  h: 24, oneWay: true };
+
+    /* One tooth to a bed, the same carpet as Room Six: 40 wide, 34
+       tall, 4.6s round, each bed a twelfth of a beat behind the last. */
+    var BED = 40, LAG = 0.26 / 3, X0 = -60;
+    function phaseAt(x) { return (((x - X0) / BED) * LAG) % 1; }
+
+    var waves = [];
+    for (var i = 0; X0 + i * BED < 2460; i++) {
+      var gx = X0 + i * BED;
+      waves.push({ x: gx, w: BED, h: 34, period: 4.6, phase: phaseAt(gx) });
+    }
+    /* A platform is only eight beds long. At the floor's lag those
+       eight cover barely half a beat, so most of it would be up at
+       once, leaving one 40px tooth to stand on. Here the eight share
+       out one whole beat instead: half the platform is always down,
+       and that half rolls along it. */
+    var plats = [lowL, high, lowR];
+    for (var k = 0; k < plats.length; k++) {
+      var pl = plats[k], n = pl.w / BED;
+      for (var b = 0; b < n; b++) {
+        waves.push({ x: pl.x + b * BED, y: pl.y, w: BED, h: 34, period: 4.6,
+                     phase: (b / n + k / 3) % 1 });
+      }
+    }
+
+    var reds = [];
+    var spots = [[480, lowL], [640, lowL],
+                 [940, high], [1100, high],
+                 [1400, lowR], [1560, lowR],
+                 [800, ground], [1250, ground], [1800, ground], [2000, ground]];
+    for (var j = 0; j < spots.length; j++) {
+      reds.push(redOn(spots[j][1], spots[j][0]));
+    }
+
+    return {
+      name: 'Room Fourteen',
+      worldW: 2400,
+      start: { x: 90, y: 350 - SIZE },     // the ledge, clear of the spikes
+      fallY: 620,
+
+      solids: [ground, ledge, lowL, high, lowR],
+      hazards: [],
+      waves: waves,
+      saws: [],
+      boss: null,
+      bombs: [],
+      sinkers: [],
+      orbs: [],
+
+      enemies: reds,
+
+      /* no spawnAt: it falls where the last red goes down */
+      pickups: [ { kind: 'key', x: 0, y: 0, w: 30, h: 26, hidden: true,
+                   home: { x: 0, y: 0 } } ],
+      door: { x: 2200, y: 310, w: 60, h: 130, needs: 'key' },
+
+      arrows: [],
+      hints: []
+    };
+  }
+
   var BUILDERS = [buildTutorial, buildRoomOne, buildRoomTwo,
                   buildRoomThree, buildRoomFour, buildRoomFive,
                   buildRoomSix, buildRoomSeven, buildRoomEight,
                   buildRoomNine, buildRoomTen, buildRoomEleven,
-                  buildRoomTwelve, buildRoomThirteen];
+                  buildRoomTwelve, buildRoomThirteen, buildRoomFourteen];
 
   var GRAB_MAX = 2;              // seconds of being held before you die
 
@@ -1497,9 +1568,13 @@
     return Math.max(0, (u - 0.5) / 0.5);
   }
 
+  /* A bed comes up out of the floor unless it says which surface -
+     Room Fourteen's platforms carry their own. */
+  function waveBase(wv) { return wv.y !== undefined ? wv.y : GROUND; }
+
   function waveBox(wv) {
     var out = waveOut(wv);
-    return { x: wv.x, y: GROUND - wv.h * out, w: wv.w, h: wv.h * out };
+    return { x: wv.x, y: waveBase(wv) - wv.h * out, w: wv.w, h: wv.h * out };
   }
 
   /* 0 while a bed is quiet, ramping to 1 over the last WAVE_TELL seconds
@@ -2706,10 +2781,11 @@
     for (var i = 0; i < level.waves.length; i++) {
       var wv = level.waves[i];
       var out = waveOut(wv);
+      var base = waveBase(wv);
 
       /* the slot they come out of, so you can see where they'll be */
       ctx.fillStyle = 'rgba(255,95,126,0.10)';
-      ctx.fillRect(wv.x, GROUND - 4, wv.w, 4);
+      ctx.fillRect(wv.x, base - 4, wv.w, 4);
 
       /* the tell: the slot lights up and little nubs peek out just
          before this bed fires */
@@ -2721,13 +2797,13 @@
         ctx.fillStyle = '#ffd166';
         ctx.shadowColor = '#ffd166';
         ctx.shadowBlur = 12;
-        ctx.fillRect(wv.x + 2, GROUND - 5, wv.w - 4, 5);
+        ctx.fillRect(wv.x + 2, base - 5, wv.w - 4, 5);
         var nub = 3 + warn * 5;
         var nx = wv.x + wv.w / 2;             // the one nub
         ctx.beginPath();
-        ctx.moveTo(nx - 7, GROUND);
-        ctx.lineTo(nx, GROUND - nub);
-        ctx.lineTo(nx + 7, GROUND);
+        ctx.moveTo(nx - 7, base);
+        ctx.lineTo(nx, base - nub);
+        ctx.lineTo(nx + 7, base);
         ctx.closePath();
         ctx.fill();
         ctx.restore();
@@ -2740,9 +2816,9 @@
       ctx.shadowColor = '#ff5f7e';
       ctx.shadowBlur = 14;
       ctx.beginPath();                        // the one tooth
-      ctx.moveTo(wv.x, GROUND);
-      ctx.lineTo(wv.x + wv.w / 2, GROUND - h);
-      ctx.lineTo(wv.x + wv.w, GROUND);
+      ctx.moveTo(wv.x, base);
+      ctx.lineTo(wv.x + wv.w / 2, base - h);
+      ctx.lineTo(wv.x + wv.w, base);
       ctx.closePath();
       ctx.fill();
       ctx.shadowBlur = 0;

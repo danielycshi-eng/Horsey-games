@@ -2524,8 +2524,8 @@ WScript.Echo('');
 WScript.Echo('[room twelve: the room]');
 loadLevel(12); state.running = true;
 ok('the room loads', level.name === 'Room Twelve');
-ok('it is the second to last room now',
-   BUILDERS.length === 14 && levelIndex === 12);
+ok('it is room twelve',
+   levelIndex === 12);
 
 var kinds12 = { dash: 0, up: 0, high: 0 };
 for (var i = 0; i < level.orbs.length; i++) {
@@ -2871,7 +2871,7 @@ WScript.Echo('');
 WScript.Echo('[room thirteen: the room]');
 loadLevel(13); state.running = true;
 ok('the room loads', level.name === 'Room Thirteen');
-ok('it is the last room now', BUILDERS.length === 14 && levelIndex === 13);
+ok('it is room thirteen', levelIndex === 13);
 
 var ground13 = solidByX(-60);
 ok('you start on the one piece of real ground',
@@ -3106,6 +3106,206 @@ for (var i = 0; i < 500 && !state.complete; i++) step(1);
 letGo();
 ok('walking into the door ends the room', state.complete);
 
+
+/* ==================================================================
+   ROOM FOURTEEN
+   The boss room's platforms, ten reds, and Room Six's spikes on the
+   floor and on top of every platform.
+   ================================================================== */
+WScript.Echo('');
+WScript.Echo('[room fourteen: the room]');
+loadLevel(14); state.running = true;
+ok('the room loads', level.name === 'Room Fourteen');
+ok('it comes after Room Thirteen', levelIndex === 14);
+ok('ten reds', level.enemies.length === 10, level.enemies.length + ' reds');
+ok('no boss', level.boss === null);
+
+var bL14 = solidAt(420, 330), bH14 = solidAt(880, 210), bR14 = solidAt(1340, 330);
+loadLevel(7);
+var bossPlats = [solidAt(420, 330), solidAt(880, 210), solidAt(1340, 330)];
+loadLevel(14); state.running = true;
+var sameAsBoss = bL14 && bH14 && bR14;
+var mine14 = [bL14, bH14, bR14];
+for (var i = 0; i < 3 && sameAsBoss; i++) {
+  if (mine14[i].w !== bossPlats[i].w || mine14[i].h !== bossPlats[i].h ||
+      !mine14[i].oneWay) sameAsBoss = false;
+}
+ok('the platforms are the boss room\'s', sameAsBoss);
+
+var onPlat14 = [0, 0, 0], redsOnGround = 0;
+for (var i = 0; i < level.enemies.length; i++) {
+  var eb = level.enemies[i].y + level.enemies[i].h;
+  for (var k = 0; k < 3; k++) {
+    if (eb === mine14[k].y && level.enemies[i].x >= mine14[k].x &&
+        level.enemies[i].x + 22 <= mine14[k].x + mine14[k].w) onPlat14[k]++;
+  }
+  if (eb === GROUND) redsOnGround++;
+}
+ok('reds on every platform and on the floor',
+   onPlat14[0] > 0 && onPlat14[1] > 0 && onPlat14[2] > 0 && redsOnGround > 0,
+   onPlat14.join('/') + ' up, ' + redsOnGround + ' down');
+
+/* which beds belong to which surface */
+function bedsOn14(surfY) {
+  var out = [];
+  for (var i = 0; i < level.waves.length; i++) {
+    if (waveBase(level.waves[i]) === surfY) out.push(level.waves[i]);
+  }
+  return out;
+}
+var floor14 = bedsOn14(GROUND);
+
+var fat14 = '';
+for (var i = 0; i < level.waves.length; i++) {
+  if (level.waves[i].w > 45) fat14 = level.waves[i].w + 'px wide';
+}
+ok('every bed is a single spike', fat14 === '', fat14);
+
+ok('the floor carpet runs from under the ledge to past the door',
+   floor14.length > 0 && floor14[0].x <= 40 &&
+   floor14[floor14.length - 1].x + 40 >= level.door.x + level.door.w);
+
+var covered14 = '';
+for (var k = 0; k < 3; k++) {
+  var pb = [], pl = mine14[k];
+  for (var i = 0; i < level.waves.length; i++) {
+    var wv = level.waves[i];
+    if (wv.y === pl.y && wv.x >= pl.x && wv.x + wv.w <= pl.x + pl.w) pb.push(wv);
+  }
+  if (pb.length * 40 !== pl.w) covered14 += 'platform at ' + pl.x + ' has ' + pb.length + ' beds; ';
+}
+ok('every platform carries spikes, edge to edge', covered14 === '', covered14);
+
+/* every surface always has somewhere to stand */
+function narrowestTrough(beds) {
+  var worst = 1e9;
+  for (var t0 = 0; t0 < 4.6; t0 += 0.05) {
+    state.t = t0;
+    var best = 0, run = 0;
+    for (var i = 0; i < beds.length; i++) {
+      if (waveOut(beds[i]) < 0.05) { run += beds[i].w; if (run > best) best = run; }
+      else run = 0;
+    }
+    if (best < worst) worst = best;
+  }
+  return worst;
+}
+var troughs14 = [narrowestTrough(floor14)];
+for (var k = 0; k < 3; k++) {
+  var pb = [];
+  for (var i = 0; i < level.waves.length; i++) {
+    var wv = level.waves[i];
+    if (wv.y === mine14[k].y && wv.x >= mine14[k].x &&
+        wv.x < mine14[k].x + mine14[k].w) pb.push(wv);
+  }
+  troughs14.push(narrowestTrough(pb));
+}
+var tooNarrow14 = '';
+for (var k = 0; k < troughs14.length; k++) {
+  if (troughs14[k] < SIZE + 20) tooNarrow14 += (k ? 'platform ' + k : 'floor') +
+    ' ' + troughs14[k] + 'px; ';
+}
+ok('the floor and every platform always leave a trough to stand in',
+   tooNarrow14 === '', tooNarrow14 || troughs14.join('/') + 'px');
+
+/* the spikes on a platform kill, and only when up */
+loadLevel(14); state.running = true;
+level.enemies = [];
+var pw14 = null;
+for (var i = 0; i < level.waves.length; i++) {
+  if (level.waves[i].y === bH14.y) { pw14 = level.waves[i]; break; }
+}
+placeOn(pw14.x + pw14.w / 2 - SIZE / 2, bH14.y);
+state.t = pw14.period * (0.5 - pw14.phase + 1);   // fully out
+step(3);
+ok('raised platform spikes kill you', p.dead === true);
+
+loadLevel(14); state.running = true;
+level.enemies = [];
+placeOn(pw14.x + pw14.w / 2 - SIZE / 2, bH14.y);
+state.t = pw14.period * (1 - pw14.phase);         // fully down
+step(3);
+ok('lowered platform spikes are safe to stand on', p.dead === false);
+
+/* the spawn ledge is clear of everything but the reds */
+loadLevel(14); state.running = true;
+level.enemies = [];
+placeOn(level.start.x, 350);
+step(320);
+ok('the spawn ledge is safe from the spikes', !p.dead,
+   'died standing still at x=' + Math.round(p.x));
+
+WScript.Echo('');
+WScript.Echo('[room fourteen: the fight]');
+
+/* A real fight on a platform: stand in a trough, let a red come to
+   you, and swing. It has to be winnable before the trough moves on. */
+loadLevel(14); state.running = true;
+var foe14 = level.enemies[2];                     // the first one up top
+for (var i = 0; i < level.enemies.length; i++) {
+  if (level.enemies[i] !== foe14) level.enemies[i].dead = true;
+}
+/* find a bed on the high platform that has just gone down */
+var calm14 = null;
+for (var i = 0; i < level.waves.length; i++) {
+  var wv = level.waves[i];
+  if (wv.y === bH14.y && wv.x >= foe14.x + 60) { calm14 = wv; break; }
+}
+state.t = calm14.period * (((0.75 - calm14.phase + 2) % 1) + 1);   // just gone down
+placeOn(calm14.x + calm14.w / 2 - SIZE / 2, bH14.y);
+p.face = -1;
+var swings14 = 0;
+for (var i = 0; i < 180 && !foe14.dead && !p.dead; i++) {
+  if (p.cool <= 0 && Math.abs((foe14.x + 11) - (p.x + 15)) < 60) {
+    p.face = foe14.x < p.x ? -1 : 1;
+    tap('KeyI'); swings14++;
+  }
+  step(1);
+}
+ok('you can kill one up there from inside a trough',
+   foe14.dead && !p.dead,
+   'dead=' + foe14.dead + ' you dead=' + p.dead + ' swings=' + swings14 +
+   ' hp=' + foe14.hp + ' grab=' + state.grab.toFixed(2) + ' frames=' + i);
+
+/* the key: nine down is not enough, the tenth drops it where it dies */
+loadLevel(14); state.running = true;
+var key14 = level.pickups[0];
+ok('the key starts hidden', key14.hidden === true);
+for (var i = 0; i < 10; i++) {
+  if (i !== 3) level.enemies[i].dead = true;       // leave one up top
+}
+ok('nine down is not enough', key14.hidden === true);
+var last14 = level.enemies[3];
+last14.hp = 1;
+p.face = 1;
+hitEnemies({ x: last14.x - 5, y: last14.y - 5, w: 40, h: 40 });
+ok('the tenth drops the key', last14.dead && key14.hidden === false);
+level.waves = [];                                  // just watch it fall
+p.x = 60; p.y = 350 - SIZE;
+for (var i = 0; i < 120; i++) step(1);
+ok('and it lands on the platform that red died on',
+   Math.abs(key14.y + key14.h - bH14.y) < 1,
+   'key bottom ' + Math.round(key14.y + key14.h) + ', platform ' + bH14.y);
+
+/* key in hand, the door takes you out */
+loadLevel(14); state.running = true;
+level.waves = [];
+for (var i = 0; i < 10; i++) level.enemies[i].dead = true;
+state.picked = true;
+placeOn(level.door.x - 60, GROUND);
+hold('ArrowRight');
+for (var i = 0; i < 200 && !state.complete; i++) step(1);
+letGo();
+ok('with the key, the door ends the room', state.complete);
+
+loadLevel(14); state.running = true;
+level.waves = [];
+for (var i = 0; i < 10; i++) level.enemies[i].dead = true;
+placeOn(level.door.x - 60, GROUND);
+hold('ArrowRight');
+for (var i = 0; i < 200 && !state.complete; i++) step(1);
+letGo();
+ok('without it, the door does not', !state.complete);
 
 
 /* ==================================================================
