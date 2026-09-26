@@ -124,22 +124,25 @@
       border-color: #4ec3ff;
     }
 
-    /* Admin skip: a near-black square in the bottom-left corner, over
-       everything, that sends you on to the next room. For testing. */
+    /* Admin (test) toggle, tucked into the title screen's bottom-left
+       corner and dark enough to miss. On, checkpoints stop blocking
+       the way on. */
     #adminBtn {
       position: absolute;
-      left: 6px;
-      bottom: 6px;
-      width: 14px;
-      height: 14px;
-      padding: 0;
-      background: #080b18;
-      border: 1px solid #0e1328;
-      border-radius: 3px;
+      left: 10px;
+      bottom: 10px;
+      padding: 0.25rem 0.6rem;
+      font-family: inherit;
+      font-size: 0.65rem;
+      letter-spacing: 2px;
+      color: #1d2645;
+      background: transparent;
+      border: 1px solid #10162e;
+      border-radius: 6px;
       cursor: pointer;
-      z-index: 10;
     }
-    #adminBtn:hover { background: #0e1328; border-color: #1d2b5c; }
+    #adminBtn:hover { color: #3a4a78; border-color: #1d2b5c; }
+    #adminBtn.on { color: #ff9a9a; border-color: #ff5a5a; }
 
     .keys {
       margin-top: 2rem;
@@ -170,6 +173,8 @@
       </div>
 
       <div class="keys">One life. No checkpoints. Mind the gap.</div>
+
+      <button id="adminBtn" type="button">ADMIN: OFF</button>
     </div>
 
     <div class="screen hidden" id="doneScreen">
@@ -180,8 +185,6 @@
         <button id="againBtn" class="tbtn ghost" type="button">Restart the Tutorial</button>
       </div>
     </div>
-
-    <button id="adminBtn" type="button" tabindex="-1" aria-label="Admin: skip to the next room"></button>
   </div>
 
 <script>
@@ -1182,7 +1185,7 @@
     buffer: 0,
     picked: false,          // the room's pickup has been in your hands
     complete: false,
-    cpUsed: false,          // this run has come back on a checkpoint
+    cpUsed: false,          // a flag has gone down in this room
     grab: 0,              // how long the red cube has had hold of you
     flash: 0,
     saveT: 0,
@@ -1278,6 +1281,7 @@
     var s = solidUnderFeet();
     var top = s ? (s.home !== undefined ? s.home : s.y) : p.y + p.h;
     checkpoint = { x: p.x, y: top - SIZE };
+    state.cpUsed = true;    // and that's it - no way on from this room now
     burst(p.x + p.w / 2, p.y + p.h, '#4ec3ff', 20, 1.1);
   }
 
@@ -1285,15 +1289,16 @@
      to where it started. A checkpoint does not stop that; it only
      changes where you are standing when it is done.
 
-     Coming back on one marks the run: reach the door after that and it
-     will not let you on to the next room. Only a respawn with no
-     checkpoint down - a real start from the top - wipes the mark. */
+     Once a flag has gone down in a room, the door will not let you on
+     to the next one - picking it up again or dying does not undo that.
+     Only coming into the room afresh (Try Again) does. */
   function respawn() {
     var cp = checkpoint;
+    var used = state.cpUsed;
     loadLevel(levelIndex);
+    state.cpUsed = used;
     if (!cp) return;
     checkpoint = cp;
-    state.cpUsed = true;
     p.x = cp.x;
     p.y = cp.y;
     p.vx = 0; p.vy = 0;
@@ -3394,13 +3399,6 @@
     ctx.fillStyle = '#4ec3ff';
     ctx.fillText(state.name.toUpperCase(), 18, 30);
 
-    if (state.cpUsed) {
-      ctx.fillStyle = '#56658c';
-      ctx.font = '11px sans-serif';
-      ctx.fillText('CHECKPOINT RUN — DIE WITHOUT ONE TO GO CLEAN', 18, 48);
-      ctx.font = 'bold 13px sans-serif';
-    }
-
     if (p.holding) {
       ctx.textAlign = 'right';
       ctx.fillStyle = '#8ea7d6';
@@ -3524,10 +3522,22 @@
   var adminBtn    = document.getElementById('adminBtn');
 
   var onNext = null, onAgain = null;
-  var titleUp = true;
+
+  /* Admin (test) mode, switched on from the title screen: checkpoints
+     no longer stop you going on. Not saved - off every time you load. */
+  var admin = false;
+
+  function toggleAdmin() {
+    admin = !admin;
+    adminBtn.textContent = 'ADMIN: ' + (admin ? 'ON' : 'OFF');
+    if (admin) adminBtn.classList.add('on');
+    else adminBtn.classList.remove('on');
+  }
+
+  /* Placed a flag in this room, and not an admin: no way on. */
+  function blocked() { return state.cpUsed && !admin; }
 
   function enterGame() {
-    titleUp = false;
     titleScreen.classList.add('hidden');
     doneScreen.classList.add('hidden');
     state.running = true;
@@ -3577,9 +3587,9 @@
   function finishLevel() {
     state.running = false;
 
-    if (state.cpUsed) { showCheckpointed(levelIndex); return; }
-
-    if (levelIndex === 0 && returnToDone !== null) {
+    /* a flagged tutorial does not hand you back to the cleared room's
+       screen either - it keeps you here until you do it clean */
+    if (levelIndex === 0 && returnToDone !== null && !blocked()) {
       var back = returnToDone;
       returnToDone = null;
       showDoneFor(back);
@@ -3588,22 +3598,8 @@
     showDoneFor(levelIndex);
   }
 
-  /* Reached the door, but on a checkpoint: that does not count. The
-     only way out of here is back into the same room, from the top. */
-  function showCheckpointed(room) {
-    state.running = false;
-    doneTitle.textContent = 'NOT CLEAN';
-    doneSub.textContent = 'You used a checkpoint. Clear it without one to go on';
-    nextBtn.textContent = 'Try It Clean';
-    againBtn.classList.add('hide');
-    onNext  = function () { loadLevel(room); enterGame(); };
-    onAgain = null;
-    doneScreen.classList.remove('hidden');
-  }
-
   function showDoneFor(finished) {
     state.running = false;
-    againBtn.classList.remove('hide');
 
     if (finished === 0) {
       doneTitle.textContent = 'TUTORIAL COMPLETE';
@@ -3624,6 +3620,14 @@
         : function () { loadLevel(finished); enterGame(); };
     }
 
+    /* Put a flag down in the room you just finished? Then the way on
+       becomes the way back in; the other button stays as it was. */
+    if (blocked() && finished === levelIndex) {
+      doneSub.textContent = 'You cannot pass if you used checkpoints';
+      nextBtn.textContent = 'Try Again';
+      onNext = function () { loadLevel(finished); enterGame(); };
+    }
+
     doneScreen.classList.remove('hidden');
   }
 
@@ -3636,19 +3640,9 @@
   nextBtn.addEventListener('click', function () { if (onNext) onNext(); });
   againBtn.addEventListener('click', function () { if (onAgain) onAgain(); });
 
-  /* Admin: straight on to the room after this one - from the title
-     screen, the room after your save. Clean, no checkpoint mark. */
-  function adminSkip() {
-    var s = titleUp ? readSave() : null;
-    if (titleUp) state.name = (s && s.name) || nameInput.value.trim() || 'HERO';
-    var at = titleUp ? (s ? s.level : 0) : levelIndex;
-    returnToDone = null;
-    loadLevel(Math.min(at + 1, BUILDERS.length - 1));
-    enterGame();
-  }
   adminBtn.addEventListener('click', function () {
-    adminSkip();
-    if (adminBtn.blur) adminBtn.blur();   // so Space doesn't press it again
+    toggleAdmin();
+    adminBtn.blur();        // so Space in the first room doesn't flip it back
   });
 
   /* Don't lose progress on the way out — leaving via the Games link,

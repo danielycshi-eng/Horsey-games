@@ -3254,54 +3254,71 @@ function doorAndNext() {
   return { from: from, to: levelIndex };
 }
 
-loadLevel(13); state.running = true;
+admin = false;
+loadLevel(5); state.running = true;
 ok('a fresh room is not marked', state.cpUsed === false);
 placeOn(150, GROUND);
 tap('KeyP');
-ok('putting one down does not mark you', state.cpUsed === false);
-placeOn(600, GROUND);
+ok('just putting a flag down marks you', state.cpUsed === true);
+tap('KeyP');                                   // pick it up again
+ok('picking it up again does not unmark you',
+   checkpoint === null && state.cpUsed === true);
 die();
 for (var i = 0; i < 60 && p.dead; i++) step(1);
-ok('coming back on one does', state.cpUsed === true);
-tap('KeyP');                                   // pick it up again
-ok('and picking it up afterwards does not unmark you',
-   checkpoint === null && state.cpUsed === true);
+ok('nor does dying from the top with none down',
+   Math.round(p.x) === level.start.x && state.cpUsed === true);
 
-loadLevel(5); state.running = true;
+finishLevel();
+ok('the door keeps the room screen', doneTitle.textContent ===
+   BUILDERS[5]().name.toUpperCase() + ' CLEARED', doneTitle.textContent);
+ok('but says you cannot pass',
+   doneSub.textContent === 'You cannot pass if you used checkpoints',
+   doneSub.textContent);
+ok('Next Room becomes Try Again', nextBtn.textContent === 'Try Again',
+   nextBtn.textContent);
+ok('and the other button is still there', againBtn.textContent === 'Play It Again',
+   againBtn.textContent);
+onNext();
+ok('Try Again puts you back in the same room, unmarked',
+   levelIndex === 5 && state.cpUsed === false && checkpoint === null,
+   'at ' + levelIndex);
+
+/* the last room keeps its Back to the Tutorial */
+loadLevel(BUILDERS.length - 1); state.running = true;
 placeOn(150, GROUND);
 tap('KeyP');
-tap('KeyR');
-ok('R onto one marks you too', state.cpUsed === true);
-var r = doorAndNext();
-ok('a marked run at the door does not go on to the next room',
-   r.to === 5, 'went ' + r.from + ' -> ' + r.to);
-ok('the screen says why', doneTitle.textContent === 'NOT CLEAN',
-   doneTitle.textContent);
-ok('and the retry is clean', state.cpUsed === false && checkpoint === null);
+finishLevel();
+ok('the last room still offers Back to the Tutorial',
+   nextBtn.textContent === 'Try Again' &&
+   againBtn.textContent === 'Back to the Tutorial',
+   nextBtn.textContent + ' / ' + againBtn.textContent);
 
-/* a checkpointed tutorial does not start the game either */
+/* a flagged tutorial does not start the game either */
 loadLevel(0); state.running = true;
+placeOn(level.start.x, level.start.y + SIZE);
 state.cpUsed = true;
-r = doorAndNext();
+var r = doorAndNext();
 ok('not from the tutorial either', r.to === 0, 'went to ' + r.to);
 
-/* die with the checkpoint picked up: a real start from the top */
+/* nor hand you back a cleared room's screen */
+returnToDone = BUILDERS.length - 1;
+loadLevel(0); state.running = true;
+state.cpUsed = true;
+finishLevel();
+ok('nor from a detour back through the tutorial',
+   doneTitle.textContent === 'TUTORIAL COMPLETE' &&
+   nextBtn.textContent === 'Try Again', doneTitle.textContent);
+returnToDone = null;
+
+/* no flag: the door takes you on */
 loadLevel(5); state.running = true;
-placeOn(150, GROUND);
-tap('KeyP');
-tap('KeyR');
-tap('KeyP');                                   // pick it back up
-die();
-for (var i = 0; i < 60 && p.dead; i++) step(1);
-ok('dying with none down clears the mark', state.cpUsed === false);
 r = doorAndNext();
-ok('and then the door takes you on', r.to === 6, 'went to ' + r.to);
+ok('with no flag, the door takes you on', r.to === 6, 'went to ' + r.to);
 
 /* quitting and continuing must not launder the mark */
 loadLevel(5); state.running = true;
 placeOn(150, GROUND);
 tap('KeyP');
-tap('KeyR');
 saveGame();
 loadLevel(0);
 continueGame();
@@ -3309,28 +3326,20 @@ ok('the mark survives a save and Continue',
    levelIndex === 5 && state.cpUsed === true);
 
 WScript.Echo('');
-WScript.Echo('[admin skip]');
-loadLevel(7); state.running = true;
-titleUp = false;
-state.cpUsed = true;
-adminSkip();
-ok('the admin button goes to the next room', levelIndex === 8,
-   'at ' + levelIndex);
-ok('clean, and running', state.cpUsed === false && state.running);
-loadLevel(BUILDERS.length - 1);
-adminSkip();
-ok('and stops at the last one', levelIndex === BUILDERS.length - 1);
-
-clearSave();
-titleUp = true;
-adminSkip();
-ok('from the title with no save, it goes to room one',
-   levelIndex === 1 && !titleUp, 'at ' + levelIndex);
-saveGame();                                    // now saved in room one
-titleUp = true;
-adminSkip();
-ok('from the title with a save, the room after the saved one',
-   levelIndex === 2, 'at ' + levelIndex);
+WScript.Echo('[admin]');
+ok('admin starts off', admin === false);
+toggleAdmin();
+ok('the title-screen toggle turns it on', admin === true &&
+   adminBtn.textContent === 'ADMIN: ON', adminBtn.textContent);
+loadLevel(5); state.running = true;
+placeOn(150, GROUND);
+tap('KeyP');
+r = doorAndNext();
+ok('with admin on, a flag does not stop you', r.to === 6,
+   'went to ' + r.to);
+toggleAdmin();
+ok('and it turns back off', admin === false &&
+   adminBtn.textContent === 'ADMIN: OFF');
 clearSave();
 letGo();
 
