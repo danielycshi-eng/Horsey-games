@@ -1520,13 +1520,82 @@
     };
   }
 
+  /* Room Twenty. Conveyor belts: stand on one and it carries you, at
+     its own speed, whatever you are doing - even frozen in X-ray. Some
+     run with you and throw you at things faster than you'd like; some
+     run against you and drag you back toward the gap you just crossed.
+     Between them, blades, rings, and walls you cannot see. */
+  function buildRoomTwenty() {
+    var TOP = 400;
+
+    function belt(x, y, w, speed) {
+      return { x: x, y: y, w: w, h: 26, oneWay: true, belt: speed };
+    }
+    function wall(x, y, w, h) {                 // invisible, and solid
+      return { x: x, y: y, w: w, h: h, ghost: true };
+    }
+
+    var start = { x: -60, y: TOP, w: 340, h: 160 };      // lip at 280
+
+    /* 1. a belt that runs you into a wall you cannot see, a double
+          jump tall - it pins you there until you get over */
+    var b1 = belt(360, TOP, 500, 180);
+    var w1 = wall(700, TOP - 160, 40, 160);
+
+    /* 2. a blade in the gap, and the far side runs back at you */
+    var b2 = belt(1080, TOP, 400, -150);                 // 220 on
+    var ledge = { x: 1480, y: TOP, w: 120, h: 26, oneWay: true };  // lip 1600
+
+    /* 3. a dash across 420, onto a fast belt with two low walls on it */
+    var b3 = belt(2020, TOP, 360, 220);                  // lip 2380
+    var w2 = wall(2150, TOP - 60, 30, 60);
+    var w3 = wall(2290, TOP - 60, 30, 60);
+
+    /* 4. off the end into a yellow, up to a high platform with a blade
+          riding along it */
+    var high = { x: 2500, y: TOP - 180, w: 200, h: 26, oneWay: true };
+
+    /* 5. down onto a belt running back, and a last wall on the floor */
+    var b4 = belt(2900, TOP, 300, -120);
+    var end = { x: 3200, y: TOP, w: 760, h: 160 };
+    var w4 = wall(3350, TOP - 160, 40, 160);
+
+    return {
+      name: 'Room Twenty',
+      worldW: 3900,
+      start: { x: 60, y: TOP - SIZE },
+      fallY: 660,
+
+      solids: [start, b1, w1, b2, ledge, b3, w2, w3, high, b4, end, w4],
+      hazards: [],
+      orbs: [ { x: 1760, y: TOP - 92, kind: 'dash', r: ORB_R },
+              { x: 2440, y: TOP - 20, kind: 'up', r: ORB_R_LAUNCH } ],
+      saws: [ { x0: 970, x1: 970, y0: TOP - 215, y1: TOP - 25,
+                r: 22, period: 2.0, phase: 0 },
+              { x0: high.x + 22, x1: high.x + high.w - 22,
+                y0: high.y - 22, y1: high.y - 22,
+                r: 22, period: 2.2, phase: 0.3 } ],
+
+      waves: [],
+      enemies: [],
+      bombs: [],
+      sinkers: [],
+      boss: null,
+      pickups: [],
+      door: { x: 3700, y: TOP - 130, w: 60, h: 130, needs: null },
+
+      arrows: [],
+      hints: []
+    };
+  }
+
   var BUILDERS = [buildTutorial, buildRoomOne, buildRoomTwo,
                   buildRoomThree, buildRoomFour, buildRoomFive,
                   buildRoomSix, buildRoomSeven, buildRoomEight,
                   buildRoomNine, buildRoomTen, buildRoomEleven,
                   buildRoomTwelve, buildRoomThirteen, buildRoomFourteen,
                   buildRoomFifteen, buildRoomSixteen, buildRoomSeventeen,
-                  buildRoomEighteen, buildRoomNineteen];
+                  buildRoomEighteen, buildRoomNineteen, buildRoomTwenty];
 
   var GRAB_MAX = 2;              // seconds of being held before you die
 
@@ -1919,13 +1988,22 @@
     var list = activeSolids();
     var i, s;
 
-    p.x += p.vx * dt;
+    /* a conveyor belt under your feet carries you along its `belt`
+       speed, on top of whatever you are doing yourself - X-ray too */
+    var carry = 0;
+    if (p.onGround) {
+      var under = solidUnderFeet();
+      if (under && under.belt) carry = under.belt;
+    }
+    var dx = (p.vx + carry) * dt;
+
+    p.x += dx;
     for (i = 0; i < list.length; i++) {
       s = list[i];
       if (s.oneWay) continue;                   // never blocks from the side
       if (!hits(p, s)) continue;
-      if (p.vx > 0) p.x = s.x - p.w;
-      else if (p.vx < 0) p.x = s.x + s.w;
+      if (dx > 0) p.x = s.x - p.w;
+      else if (dx < 0) p.x = s.x + s.w;
       p.vx = 0;
     }
 
@@ -3198,6 +3276,28 @@
     ctx.shadowBlur = 14;
     ctx.fillRect(s.x, s.y - 3, s.w, 5);
     ctx.shadowBlur = 0;
+
+    /* a conveyor: chevrons sliding the way it carries you */
+    if (s.belt) {
+      var dir = s.belt > 0 ? 1 : -1;
+      var GAP = 28;
+      var off = ((state.t * s.belt) % GAP + GAP) % GAP;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(s.x, s.y + 3, s.w, 16);
+      ctx.clip();
+      ctx.strokeStyle = '#ffd166';
+      ctx.lineWidth = 3;
+      ctx.globalAlpha = 0.8;
+      for (var cx = s.x - GAP + off; cx < s.x + s.w + GAP; cx += GAP) {
+        ctx.beginPath();
+        ctx.moveTo(cx - 5 * dir, s.y + 5);
+        ctx.lineTo(cx + 5 * dir, s.y + 11);
+        ctx.lineTo(cx - 5 * dir, s.y + 17);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
   }
 
   function drawHazard(hz) {

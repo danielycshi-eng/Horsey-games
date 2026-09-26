@@ -65,6 +65,7 @@ FakeCtx.prototype.quadraticCurveTo = noop;
 FakeCtx.prototype.bezierCurveTo = noop;
 FakeCtx.prototype.ellipse = noop;
 FakeCtx.prototype.clip = noop;
+FakeCtx.prototype.rect = noop;
 FakeCtx.prototype.measureText = function () { return { width: 0 }; };
 FakeCtx.prototype.createRadialGradient = function () { return { addColorStop: noop }; };
 FakeCtx.prototype.createLinearGradient = function () {
