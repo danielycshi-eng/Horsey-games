@@ -1404,7 +1404,12 @@
 
   /* Room Eighteen. A breather after the second boss. The green fellow
      is waiting with apples again; past him an invisible wall, and past
-     that he is waiting again, with the key. */
+     that he is waiting again, with the key.
+
+     The screen is 960 wide and follows you in the middle, so the
+     spacing is the point: the apples (480..990) are out of frame by the
+     time the second fellow (2500) comes into it, and from anywhere on
+     the wall (1700) he is still off the right edge. */
   function buildRoomEighteen() {
     var apples = [];
     for (var i = 0; i < 22; i++) {
@@ -1419,19 +1424,19 @@
     }
 
     /* he drops it from over his head, and it falls to the floor */
-    var key = { kind: 'key', x: 1760, y: GROUND - 150, w: 30, h: 26,
+    var key = { kind: 'key', x: 2560, y: GROUND - 150, w: 30, h: 26,
                 hidden: true, grounded: false, vy: 0,
-                home: { x: 1760, y: GROUND - 26 } };
+                home: { x: 2560, y: GROUND - 26 } };
 
     return {
       name: 'Room Eighteen',
-      worldW: 2600,
+      worldW: 3300,
       start: { x: 80, y: GROUND - SIZE },
       fallY: 620,
 
-      solids: [ { x: -60, y: GROUND, w: 2720, h: 160 },
+      solids: [ { x: -60, y: GROUND, w: 3420, h: 160 },
                 /* a double jump tall, and only there under X-ray */
-                { x: 1300, y: 280, w: 40, h: 160, ghost: true } ],
+                { x: 1700, y: 280, w: 40, h: 160, ghost: true } ],
       hazards: [],
       saws: [],
       enemies: [],
@@ -1445,13 +1450,13 @@
         { x: 600, y: GROUND - SIZE, w: SIZE, h: SIZE,
           said: false, t: 0, gives: 'apple',
           line: 'Wow! That was tough! Want some apples?' },
-        { x: 1700, y: GROUND - SIZE, w: SIZE, h: SIZE,
+        { x: 2500, y: GROUND - SIZE, w: SIZE, h: SIZE,
           said: false, t: 0, gives: 'key',
           line: 'Did the X-Ray get ya?' }
       ],
 
       pickups: apples.concat([key]),
-      door: { x: 2250, y: 310, w: 60, h: 130, needs: 'key' },
+      door: { x: 2950, y: 310, w: 60, h: 130, needs: 'key' },
 
       arrows: [],
       hints: []
