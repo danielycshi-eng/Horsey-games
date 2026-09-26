@@ -3540,83 +3540,6 @@
     ctx.globalAlpha = 1;
   }
 
-  /* The X-ray glow: a green band on each edge of the screen, fading
-     to nothing inward, whose inner edge ripples. Each edge is drawn in
-     its own frame: rotate so it sits along the top, then draw one
-     wavy band there. */
-  function drawXrayEdges() {
-    var t = state.t;
-    var DEPTH = 46;
-    var sides = [
-      { rot: 0,            len: W, tx: 0, ty: 0 },     // top
-      { rot: Math.PI / 2,  len: H, tx: W, ty: 0 },     // right
-      { rot: Math.PI,      len: W, tx: W, ty: H },     // bottom
-      { rot: -Math.PI / 2, len: H, tx: 0, ty: H }      // left
-    ];
-    ctx.save();
-    for (var k = 0; k < sides.length; k++) {
-      var sd = sides[k];
-      ctx.save();
-      ctx.translate(sd.tx, sd.ty);
-      ctx.rotate(sd.rot);
-
-      var g = ctx.createLinearGradient(0, 0, 0, DEPTH + 12);
-      g.addColorStop(0, 'rgba(123,255,178,0.22)');
-      g.addColorStop(1, 'rgba(123,255,178,0)');
-      ctx.fillStyle = g;
-
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(sd.len, 0);
-      for (var x = sd.len; x >= 0; x -= 12) {
-        var d = DEPTH + Math.sin(x * 0.021 + t * 2.6 + k) * 9 +
-                Math.sin(x * 0.057 - t * 1.9 + k * 2) * 5;
-        ctx.lineTo(x, d);
-      }
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-    }
-    ctx.restore();
-  }
-
-  /* The X-ray warp: the picture itself ripples near the edges of the
-     screen, like looking through a lens. Copy what has been drawn,
-     then paint it back in thin slices, each nudged along a sine wave.
-     It is done in three rings, strongest at the very edge and fading
-     to nothing inward, so the middle of the screen stays still. */
-  var warpBuf = null, warpCtx = null;
-
-  function warpEdges() {
-    if (!warpBuf) {
-      warpBuf = document.createElement('canvas');
-      warpBuf.width = W;
-      warpBuf.height = H;
-      warpCtx = warpBuf.getContext('2d');
-    }
-    warpCtx.clearRect(0, 0, W, H);
-    warpCtx.drawImage(canvas, 0, 0);
-
-    var t = state.t;
-    var SL = 5;                       // slice thickness
-    var RINGS = 3, RW = 30;           // three rings of 30px: a 90px band
-    for (var r = 0; r < RINGS; r++) {
-      var amp = 8 * (1 - r / RINGS);
-      var a = r * RW;
-      var x, y, d;
-      for (y = 0; y < H; y += SL) {             // left and right: rows slide
-        d = Math.sin(y * 0.045 + t * 3.2 + r * 0.8) * amp;
-        ctx.drawImage(warpBuf, a, y, RW, SL, a + d, y, RW, SL);
-        ctx.drawImage(warpBuf, W - a - RW, y, RW, SL, W - a - RW - d, y, RW, SL);
-      }
-      for (x = 0; x < W; x += SL) {             // top and bottom: columns slide
-        d = Math.sin(x * 0.045 + t * 3.2 + r * 0.8) * amp;
-        ctx.drawImage(warpBuf, x, a, SL, RW, x, a + d, SL, RW);
-        ctx.drawImage(warpBuf, x, H - a - RW, SL, RW, x, H - a - RW - d, SL, RW);
-      }
-    }
-  }
-
   function drawHUD() {
     ctx.save();
     ctx.textAlign = 'left';
@@ -3655,10 +3578,30 @@
       ctx.restore();
     }
 
-    /* X-ray: a faint green glow round the edges of the screen, and how
-       to turn it off */
+    /* X-ray: the whole screen goes a little green, and the edges glow
+       green strongest - and how to turn it off */
     if (state.xray) {
-      drawXrayEdges();
+      ctx.save();
+      ctx.fillStyle = 'rgba(123,255,178,0.07)';
+      ctx.fillRect(0, 0, W, H);
+
+      var GLOW = 90;
+      var edges = [
+        [0, 0, 0, GLOW,     0, 0, W, GLOW],            // top
+        [0, H, 0, H - GLOW, 0, H - GLOW, W, GLOW],     // bottom
+        [0, 0, GLOW, 0,     0, 0, GLOW, H],            // left
+        [W, 0, W - GLOW, 0, W - GLOW, 0, GLOW, H]      // right
+      ];
+      for (var gi = 0; gi < edges.length; gi++) {
+        var eg = edges[gi];
+        var grad = ctx.createLinearGradient(eg[0], eg[1], eg[2], eg[3]);
+        grad.addColorStop(0, 'rgba(123,255,178,0.32)');
+        grad.addColorStop(1, 'rgba(123,255,178,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(eg[4], eg[5], eg[6], eg[7]);
+      }
+      ctx.restore();
+
       ctx.save();
       ctx.textAlign = 'center';
       ctx.fillStyle = '#7bffb2';
@@ -3733,7 +3676,6 @@
     drawParticles();
 
     ctx.restore();
-    if (state.xray) warpEdges();      // the world warps, the HUD on top does not
     drawHUD();
   }
 
