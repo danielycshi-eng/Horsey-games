@@ -1524,12 +1524,14 @@
      its own speed, whatever you are doing - even frozen in X-ray. Some
      run with you and throw you at things faster than you'd like; some
      run against you and drag you back toward the gap you just crossed.
-     Between them, blades, rings, and walls you cannot see. */
+     Between them, rings, blades you can only see with X-ray, and a
+     wall you cannot see. */
   function buildRoomTwenty() {
     var TOP = 400;
 
+    /* thinner than a platform: a belt is 14 deep */
     function belt(x, y, w, speed) {
-      return { x: x, y: y, w: w, h: 26, oneWay: true, belt: speed };
+      return { x: x, y: y, w: w, h: 14, oneWay: true, belt: speed };
     }
     function wall(x, y, w, h) {                 // invisible, and solid
       return { x: x, y: y, w: w, h: h, ghost: true };
@@ -1537,25 +1539,21 @@
 
     var start = { x: -60, y: TOP, w: 340, h: 160 };      // lip at 280
 
-    /* 1. a belt that runs you into a wall you cannot see, a double
-          jump tall - it pins you there until you get over */
+    /* 1. a belt that carries you on */
     var b1 = belt(360, TOP, 500, 180);
-    var w1 = wall(700, TOP - 160, 40, 160);
 
     /* 2. a blade in the gap, and the far side runs back at you */
     var b2 = belt(1080, TOP, 400, -150);                 // 220 on
     var ledge = { x: 1480, y: TOP, w: 120, h: 26, oneWay: true };  // lip 1600
 
-    /* 3. a dash across 420, onto a fast belt with two low walls on it */
+    /* 3. a dash across 420, onto a fast belt */
     var b3 = belt(2020, TOP, 360, 220);                  // lip 2380
-    var w2 = wall(2150, TOP - 60, 30, 60);
-    var w3 = wall(2290, TOP - 60, 30, 60);
 
     /* 4. off the end into a yellow, up to a high platform with a blade
           riding along it */
     var high = { x: 2500, y: TOP - 180, w: 200, h: 26, oneWay: true };
 
-    /* 5. down onto a belt running back, and a last wall on the floor */
+    /* 5. down onto a belt running back, and a wall on the floor */
     var b4 = belt(2900, TOP, 300, -120);
     var end = { x: 3200, y: TOP, w: 760, h: 160 };
     var w4 = wall(3350, TOP - 160, 40, 160);
@@ -1566,15 +1564,16 @@
       start: { x: 60, y: TOP - SIZE },
       fallY: 660,
 
-      solids: [start, b1, w1, b2, ledge, b3, w2, w3, high, b4, end, w4],
+      solids: [start, b1, b2, ledge, b3, high, b4, end, w4],
       hazards: [],
       orbs: [ { x: 1760, y: TOP - 92, kind: 'dash', r: ORB_R },
               { x: 2440, y: TOP - 20, kind: 'up', r: ORB_R_LAUNCH } ],
+      /* both blades only show under X-ray */
       saws: [ { x0: 970, x1: 970, y0: TOP - 215, y1: TOP - 25,
-                r: 22, period: 2.0, phase: 0 },
+                r: 22, period: 2.0, phase: 0, ghost: true },
               { x0: high.x + 22, x1: high.x + high.w - 22,
                 y0: high.y - 22, y1: high.y - 22,
-                r: 22, period: 2.2, phase: 0.3 } ],
+                r: 22, period: 2.2, phase: 0.3, ghost: true } ],
 
       waves: [],
       enemies: [],
@@ -3267,6 +3266,8 @@
       ctx.shadowBlur = 0;
     }
 
+    if (s.belt) { drawBelt(s); return; }
+
     ctx.fillStyle = '#16224d';
     ctx.fillRect(s.x, s.y, s.w, s.h);
     ctx.fillStyle = 'rgba(78,195,255,0.10)';
@@ -3276,26 +3277,63 @@
     ctx.shadowBlur = 14;
     ctx.fillRect(s.x, s.y - 3, s.w, 5);
     ctx.shadowBlur = 0;
+  }
 
-    /* a conveyor: chevrons sliding the way it carries you */
-    if (s.belt) {
-      var dir = s.belt > 0 ? 1 : -1;
-      var GAP = 28;
-      var off = ((state.t * s.belt) % GAP + GAP) % GAP;
+  /* A factory conveyor: a grey rubber belt looped round a roller at
+     each end, with cleats across it that travel the way it carries you
+     - along the top, and back the other way underneath. */
+  function drawBelt(s) {
+    var r = s.h / 2;                           // the rollers fill its height
+    var x0 = s.x + r, x1 = s.x + s.w - r;
+    var cy = s.y + r;
+    var CLEAT = 18;
+    var off = ((state.t * s.belt) % CLEAT + CLEAT) % CLEAT;
+
+    ctx.save();
+
+    /* the belt: a long rounded loop */
+    ctx.fillStyle = '#2b2f36';
+    rr(s.x, s.y, s.w, s.h, r);
+    ctx.fill();
+
+    /* its top run, a little lighter where the light catches it */
+    ctx.fillStyle = '#6b717c';
+    ctx.fillRect(x0, s.y, x1 - x0, 3);
+
+    /* the cleats, clipped to the straight runs */
+    ctx.beginPath();
+    ctx.rect(x0, s.y, x1 - x0, s.h);
+    ctx.clip();
+    ctx.fillStyle = '#4a4f58';
+    for (var cx = x0 - CLEAT + off; cx < x1 + CLEAT; cx += CLEAT) {
+      ctx.fillRect(cx, s.y, 4, 4);                            // top, going
+      ctx.fillRect(x0 + x1 - cx - 4, s.y + s.h - 4, 4, 4);    // under, coming back
+    }
+    ctx.restore();
+
+    /* the rollers, turning with it */
+    var spin = state.t * s.belt / r;
+    for (var k = 0; k < 2; k++) {
+      var rx = k === 0 ? x0 : x1;
       ctx.save();
+      ctx.translate(rx, cy);
+      ctx.fillStyle = '#8a909b';
       ctx.beginPath();
-      ctx.rect(s.x, s.y + 3, s.w, 16);
-      ctx.clip();
-      ctx.strokeStyle = '#ffd166';
-      ctx.lineWidth = 3;
-      ctx.globalAlpha = 0.8;
-      for (var cx = s.x - GAP + off; cx < s.x + s.w + GAP; cx += GAP) {
-        ctx.beginPath();
-        ctx.moveTo(cx - 5 * dir, s.y + 5);
-        ctx.lineTo(cx + 5 * dir, s.y + 11);
-        ctx.lineTo(cx - 5 * dir, s.y + 17);
-        ctx.stroke();
-      }
+      ctx.arc(0, 0, r - 1.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.rotate(spin);
+      ctx.strokeStyle = '#3a3e46';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-(r - 3), 0);
+      ctx.lineTo(r - 3, 0);
+      ctx.moveTo(0, -(r - 3));
+      ctx.lineTo(0, r - 3);
+      ctx.stroke();
+      ctx.fillStyle = '#c4c9d1';
+      ctx.beginPath();
+      ctx.arc(0, 0, 1.8, 0, Math.PI * 2);
+      ctx.fill();
       ctx.restore();
     }
   }
