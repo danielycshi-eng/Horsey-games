@@ -579,7 +579,7 @@
     return {
       name: 'Room Six',
       worldW: 3700,
-      start: { x: 90, y: 350 - SIZE },     // the ledge, clear of the spikes
+      start: { x: 80, y: GROUND - SIZE },  // on the bare floor, left of the carpet
       fallY: 620,
 
       solids: [ground, ledge, platA, platB, platC],
@@ -1159,14 +1159,15 @@
      drops where the last one died. */
   function buildRoomFourteen() {
     var ground = { x: -60,  y: GROUND, w: 2520, h: 160 };
-    var ledge  = { x: 40,   y: 350,    w: 200,  h: 26, oneWay: true };
     var lowL   = { x: 420,  y: 330,    w: 320,  h: 24, oneWay: true };
     var high   = { x: 880,  y: 210,    w: 320,  h: 24, oneWay: true };
     var lowR   = { x: 1340, y: 330,    w: 320,  h: 24, oneWay: true };
 
     /* One tooth to a bed, the same carpet as Room Six: 40 wide, 34
-       tall, 4.6s round, each bed a twelfth of a beat behind the last. */
-    var BED = 40, LAG = 0.26 / 3, X0 = -60;
+       tall, 4.6s round, each bed a twelfth of a beat behind the last.
+       It starts at 260, so the stretch you spawn on has no teeth at all
+       - nothing comes up under you the moment you appear. */
+    var BED = 40, LAG = 0.26 / 3, X0 = 260;
     function phaseAt(x) { return (((x - X0) / BED) * LAG) % 1; }
 
     var waves = [];
@@ -1200,10 +1201,10 @@
     return {
       name: 'Room Fourteen',
       worldW: 2400,
-      start: { x: 90, y: 350 - SIZE },     // the ledge, clear of the spikes
+      start: { x: 80, y: GROUND - SIZE },  // on the bare floor, left of the carpet
       fallY: 620,
 
-      solids: [ground, ledge, lowL, high, lowR],
+      solids: [ground, lowL, high, lowR],
       hazards: [],
       waves: waves,
       saws: [],
