@@ -3161,8 +3161,8 @@ for (var i = 0; i < level.waves.length; i++) {
 }
 ok('every bed is a single spike', fat14 === '', fat14);
 
-ok('the floor carpet runs from past the spawn to past the door',
-   floor14.length > 0 && floor14[0].x >= level.start.x + SIZE &&
+ok('the floor carpet runs under the spawn and past the door',
+   floor14.length > 0 && floor14[0].x <= level.start.x &&
    floor14[floor14.length - 1].x + 40 >= level.door.x + level.door.w);
 
 var covered14 = '';
@@ -3227,12 +3227,12 @@ state.t = pw14.period * (1 - pw14.phase);         // fully down
 step(3);
 ok('lowered platform spikes are safe to stand on', p.dead === false);
 
-/* the spawn is clear of everything but the reds */
+/* spawning never puts you straight into raised spikes */
 loadLevel(14); state.running = true;
 level.enemies = [];
 placeOn(level.start.x, GROUND);
-step(320);
-ok('the spawn is safe from the spikes', !p.dead,
+step(60);
+ok('the first second after spawning is safe', !p.dead,
    'died standing still at x=' + Math.round(p.x));
 
 WScript.Echo('');

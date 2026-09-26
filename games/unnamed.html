@@ -1165,10 +1165,11 @@
 
     /* One tooth to a bed, the same carpet as Room Six: 40 wide, 34
        tall, 4.6s round, each bed a twelfth of a beat behind the last.
-       It starts at 260, so the stretch you spawn on has no teeth at all
-       - nothing comes up under you the moment you appear. */
-    var BED = 40, LAG = 0.26 / 3, X0 = 260;
-    function phaseAt(x) { return (((x - X0) / BED) * LAG) % 1; }
+       It runs the whole floor, spawn included. The whole wave is
+       shifted so the two beds under the spawn have only just gone down
+       when the room starts: about two seconds before they come up. */
+    var BED = 40, LAG = 0.26 / 3, X0 = -60, SHIFT = 0.52;
+    function phaseAt(x) { return (((x - X0) / BED) * LAG + SHIFT) % 1; }
 
     var waves = [];
     for (var i = 0; X0 + i * BED < 2460; i++) {
