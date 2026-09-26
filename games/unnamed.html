@@ -1349,12 +1349,65 @@
     };
   }
 
+  /* The second boss. The same arena and the same attacks as the first,
+     each one worse: its slams bounce off a platform and then come
+     through it, its saws are quicker with one blade missing, it drops
+     its own bombs - one every half second, racing about - and its blue
+     one only goes straight up. And it has yellow spikes that follow
+     you for fifteen seconds and then go off. */
+  function buildRoomSeventeen() {
+    var ground = { x: -60,  y: GROUND, w: 2520, h: 160 };
+    var lowL   = { x: 420,  y: 330,    w: 320,  h: 24, oneWay: true };
+    var high   = { x: 880,  y: 210,    w: 320,  h: 24, oneWay: true };
+    var lowR   = { x: 1340, y: 330,    w: 320,  h: 24, oneWay: true };
+
+    return {
+      name: 'The Second Boss',
+      worldW: 2400,
+      start: { x: 120, y: GROUND - SIZE },
+      fallY: 620,
+
+      solids: [ground, lowL, high, lowR],
+      hazards: [],
+      saws: [],
+      waves: [],
+      enemies: [],
+      bombs: [],
+      sinkers: [],
+      orbs: [],
+
+      boss: {
+        x: 1000, y: 96, w: 74, h: 56,
+        vx: 120,
+        hp: 3, maxHp: 3,
+        flash: 0, dead: false,
+        hover: 96,
+        idle: 0, rest: 1.4,
+        moves: [],
+        mk2: true
+      },
+
+      pickups: [
+        { kind: 'bomb', x: 0, y: 0, w: 26, h: 26, hidden: true,
+          grounded: true, vy: 0, flying: false,
+          home: { x: 1000, y: GROUND - 26 } },
+        { kind: 'key', x: 1020, y: 184, w: 30, h: 26, hidden: true,
+          spawnAt: { x: 1020, y: 184 },
+          home: { x: 1020, y: 184 } }
+      ],
+      door: { x: 2100, y: 310, w: 60, h: 130, needs: 'key' },
+
+      arrows: [],
+      hints: []
+    };
+  }
+
   var BUILDERS = [buildTutorial, buildRoomOne, buildRoomTwo,
                   buildRoomThree, buildRoomFour, buildRoomFive,
                   buildRoomSix, buildRoomSeven, buildRoomEight,
                   buildRoomNine, buildRoomTen, buildRoomEleven,
                   buildRoomTwelve, buildRoomThirteen, buildRoomFourteen,
-                  buildRoomFifteen, buildRoomSixteen];
+                  buildRoomFifteen, buildRoomSixteen, buildRoomSeventeen];
 
   var GRAB_MAX = 2;              // seconds of being held before you die
 
@@ -1412,6 +1465,7 @@
   function loadLevel(i) {
     levelIndex = i;
     level = BUILDERS[i]();
+    level.seekers = [];      // the second boss's yellow spikes, when it sends them
 
     p.x = level.start.x;
     p.y = level.start.y;
@@ -1635,6 +1689,13 @@
       /* let go of the blue bomb and it goes looking for the boss */
       if (held.kind === 'bomb' && level.boss && !level.boss.dead) {
         held.flying = true;
+        /* the second boss's goes straight up from over your head - it
+           is up to you to be under the boss */
+        if (level.boss.mk2) {
+          held.x = p.x + p.w / 2 - held.w / 2;
+          held.y = p.y - held.h - 8;
+          held.vy = -1100;
+        }
         burst(held.x + held.w / 2, held.y + held.h / 2, '#4ec3ff', 16);
       }
       return;
@@ -1644,7 +1705,7 @@
     var best = null, bestD = 1e9;
     for (var i = 0; i < level.pickups.length; i++) {
       var c = level.pickups[i];
-      if (c.hidden || c.held) continue;
+      if (c.hidden || c.held || c.flying) continue;
       if (!near(p, c, 58)) continue;
       var d = Math.abs((p.x + p.w / 2) - (c.x + c.w / 2));
       if (d < bestD) { bestD = d; best = c; }
@@ -1884,11 +1945,12 @@
 
     } else if (kind === 'crash') {
       /* three slams, each one wherever you happen to be standing */
-      mv.dur = 6.6;
+      mv.dur = b.mk2 ? 8.4 : 6.6;       // the second one bounces, so give it time
       mv.slams = 3;
       mv.done = 0;
       mv.sub = 'move';
       mv.subT = 0;
+      mv.through = null;                // the platform it bounced off, if any
 
     } else if (kind === 'spikes') {
       /* it slams the floor and spikes erupt outward from the impact,
@@ -1913,10 +1975,27 @@
       mv.slots = [];
       for (var y = 470; y > 90; y -= 58) mv.slots.push(y);
 
+      /* The second boss throws them faster, and leaves exactly one blade
+         out: the one level with the floor, the low platforms, or the
+         high one - so there is always somewhere to stand in it. */
+      if (b.mk2) {
+        mv.speed = 600;
+        var open = [412, 296, 180];
+        mv.gapY = open[Math.floor(Math.random() * open.length)];
+        mv.gapH = 58;
+        mv.dur = mv.orbit + mv.gather + (level.worldW + 180) / mv.speed + 0.2;
+      }
+
     } else if (kind === 'bombs') {
-      mv.dur = 5.2;
+      mv.dur = b.mk2 ? 7.0 : 5.2;
       mv.dropped = 0;
       mv.blueDropped = false;
+      mv.vx = (Math.random() < 0.5 ? 1 : -1) * 440;   // the second one races about
+
+    } else if (kind === 'seekers') {
+      /* two yellow spikes, sent after you; they outlive the move */
+      mv.dur = 1.0;
+      mv.sent = false;
     }
     b.moves.push(mv);
   }
@@ -1980,6 +2059,7 @@
     if (Math.random() < 0.33) { startMove(b, 'bombs'); return; }
 
     var pool = ['laser', 'crash', 'spikes', 'saws'];
+    if (b.mk2 && level.seekers.length === 0) pool.push('seekers');
     var first = pool[Math.floor(Math.random() * pool.length)];
     startMove(b, first);
 
@@ -1992,7 +2072,8 @@
     }
   }
 
-  function spawnBomb(x, blue) {
+  function spawnBomb(x, blue, fromY) {
+    var y = fromY !== undefined ? fromY : 130;
     if (blue) {
       var bb = level.pickups[0];
       bb.hidden = false;
@@ -2001,12 +2082,12 @@
       bb.grounded = false;
       bb.vy = 0;
       bb.x = x;
-      bb.y = 130;
+      bb.y = y;
       bb.home = { x: x, y: GROUND - bb.h };
       return;
     }
     level.bombs.push({
-      x: x, y: 130, w: 24, h: 24,
+      x: x, y: y, w: 24, h: 24,
       vy: 0, grounded: false,
       fuse: 1.7, blast: 0
     });
@@ -2019,6 +2100,7 @@
     if (b.hp <= 0) {
       b.dead = true;
       b.moves.length = 0;
+      level.seekers.length = 0;        // its spikes go with it
       burst(b.x + b.w / 2, b.y + b.h / 2, '#ffd166', 70, 2.2);
       dropKey(b);
     }
@@ -2054,9 +2136,28 @@
 
       } else if (mv.sub === 'drop') {
         b.y += CRASH_SPEED * dt;
-        var floorY = beamFloor(b.x + b.w / 2, b.y);
+        /* once it has bounced off a platform it goes through it, so
+           only look for what is under that platform */
+        var fromY = mv.through ? Math.max(b.y, mv.through.y + 1) : b.y;
+        var hitS = solidUnder(b.x + b.w / 2, fromY);
+        var floorY = hitS ? hitS.y : GROUND;
         if (hits(p, bossBox(b))) { die(); return; }
+
+        /* The second boss hits a platform first, bounces, and then
+           comes down through it anyway. */
+        if (b.mk2 && !mv.through && hitS && hitS.oneWay && b.y + b.h >= floorY) {
+          b.y = floorY - b.h;
+          mv.through = hitS;
+          mv.bvy = -420;
+          mv.sub = 'bounce';
+          mv.subT = 0;
+          burst(b.x + b.w / 2, floorY, '#ff5f7e', 22, 1.0);
+          state.flash = 0.25;
+          return;
+        }
+
         if (b.y + b.h >= floorY) {
+          mv.through = null;
           /* it lands, and that's all it does — no shockwave. Getting
              out from under it is the whole answer. */
           b.y = floorY - b.h;
@@ -2064,6 +2165,17 @@
           state.flash = 0.3;
           mv.done++;
           mv.sub = mv.done >= mv.slams ? 'over' : 'recover';
+          mv.subT = 0;
+        }
+
+      } else if (mv.sub === 'bounce') {
+        /* up off the platform and back down onto it - then through */
+        mv.bvy += GRAVITY * dt;
+        b.y += mv.bvy * dt;
+        if (hits(p, bossBox(b))) { die(); return; }
+        if (mv.bvy > 0 && b.y + b.h >= mv.through.y) {
+          b.y = mv.through.y - b.h;
+          mv.sub = 'drop';
           mv.subT = 0;
         }
 
@@ -2130,6 +2242,37 @@
         }
       }
 
+    } else if (mv.kind === 'bombs' && b.mk2) {
+      /* The second boss drops them itself, one every half second, while
+         racing from side to side. Partway through, the blue one. */
+      b.y += (b.hover - b.y) * Math.min(1, dt * 4);
+      b.x += mv.vx * dt;
+      if (b.x < 240) { b.x = 240; mv.vx = Math.abs(mv.vx); }
+      if (b.x + b.w > level.worldW - 240) {
+        b.x = level.worldW - 240 - b.w;
+        mv.vx = -Math.abs(mv.vx);
+      }
+      var due = Math.floor(mv.t / 0.5);
+      while (mv.dropped < due) {
+        spawnBomb(b.x + b.w / 2 - 12, false, b.y + b.h);
+        mv.dropped++;
+      }
+      var blue = level.pickups[0];
+      if (!mv.blueDropped && mv.t > 3.5 && blue.hidden) {
+        mv.blueDropped = true;
+        spawnBomb(b.x + b.w / 2 - blue.w / 2, true, b.y + b.h);
+      }
+
+    } else if (mv.kind === 'seekers') {
+      if (!mv.sent && mv.t > 0.5) {
+        mv.sent = true;
+        for (var sk = -1; sk <= 1; sk += 2) {
+          level.seekers.push({ x: b.x + b.w / 2 + sk * 50, y: b.y + b.h / 2,
+                               side: sk, t: 0 });
+        }
+        burst(b.x + b.w / 2, b.y + b.h / 2, '#ffd166', 30, 1.3);
+      }
+
     } else if (mv.kind === 'bombs') {
       var want = Math.floor(mv.t / 0.55);
       while (mv.dropped < want && mv.dropped < 6) {
@@ -2143,10 +2286,43 @@
     }
   }
 
+  /* The yellow spikes. They drift after you, slowly, and nothing you
+     do touches them. Fifteen seconds after they're sent they go off
+     like a bomb, wherever they are. Each keeps to its own side of you
+     so the two don't merge into one. */
+  var SEEKER_SPEED = 85;
+  var SEEKER_LIFE  = 15;
+
+  function updateSeekers(dt) {
+    for (var i = level.seekers.length - 1; i >= 0; i--) {
+      var s = level.seekers[i];
+      s.t += dt;
+      var tx = p.x + p.w / 2 + s.side * 22, ty = p.y + p.h / 2;
+      var dx = tx - s.x, dy = ty - s.y;
+      var d = Math.sqrt(dx * dx + dy * dy) || 1;
+      var stepL = Math.min(d, SEEKER_SPEED * dt);
+      s.x += dx / d * stepL;
+      s.y += dy / d * stepL;
+
+      if (circleHitsBox(s.x, s.y, 12, p)) { die(); return; }
+
+      if (s.t >= SEEKER_LIFE) {
+        /* it becomes a bomb with no fuse left, and goes off next tick */
+        level.bombs.push({ x: s.x - 12, y: s.y - 12, w: 24, h: 24,
+                           vy: 0, grounded: true, fuse: 0, blast: 0 });
+        level.seekers.splice(i, 1);
+      }
+    }
+  }
+
   function updateBoss(dt) {
     var b = level.boss;
     if (!b) return;
     if (b.flash > 0) b.flash -= dt;
+    if (!b.dead) {
+      updateSeekers(dt);
+      if (p.dead) return;
+    }
     if (b.dead) {
       b.y += (b.hover - 40 - b.y) * Math.min(1, dt * 2);
       return;
@@ -2475,6 +2651,40 @@
       if (item.flying) {
         var bs = level.boss;
         if (!bs || bs.dead) { item.hidden = false; item.flying = false; continue; }
+
+        /* Straight up, then - if it missed - straight back down, and it
+           goes off wherever it lands. */
+        if (bs.mk2) {
+          item.vy += GRAVITY * dt;
+          var wasBot = item.y + item.h;
+          item.y += item.vy * dt;
+          if (hits(item, bossBox(bs))) {
+            item.flying = false;
+            item.hidden = true;
+            hurtBoss(bs);
+            continue;
+          }
+          var landed = item.y > level.fallY;
+          if (item.vy > 0) {
+            for (var k2 = 0; k2 < level.solids.length && !landed; k2++) {
+              var so2 = level.solids[k2];
+              if (item.x + item.w <= so2.x || item.x >= so2.x + so2.w) continue;
+              if (wasBot <= so2.y && item.y + item.h >= so2.y) {
+                item.y = so2.y - item.h;
+                landed = true;
+              }
+            }
+          }
+          if (landed) {
+            item.flying = false;
+            item.hidden = true;
+            level.bombs.push({ x: item.x + item.w / 2 - 12, y: item.y + item.h - 24,
+                               w: 24, h: 24, vy: 0, grounded: true,
+                               fuse: 0, blast: 0 });
+          }
+          continue;
+        }
+
         var tx = bs.x + bs.w / 2, ty = bs.y + bs.h / 2;
         var dx = tx - (item.x + item.w / 2), dy = ty - (item.y + item.h / 2);
         var dist = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -3105,7 +3315,32 @@
     ctx.restore();
   }
 
+  /* The yellow spikes: a turning four-point star. In their last two
+     seconds they flicker white, the way a bomb does before it goes. */
+  function drawSeekers() {
+    for (var i = 0; i < level.seekers.length; i++) {
+      var s = level.seekers[i];
+      var soon = SEEKER_LIFE - s.t < 2;
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      ctx.rotate(state.t * 2.4 * s.side);
+      ctx.fillStyle = soon && Math.sin(state.t * 30) > 0 ? '#ffffff' : '#ffd166';
+      ctx.shadowColor = '#ffd166';
+      ctx.shadowBlur = soon ? 22 : 12;
+      ctx.beginPath();
+      for (var k = 0; k < 8; k++) {
+        var a = (k / 8) * Math.PI * 2;
+        var r = k % 2 === 0 ? 17 : 6;
+        ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
   function drawBombs() {
+    drawSeekers();
     for (var i = 0; i < level.bombs.length; i++) {
       var bo = level.bombs[i];
       if (bo.blast > 0) {
