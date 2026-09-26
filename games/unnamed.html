@@ -3580,6 +3580,43 @@
     ctx.restore();
   }
 
+  /* The X-ray warp: the picture itself ripples near the edges of the
+     screen, like looking through a lens. Copy what has been drawn,
+     then paint it back in thin slices, each nudged along a sine wave.
+     It is done in three rings, strongest at the very edge and fading
+     to nothing inward, so the middle of the screen stays still. */
+  var warpBuf = null, warpCtx = null;
+
+  function warpEdges() {
+    if (!warpBuf) {
+      warpBuf = document.createElement('canvas');
+      warpBuf.width = W;
+      warpBuf.height = H;
+      warpCtx = warpBuf.getContext('2d');
+    }
+    warpCtx.clearRect(0, 0, W, H);
+    warpCtx.drawImage(canvas, 0, 0);
+
+    var t = state.t;
+    var SL = 5;                       // slice thickness
+    var RINGS = 3, RW = 30;           // three rings of 30px: a 90px band
+    for (var r = 0; r < RINGS; r++) {
+      var amp = 8 * (1 - r / RINGS);
+      var a = r * RW;
+      var x, y, d;
+      for (y = 0; y < H; y += SL) {             // left and right: rows slide
+        d = Math.sin(y * 0.045 + t * 3.2 + r * 0.8) * amp;
+        ctx.drawImage(warpBuf, a, y, RW, SL, a + d, y, RW, SL);
+        ctx.drawImage(warpBuf, W - a - RW, y, RW, SL, W - a - RW - d, y, RW, SL);
+      }
+      for (x = 0; x < W; x += SL) {             // top and bottom: columns slide
+        d = Math.sin(x * 0.045 + t * 3.2 + r * 0.8) * amp;
+        ctx.drawImage(warpBuf, x, a, SL, RW, x, a + d, SL, RW);
+        ctx.drawImage(warpBuf, x, H - a - RW, SL, RW, x, H - a - RW - d, SL, RW);
+      }
+    }
+  }
+
   function drawHUD() {
     ctx.save();
     ctx.textAlign = 'left';
@@ -3696,6 +3733,7 @@
     drawParticles();
 
     ctx.restore();
+    if (state.xray) warpEdges();      // the world warps, the HUD on top does not
     drawHUD();
   }
 
