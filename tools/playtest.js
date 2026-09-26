@@ -3242,6 +3242,98 @@ for (var i = 0; i < 30; i++) step(1);          // stand there a moment
 ok('and you are still alive standing on it a moment later', !p.dead);
 letGo();
 
+WScript.Echo('');
+WScript.Echo('[checkpoints: no way on]');
+
+/* finish a room the way the door does, and report which room the
+   screen's main button would take you to */
+function doorAndNext() {
+  finishLevel();
+  var from = levelIndex;
+  onNext();
+  return { from: from, to: levelIndex };
+}
+
+loadLevel(13); state.running = true;
+ok('a fresh room is not marked', state.cpUsed === false);
+placeOn(150, GROUND);
+tap('KeyP');
+ok('putting one down does not mark you', state.cpUsed === false);
+placeOn(600, GROUND);
+die();
+for (var i = 0; i < 60 && p.dead; i++) step(1);
+ok('coming back on one does', state.cpUsed === true);
+tap('KeyP');                                   // pick it up again
+ok('and picking it up afterwards does not unmark you',
+   checkpoint === null && state.cpUsed === true);
+
+loadLevel(5); state.running = true;
+placeOn(150, GROUND);
+tap('KeyP');
+tap('KeyR');
+ok('R onto one marks you too', state.cpUsed === true);
+var r = doorAndNext();
+ok('a marked run at the door does not go on to the next room',
+   r.to === 5, 'went ' + r.from + ' -> ' + r.to);
+ok('the screen says why', doneTitle.textContent === 'NOT CLEAN',
+   doneTitle.textContent);
+ok('and the retry is clean', state.cpUsed === false && checkpoint === null);
+
+/* a checkpointed tutorial does not start the game either */
+loadLevel(0); state.running = true;
+state.cpUsed = true;
+r = doorAndNext();
+ok('not from the tutorial either', r.to === 0, 'went to ' + r.to);
+
+/* die with the checkpoint picked up: a real start from the top */
+loadLevel(5); state.running = true;
+placeOn(150, GROUND);
+tap('KeyP');
+tap('KeyR');
+tap('KeyP');                                   // pick it back up
+die();
+for (var i = 0; i < 60 && p.dead; i++) step(1);
+ok('dying with none down clears the mark', state.cpUsed === false);
+r = doorAndNext();
+ok('and then the door takes you on', r.to === 6, 'went to ' + r.to);
+
+/* quitting and continuing must not launder the mark */
+loadLevel(5); state.running = true;
+placeOn(150, GROUND);
+tap('KeyP');
+tap('KeyR');
+saveGame();
+loadLevel(0);
+continueGame();
+ok('the mark survives a save and Continue',
+   levelIndex === 5 && state.cpUsed === true);
+
+WScript.Echo('');
+WScript.Echo('[admin skip]');
+loadLevel(7); state.running = true;
+titleUp = false;
+state.cpUsed = true;
+adminSkip();
+ok('the admin button goes to the next room', levelIndex === 8,
+   'at ' + levelIndex);
+ok('clean, and running', state.cpUsed === false && state.running);
+loadLevel(BUILDERS.length - 1);
+adminSkip();
+ok('and stops at the last one', levelIndex === BUILDERS.length - 1);
+
+clearSave();
+titleUp = true;
+adminSkip();
+ok('from the title with no save, it goes to room one',
+   levelIndex === 1 && !titleUp, 'at ' + levelIndex);
+saveGame();                                    // now saved in room one
+titleUp = true;
+adminSkip();
+ok('from the title with a save, the room after the saved one',
+   levelIndex === 2, 'at ' + levelIndex);
+clearSave();
+letGo();
+
 WScript.Echo('[hitting something that has hold of you]');
 loadLevel(3); state.running = true;
 var e = level.enemies[0];

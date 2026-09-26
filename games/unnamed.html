@@ -124,6 +124,23 @@
       border-color: #4ec3ff;
     }
 
+    /* Admin skip: a near-black square in the bottom-left corner, over
+       everything, that sends you on to the next room. For testing. */
+    #adminBtn {
+      position: absolute;
+      left: 6px;
+      bottom: 6px;
+      width: 14px;
+      height: 14px;
+      padding: 0;
+      background: #080b18;
+      border: 1px solid #0e1328;
+      border-radius: 3px;
+      cursor: pointer;
+      z-index: 10;
+    }
+    #adminBtn:hover { background: #0e1328; border-color: #1d2b5c; }
+
     .keys {
       margin-top: 2rem;
       color: #56658c;
@@ -163,6 +180,8 @@
         <button id="againBtn" class="tbtn ghost" type="button">Restart the Tutorial</button>
       </div>
     </div>
+
+    <button id="adminBtn" type="button" tabindex="-1" aria-label="Admin: skip to the next room"></button>
   </div>
 
 <script>
@@ -1163,7 +1182,8 @@
     buffer: 0,
     picked: false,          // the room's pickup has been in your hands
     complete: false,
-    grab: 0,               // how long the red cube has had hold of you
+    cpUsed: false,          // this run has come back on a checkpoint
+    grab: 0,              // how long the red cube has had hold of you
     flash: 0,
     saveT: 0,
     titleT: 0,              // room-name card countdown
@@ -1206,6 +1226,7 @@
 
     state.picked = false;
     state.complete = false;
+    state.cpUsed = false;
     state.grab = 0;
     state.coyote = 0;
     state.buffer = 0;
@@ -1262,12 +1283,17 @@
 
   /* Dying rewinds the whole room — every pad back up, every blade back
      to where it started. A checkpoint does not stop that; it only
-     changes where you are standing when it is done. */
+     changes where you are standing when it is done.
+
+     Coming back on one marks the run: reach the door after that and it
+     will not let you on to the next room. Only a respawn with no
+     checkpoint down - a real start from the top - wipes the mark. */
   function respawn() {
     var cp = checkpoint;
     loadLevel(levelIndex);
     if (!cp) return;
     checkpoint = cp;
+    state.cpUsed = true;
     p.x = cp.x;
     p.y = cp.y;
     p.vx = 0; p.vy = 0;
@@ -1309,6 +1335,7 @@
         x: safeSpot.x,
         y: safeSpot.y,
         picked: state.picked,
+        cpUsed: state.cpUsed,
         barrierOpen: !!(level.barrier && level.barrier.open)
       }));
     } catch (e) {}
@@ -3367,6 +3394,13 @@
     ctx.fillStyle = '#4ec3ff';
     ctx.fillText(state.name.toUpperCase(), 18, 30);
 
+    if (state.cpUsed) {
+      ctx.fillStyle = '#56658c';
+      ctx.font = '11px sans-serif';
+      ctx.fillText('CHECKPOINT RUN — DIE WITHOUT ONE TO GO CLEAN', 18, 48);
+      ctx.font = 'bold 13px sans-serif';
+    }
+
     if (p.holding) {
       ctx.textAlign = 'right';
       ctx.fillStyle = '#8ea7d6';
@@ -3487,9 +3521,13 @@
   var nextBtn     = document.getElementById('nextBtn');
   var againBtn    = document.getElementById('againBtn');
 
+  var adminBtn    = document.getElementById('adminBtn');
+
   var onNext = null, onAgain = null;
+  var titleUp = true;
 
   function enterGame() {
+    titleUp = false;
     titleScreen.classList.add('hidden');
     doneScreen.classList.add('hidden');
     state.running = true;
@@ -3510,6 +3548,7 @@
     loadLevel(s.level);
     state.name = s.name || 'HERO';
     state.picked = !!s.picked;
+    state.cpUsed = !!s.cpUsed;
     if (level.barrier && s.barrierOpen) {
       level.barrier.open = true;
       if (level.scarecrow) level.scarecrow.everBroken = true;
@@ -3538,6 +3577,8 @@
   function finishLevel() {
     state.running = false;
 
+    if (state.cpUsed) { showCheckpointed(levelIndex); return; }
+
     if (levelIndex === 0 && returnToDone !== null) {
       var back = returnToDone;
       returnToDone = null;
@@ -3547,8 +3588,22 @@
     showDoneFor(levelIndex);
   }
 
+  /* Reached the door, but on a checkpoint: that does not count. The
+     only way out of here is back into the same room, from the top. */
+  function showCheckpointed(room) {
+    state.running = false;
+    doneTitle.textContent = 'NOT CLEAN';
+    doneSub.textContent = 'You used a checkpoint. Clear it without one to go on';
+    nextBtn.textContent = 'Try It Clean';
+    againBtn.classList.add('hide');
+    onNext  = function () { loadLevel(room); enterGame(); };
+    onAgain = null;
+    doneScreen.classList.remove('hidden');
+  }
+
   function showDoneFor(finished) {
     state.running = false;
+    againBtn.classList.remove('hide');
 
     if (finished === 0) {
       doneTitle.textContent = 'TUTORIAL COMPLETE';
@@ -3580,6 +3635,21 @@
   });
   nextBtn.addEventListener('click', function () { if (onNext) onNext(); });
   againBtn.addEventListener('click', function () { if (onAgain) onAgain(); });
+
+  /* Admin: straight on to the room after this one - from the title
+     screen, the room after your save. Clean, no checkpoint mark. */
+  function adminSkip() {
+    var s = titleUp ? readSave() : null;
+    if (titleUp) state.name = (s && s.name) || nameInput.value.trim() || 'HERO';
+    var at = titleUp ? (s ? s.level : 0) : levelIndex;
+    returnToDone = null;
+    loadLevel(Math.min(at + 1, BUILDERS.length - 1));
+    enterGame();
+  }
+  adminBtn.addEventListener('click', function () {
+    adminSkip();
+    if (adminBtn.blur) adminBtn.blur();   // so Space doesn't press it again
+  });
 
   /* Don't lose progress on the way out — leaving via the Games link,
      closing the tab, or the browser backgrounding us all count. */
