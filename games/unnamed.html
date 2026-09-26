@@ -1226,11 +1226,76 @@
     };
   }
 
+  /* Room Fifteen. X-ray. A wall you cannot see stops you almost at
+     once, and the sign says what to do about it. Then a short course
+     the size of Room One where every platform, spike and orb is
+     invisible until you look - and looking freezes you, even on a
+     platform that is falling out from under you. */
+  function buildRoomFifteen() {
+    var TOP = 300;
+    var LINE = TOP - 92;                     // the height a dash flies at
+
+    function ghost(x, y, w, h) {
+      return { x: x, y: y, w: w, h: h, oneWay: y !== GROUND, ghost: true };
+    }
+    /* falls while you stand on it and never stops, X-ray or not */
+    function faller(x, w) {
+      return { x: x, y: TOP, w: w, h: 22, oneWay: true, ghost: true,
+               home: TOP, chain: null,
+               rate: 70, back: 70, max: 99999, active: false, spike: null };
+    }
+
+    var ground = { x: -60, y: GROUND, w: 760, h: 160 };   // 0 .. 700
+    var wall   = { x: 480, y: 280, w: 40, h: 160, ghost: true }; // 160 tall: a double jump
+
+    var p1 = ghost(800,  370, 140, 26);      // one jump up
+    var p2 = ghost(1040, 260, 140, 26);      // a double jump higher
+    var p3 = ghost(1260, TOP, 500, 26);      // the spiked stretch
+    var f1 = faller(1860, 150);              // two that fall
+    var f2 = faller(2110, 150);
+    var p4 = ghost(2360, TOP, 160, 26);      // lip at 2520
+    var end = { x: 2940, y: TOP, w: 700, h: 160 };        // 420 on: one dash
+
+    return {
+      name: 'Room Fifteen',
+      worldW: 3600,
+      start: { x: 80, y: GROUND - SIZE },
+      fallY: 640,
+
+      solids: [ground, wall, p1, p2, p3, f1, f2, p4, end],
+      sinkers: [f1, f2],
+      hazards: [ { x: 1366, y: TOP - 28, w: 188, h: 28, ghost: true } ],
+      orbs: [ { x: 2680, y: LINE, kind: 'dash', r: ORB_R, ghost: true } ],
+
+      waves: [],
+      saws: [],
+      enemies: [],
+      bombs: [],
+      boss: null,
+
+      npc: {
+        x: 3150, y: TOP - SIZE, w: SIZE, h: SIZE,
+        said: false, t: 0,
+        line: 'If in doubt, try X-Ray!'
+      },
+
+      pickups: [],
+      door: { x: 3450, y: TOP - 130, w: 60, h: 130, needs: null },
+
+      arrows: [],
+      hints: [
+        { x: 280, y: 330, big: 'X', small: 'X-RAY: SEE WHAT IS HIDDEN' },
+        { x: 280, y: 250, big: 'X AGAIN', small: 'YOU CANNOT MOVE UNTIL YOU DO' }
+      ]
+    };
+  }
+
   var BUILDERS = [buildTutorial, buildRoomOne, buildRoomTwo,
                   buildRoomThree, buildRoomFour, buildRoomFive,
                   buildRoomSix, buildRoomSeven, buildRoomEight,
                   buildRoomNine, buildRoomTen, buildRoomEleven,
-                  buildRoomTwelve, buildRoomThirteen, buildRoomFourteen];
+                  buildRoomTwelve, buildRoomThirteen, buildRoomFourteen,
+                  buildRoomFifteen];
 
   var GRAB_MAX = 2;              // seconds of being held before you die
 
@@ -1259,6 +1324,7 @@
     picked: false,          // the room's pickup has been in your hands
     complete: false,
     cpUsed: false,          // a flag has gone down in this room
+    xray: false,            // X: see the hidden blocks, but you cannot move
     grab: 0,              // how long the red cube has had hold of you
     flash: 0,
     saveT: 0,
@@ -1303,6 +1369,7 @@
     state.picked = false;
     state.complete = false;
     state.cpUsed = false;
+    state.xray = false;
     state.grab = 0;
     state.coyote = 0;
     state.buffer = 0;
@@ -1477,7 +1544,9 @@
 
   function press(code) {
     if (p.dead || state.complete) return;
+    if (code === 'KeyX') state.xray = !state.xray;
     if (code === 'Space' || code === 'ArrowUp' || code === 'KeyW') {
+      if (state.xray) return;          // no moving while you look
       if (tryOrb()) return;
       state.buffer = BUFFER;
     }
@@ -2251,6 +2320,7 @@
       var want = 0;
       if (keys.ArrowLeft || keys.KeyA) want -= 1;
       if (keys.ArrowRight || keys.KeyD) want += 1;
+      if (state.xray) { want = 0; state.buffer = 0; }   // frozen while you look
       if (want !== 0) {
         p.vx += want * ACCEL * dt;
         if (p.vx > MOVE_SPD) p.vx = MOVE_SPD;
@@ -3103,6 +3173,7 @@
   function drawOrbs() {
     for (var i = 0; i < level.orbs.length; i++) {
       var o = level.orbs[i];
+      if (!seen(o)) continue;
       var pulse = 0.82 + Math.sin(state.t * 6 + o.x) * 0.18;
       var col = orbColor(o);
 
@@ -3508,6 +3579,20 @@
       ctx.restore();
     }
 
+    /* X-ray: a green wash over everything, and a reminder you are stuck */
+    if (state.xray) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(123,255,178,0.08)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#7bffb2';
+      ctx.shadowColor = '#7bffb2';
+      ctx.shadowBlur = 12;
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillText('X-RAY  —  PRESS X TO MOVE AGAIN', W / 2, 30);
+      ctx.restore();
+    }
+
     /* room name card, on the way in */
     if (state.titleT > 0) {
       var a = Math.min(1, state.titleT / 0.6);
@@ -3535,6 +3620,10 @@
     }
   }
 
+  /* Anything marked `ghost` is there - you stand on it, it kills you,
+     it throws you - but it only shows up under X-ray. */
+  function seen(o) { return !o.ghost || state.xray; }
+
   function draw() {
     drawBackground();
     if (!level) return;
@@ -3543,9 +3632,13 @@
     ctx.translate(-Math.round(cam.x), 0);
 
     var i;
-    for (i = 0; i < level.hazards.length; i++) drawHazard(level.hazards[i]);
+    for (i = 0; i < level.hazards.length; i++) {
+      if (seen(level.hazards[i])) drawHazard(level.hazards[i]);
+    }
     drawWaves();
-    for (i = 0; i < level.solids.length; i++) drawSolid(level.solids[i]);
+    for (i = 0; i < level.solids.length; i++) {
+      if (seen(level.solids[i])) drawSolid(level.solids[i]);
+    }
     drawSaws();
     drawOrbs();
     drawBarrier();
