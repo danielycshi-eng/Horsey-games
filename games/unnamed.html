@@ -1463,13 +1463,70 @@
     };
   }
 
+  /* Room Nineteen. A whole course, and every piece of it invisible -
+     floor, platforms, blade, spikes, rings, a platform that drops out
+     from under you, and three reds at the end. Only the door and the
+     key show without X-ray. Every distance is one the game has proved
+     somewhere already; the hard part is that you have to stop and
+     look at each one, and looking freezes you. */
+  function buildRoomNineteen() {
+    var TOP = 380;
+
+    function g(x, y, w, h) {
+      return { x: x, y: y, w: w, h: h || 26, oneWay: !h, ghost: true };
+    }
+
+    var start = g(-60, TOP, 340, 160);        // lip at 280
+    var a  = g(500,  TOP, 140);               // 220: a double
+    var b  = { x: 860, y: TOP, w: 150, h: 22, oneWay: true, ghost: true,
+               home: TOP, chain: null,        // drops fast, never stops
+               rate: 200, back: 120, max: 99999, active: false, spike: null };
+    var c  = g(1240, TOP, 160);               // 230 off a falling one
+    var d  = g(1820, TOP, 200);               // 420: the dash, teeth on the lip
+    var e  = g(2140, 200, 200);               // up off a yellow
+    var f  = g(2560, 300, 400);               // down, with spikes across the middle
+    var end = g(3180, TOP, 920, 160);         // the reds' floor, 220 on
+
+    var reds = [redOn(end, 3400), redOn(end, 3600), redOn(end, 3780)];
+    for (var i = 0; i < reds.length; i++) reds[i].ghost = true;
+
+    return {
+      name: 'Room Nineteen',
+      worldW: 4100,
+      start: { x: 60, y: TOP - SIZE },
+      fallY: 640,
+
+      solids: [start, a, b, c, d, e, f, end],
+      sinkers: [b],
+      hazards: [ { x: 1820, y: TOP - 22, w: 50,  h: 22, ghost: true },
+                 { x: 2680, y: 300 - 28, w: 160, h: 28, ghost: true } ],
+      orbs: [ { x: 1560, y: TOP - 92, kind: 'dash', r: ORB_R, ghost: true },
+              { x: 2080, y: 360, kind: 'up', r: ORB_R_LAUNCH, ghost: true } ],
+      saws: [ { x0: 750, x1: 750, y0: TOP - 215, y1: TOP - 25,
+                r: 22, period: 1.9, phase: 0, ghost: true } ],
+
+      enemies: reds,
+      waves: [],
+      bombs: [],
+      boss: null,
+
+      /* the last red to go down drops it */
+      pickups: [ { kind: 'key', x: 0, y: 0, w: 30, h: 26, hidden: true,
+                   home: { x: 3700, y: TOP - 26 } } ],
+      door: { x: 3950, y: TOP - 130, w: 60, h: 130, needs: 'key' },
+
+      arrows: [],
+      hints: []
+    };
+  }
+
   var BUILDERS = [buildTutorial, buildRoomOne, buildRoomTwo,
                   buildRoomThree, buildRoomFour, buildRoomFive,
                   buildRoomSix, buildRoomSeven, buildRoomEight,
                   buildRoomNine, buildRoomTen, buildRoomEleven,
                   buildRoomTwelve, buildRoomThirteen, buildRoomFourteen,
                   buildRoomFifteen, buildRoomSixteen, buildRoomSeventeen,
-                  buildRoomEighteen];
+                  buildRoomEighteen, buildRoomNineteen];
 
   var GRAB_MAX = 2;              // seconds of being held before you die
 
@@ -3588,6 +3645,7 @@
   function drawSaws() {
     for (var i = 0; i < level.saws.length; i++) {
       var sw = level.saws[i];
+      if (!seen(sw)) continue;
       var at = sawPos(sw);
 
       /* the rail it rides, so you can read the swing before you jump */
@@ -3683,7 +3741,9 @@
   }
 
   function drawEnemies() {
-    for (var n = 0; n < level.enemies.length; n++) drawEnemy(level.enemies[n]);
+    for (var n = 0; n < level.enemies.length; n++) {
+      if (seen(level.enemies[n])) drawEnemy(level.enemies[n]);
+    }
   }
 
   function drawEnemy(e) {
