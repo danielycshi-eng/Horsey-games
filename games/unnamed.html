@@ -1289,12 +1289,72 @@
     };
   }
 
+  /* Room Sixteen. An ordinary room over a void, middling hard - except
+     that some of it is only there under X-ray. A platform you cannot
+     see, a dash orb and a yellow you cannot see, and two platforms that
+     look solid but hang on hidden chains and drop fast the moment you
+     land. Only X-ray shows the chains. */
+  function buildRoomSixteen() {
+    var TOP = 380;
+
+    function plat(x, y, w) {
+      return { x: x, y: y, w: w, h: 26, oneWay: true };
+    }
+    function ghost(x, y, w) {
+      return { x: x, y: y, w: w, h: 26, oneWay: true, ghost: true };
+    }
+    /* looks like any other platform; the chain only shows under X-ray */
+    function dropper(x, y, w) {
+      return { x: x, y: y, w: w, h: 22, oneWay: true, hideChain: true,
+               home: y, chain: null,
+               rate: 280, back: 120, max: 99999, active: false, spike: null };
+    }
+
+    var start = { x: -60, y: TOP, w: 360, h: 160 };  // lip at 300
+    var a  = plat(460, TOP, 160);                    // 160: one jump
+    var b  = ghost(840, TOP, 140);                   // 220: double, unseen
+    var c  = dropper(1200, TOP, 160);                // 220, and it drops
+    var d  = plat(1560, TOP, 200);                   // 200 on, lip at 1760
+    var e  = plat(2180, TOP, 200);                   // 420: the hidden dash
+    var f  = plat(2500, 200, 200);                   // up off a hidden yellow
+    var g  = dropper(2900, 300, 150);                // down, and it drops
+    var h  = ghost(3240, 300, 140);                  // 190, unseen
+    var end = { x: 3560, y: TOP, w: 700, h: 160 };   // 180 down
+
+    return {
+      name: 'Room Sixteen',
+      worldW: 4200,
+      start: { x: 60, y: TOP - SIZE },
+      fallY: 640,
+
+      solids: [start, a, b, c, d, e, f, g, h, end],
+      sinkers: [c, g],
+      hazards: [],
+      orbs: [ { x: 1920, y: TOP - 92, kind: 'dash', r: ORB_R, ghost: true },
+              { x: 2440, y: 360, kind: 'up', r: ORB_R_LAUNCH, ghost: true } ],
+
+      /* a blade in the gap before the hidden platform: look, then time it */
+      saws: [ { x0: 730, x1: 730, y0: TOP - 215, y1: TOP - 25,
+                r: 22, period: 2.0, phase: 0 } ],
+
+      waves: [],
+      enemies: [],
+      bombs: [],
+      boss: null,
+      pickups: [],
+      door: { x: 3900, y: TOP - 130, w: 60, h: 130, needs: null },
+
+      arrows: [],
+      hints: []
+    };
+  }
+
   var BUILDERS = [buildTutorial, buildRoomOne, buildRoomTwo,
                   buildRoomThree, buildRoomFour, buildRoomFive,
                   buildRoomSix, buildRoomSeven, buildRoomEight,
                   buildRoomNine, buildRoomTen, buildRoomEleven,
                   buildRoomTwelve, buildRoomThirteen, buildRoomFourteen,
-                  buildRoomFifteen];
+                  buildRoomFifteen, buildRoomSixteen];
 
   var GRAB_MAX = 2;              // seconds of being held before you die
 
@@ -2753,7 +2813,7 @@
   function drawSolid(s) {
     /* a sinking platform hangs from a chain, and the chain pays out as
        it drops — chained pairs share a colour so you can see the link */
-    if (s.home !== undefined) {
+    if (s.home !== undefined && (!s.hideChain || state.xray)) {
       var tone = s.chain === 'a' ? '#ffd166' : s.chain === 'b' ? '#7bffb2' : '#5c6579';
       ctx.save();
       ctx.strokeStyle = tone;
