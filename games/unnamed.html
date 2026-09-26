@@ -1284,8 +1284,7 @@
 
       arrows: [],
       hints: [
-        { x: 280, y: 330, big: 'X', small: 'X-RAY: SEE WHAT IS HIDDEN' },
-        { x: 280, y: 250, big: 'X AGAIN', small: 'YOU CANNOT MOVE UNTIL YOU DO' }
+        { x: 280, y: 330, big: 'Press X to use X-Ray', small: '' }
       ]
     };
   }
@@ -3541,6 +3540,46 @@
     ctx.globalAlpha = 1;
   }
 
+  /* The X-ray glow: a green band on each edge of the screen, fading
+     to nothing inward, whose inner edge ripples. Each edge is drawn in
+     its own frame: rotate so it sits along the top, then draw one
+     wavy band there. */
+  function drawXrayEdges() {
+    var t = state.t;
+    var DEPTH = 46;
+    var sides = [
+      { rot: 0,            len: W, tx: 0, ty: 0 },     // top
+      { rot: Math.PI / 2,  len: H, tx: W, ty: 0 },     // right
+      { rot: Math.PI,      len: W, tx: W, ty: H },     // bottom
+      { rot: -Math.PI / 2, len: H, tx: 0, ty: H }      // left
+    ];
+    ctx.save();
+    for (var k = 0; k < sides.length; k++) {
+      var sd = sides[k];
+      ctx.save();
+      ctx.translate(sd.tx, sd.ty);
+      ctx.rotate(sd.rot);
+
+      var g = ctx.createLinearGradient(0, 0, 0, DEPTH + 12);
+      g.addColorStop(0, 'rgba(123,255,178,0.22)');
+      g.addColorStop(1, 'rgba(123,255,178,0)');
+      ctx.fillStyle = g;
+
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(sd.len, 0);
+      for (var x = sd.len; x >= 0; x -= 12) {
+        var d = DEPTH + Math.sin(x * 0.021 + t * 2.6 + k) * 9 +
+                Math.sin(x * 0.057 - t * 1.9 + k * 2) * 5;
+        ctx.lineTo(x, d);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
   function drawHUD() {
     ctx.save();
     ctx.textAlign = 'left';
@@ -3579,17 +3618,17 @@
       ctx.restore();
     }
 
-    /* X-ray: a green wash over everything, and a reminder you are stuck */
+    /* X-ray: a faint green glow round the edges of the screen, and how
+       to turn it off */
     if (state.xray) {
+      drawXrayEdges();
       ctx.save();
-      ctx.fillStyle = 'rgba(123,255,178,0.08)';
-      ctx.fillRect(0, 0, W, H);
       ctx.textAlign = 'center';
       ctx.fillStyle = '#7bffb2';
-      ctx.shadowColor = '#7bffb2';
-      ctx.shadowBlur = 12;
+      ctx.shadowColor = 'rgba(123,255,178,0.6)';
+      ctx.shadowBlur = 10;
       ctx.font = 'bold 14px sans-serif';
-      ctx.fillText('X-RAY  —  PRESS X TO MOVE AGAIN', W / 2, 30);
+      ctx.fillText('Press X again to remove X-Ray', W / 2, 30);
       ctx.restore();
     }
 
