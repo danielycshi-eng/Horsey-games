@@ -1402,12 +1402,69 @@
     };
   }
 
+  /* Room Eighteen. A breather after the second boss. The green fellow
+     is waiting with apples again; past him an invisible wall, and past
+     that he is waiting again, with the key. */
+  function buildRoomEighteen() {
+    var apples = [];
+    for (var i = 0; i < 22; i++) {
+      apples.push({
+        kind: 'apple',
+        x: 480 + (i % 11) * 46 + (i > 10 ? 22 : 0),
+        y: -140 - Math.floor(i / 11) * 90 - (i % 5) * 40,
+        w: 26, h: 28,
+        hidden: true, grounded: false, vy: 0,
+        home: { x: 460 + i * 34, y: GROUND - 28 }
+      });
+    }
+
+    /* he drops it from over his head, and it falls to the floor */
+    var key = { kind: 'key', x: 1760, y: GROUND - 150, w: 30, h: 26,
+                hidden: true, grounded: false, vy: 0,
+                home: { x: 1760, y: GROUND - 26 } };
+
+    return {
+      name: 'Room Eighteen',
+      worldW: 2600,
+      start: { x: 80, y: GROUND - SIZE },
+      fallY: 620,
+
+      solids: [ { x: -60, y: GROUND, w: 2720, h: 160 },
+                /* a double jump tall, and only there under X-ray */
+                { x: 1300, y: 280, w: 40, h: 160, ghost: true } ],
+      hazards: [],
+      saws: [],
+      enemies: [],
+      waves: [],
+      boss: null,
+      bombs: [],
+      sinkers: [],
+      orbs: [],
+
+      npcs: [
+        { x: 600, y: GROUND - SIZE, w: SIZE, h: SIZE,
+          said: false, t: 0, gives: 'apple',
+          line: 'Wow! That was tough! Want some apples?' },
+        { x: 1700, y: GROUND - SIZE, w: SIZE, h: SIZE,
+          said: false, t: 0, gives: 'key',
+          line: 'Did the X-Ray get ya?' }
+      ],
+
+      pickups: apples.concat([key]),
+      door: { x: 2250, y: 310, w: 60, h: 130, needs: 'key' },
+
+      arrows: [],
+      hints: []
+    };
+  }
+
   var BUILDERS = [buildTutorial, buildRoomOne, buildRoomTwo,
                   buildRoomThree, buildRoomFour, buildRoomFive,
                   buildRoomSix, buildRoomSeven, buildRoomEight,
                   buildRoomNine, buildRoomTen, buildRoomEleven,
                   buildRoomTwelve, buildRoomThirteen, buildRoomFourteen,
-                  buildRoomFifteen, buildRoomSixteen, buildRoomSeventeen];
+                  buildRoomFifteen, buildRoomSixteen, buildRoomSeventeen,
+                  buildRoomEighteen];
 
   var GRAB_MAX = 2;              // seconds of being held before you die
 
@@ -2732,17 +2789,21 @@
       }
     }
 
-    /* --- the green fellow, and his apples --- */
-    var npc = level.npc;
-    if (npc && !npc.said && Math.abs((p.x + p.w / 2) - (npc.x + npc.w / 2)) < 190) {
-      npc.said = true;
-      npc.t = 0;
-    }
-    if (npc && npc.said) {
+    /* --- the green fellow, and whatever he gives you. `gives` names
+           the kind of pickup he lets loose; without it, everything. --- */
+    var npcs = npcList();
+    for (var ni = 0; ni < npcs.length; ni++) {
+      var npc = npcs[ni];
+      if (!npc.said && Math.abs((p.x + p.w / 2) - (npc.x + npc.w / 2)) < 190) {
+        npc.said = true;
+        npc.t = 0;
+      }
+      if (!npc.said) continue;
       var before = npc.t;
       npc.t += dt;
-      if (before < 1.1 && npc.t >= 1.1) {       // the apples arrive
+      if (before < 1.1 && npc.t >= 1.1) {       // the gift arrives
         for (i = 0; i < level.pickups.length; i++) {
+          if (npc.gives && level.pickups[i].kind !== npc.gives) continue;
           level.pickups[i].hidden = false;
           level.pickups[i].grounded = false;
         }
@@ -3435,15 +3496,22 @@
     }
   }
 
+  /* A room has one green fellow (`npc`) or several (`npcs`). */
+  function npcList() {
+    if (level.npcs) return level.npcs;
+    return level.npc ? [level.npc] : [];
+  }
+
   function drawNpc() {
-    var n = level.npc;
-    if (!n) return;
+    var list = npcList();
+    for (var i = 0; i < list.length; i++) {
+      var n = list[i];
+      var bob = Math.sin(state.t * 2) * 2;
+      drawCube(n.x + n.w / 2, n.y + n.h / 2 + bob, n.w, n.h, '#7bffb2',
+               (p.x + p.w / 2) < (n.x + n.w / 2) ? -1 : 1, 0);
 
-    var bob = Math.sin(state.t * 2) * 2;
-    drawCube(n.x + n.w / 2, n.y + n.h / 2 + bob, n.w, n.h, '#7bffb2',
-             (p.x + p.w / 2) < (n.x + n.w / 2) ? -1 : 1, 0);
-
-    if (n.said) drawSpeech(n.x + n.w / 2, n.y + bob, n.line, n.t * 34);
+      if (n.said) drawSpeech(n.x + n.w / 2, n.y + bob, n.line, n.t * 34);
+    }
   }
 
   /* The same fellow, in the one room where he is busy. */
