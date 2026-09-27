@@ -1588,13 +1588,73 @@
     };
   }
 
+  /* Room Twenty-One. Everything so far, in one course: belts both
+     ways, blades, a platform that drops, spikes on a belt that runs you
+     back into them, a dash, a platform only X-ray shows, a yellow up to
+     a blade-swept ledge. And at the end, a belt that goes red under
+     you and throws you across the last gap into the door. */
+  function buildRoomTwentyOne() {
+    var TOP = 400;
+
+    function belt(x, w, speed) {
+      return { x: x, y: TOP, w: w, h: 14, oneWay: true, belt: speed };
+    }
+    function plat(x, y, w) {
+      return { x: x, y: y, w: w, h: 26, oneWay: true };
+    }
+
+    var start = { x: -60, y: TOP, w: 340, h: 160 };  // lip at 280
+    var a  = belt(360, 360, 180);                    // on with you, lip 720
+    var b  = plat(940, TOP, 160);                    // 220, a blade in it
+    var c  = { x: 1320, y: TOP, w: 150, h: 22, oneWay: true,   // 220, and it drops
+               home: TOP, chain: null,
+               rate: 90, back: 70, max: 99999, active: false, spike: null };
+    var d  = belt(1690, 300, -160);                  // 220, back at you, lip 1990
+    var e  = plat(2410, TOP, 200);                   // 420: the dash, lip 2610
+    var f  = { x: 2830, y: TOP, w: 140, h: 26, oneWay: true, ghost: true };  // 220, unseen
+    var g  = plat(3090, TOP - 180, 200);             // up off a yellow, lip 3290
+    var yeet = { x: 3490, y: TOP, w: 240, h: 14, oneWay: true,
+                 belt: 200, yeet: true };            // 200 down and on
+    var end = { x: 4200, y: TOP, w: 560, h: 160 };   // across the void
+
+    return {
+      name: 'Room Twenty-One',
+      worldW: 4700,
+      start: { x: 60, y: TOP - SIZE },
+      fallY: 660,
+
+      solids: [start, a, b, c, d, e, f, g, yeet, end],
+      sinkers: [c],
+      /* spikes across the middle of the backward belt */
+      hazards: [ { x: 1790, y: TOP - 28, w: 100, h: 28 } ],
+      orbs: [ { x: 2150, y: TOP - 92, kind: 'dash', r: ORB_R },
+              { x: 3030, y: TOP - 20, kind: 'up', r: ORB_R_LAUNCH } ],
+      saws: [ { x0: 830, x1: 830, y0: TOP - 215, y1: TOP - 25,
+                r: 22, period: 1.9, phase: 0 },
+              { x0: g.x + 22, x1: g.x + g.w - 22,
+                y0: g.y - 22, y1: g.y - 22,
+                r: 22, period: 2.0, phase: 0.5 } ],
+
+      waves: [],
+      enemies: [],
+      bombs: [],
+      boss: null,
+      pickups: [],
+      door: { x: 4400, y: TOP - 130, w: 60, h: 130, needs: null },
+
+      arrows: [],
+      hints: []
+    };
+  }
+
   var BUILDERS = [buildTutorial, buildRoomOne, buildRoomTwo,
                   buildRoomThree, buildRoomFour, buildRoomFive,
                   buildRoomSix, buildRoomSeven, buildRoomEight,
                   buildRoomNine, buildRoomTen, buildRoomEleven,
                   buildRoomTwelve, buildRoomThirteen, buildRoomFourteen,
                   buildRoomFifteen, buildRoomSixteen, buildRoomSeventeen,
-                  buildRoomEighteen, buildRoomNineteen, buildRoomTwenty];
+                  buildRoomEighteen, buildRoomNineteen, buildRoomTwenty,
+                  buildRoomTwentyOne];
 
   var GRAB_MAX = 2;              // seconds of being held before you die
 
@@ -1663,6 +1723,7 @@
     p.face = 1;
     p.atk = 0; p.cool = 0; p.swung = false;
     p.dash = 0; p.dashDir = 1;
+    p.yeet = 0; p.yeetVx = 0;
     p.holding = null;
     p.dead = false; p.deadT = 0;
 
@@ -2029,6 +2090,44 @@
 
     if (p.x < 0) { p.x = 0; p.vx = 0; }
     if (p.x + p.w > level.worldW) { p.x = level.worldW - p.w; p.vx = 0; }
+  }
+
+  /* A belt marked `yeet` heats up red while you stand on it, and when
+     it is fully red it throws you - on an arc worked out from wherever
+     you are, so it lands you in the door every time. */
+  var YEET_HEAT = 0.6;          // seconds on it before it goes
+  var YEET_TIME = 0.85;         // how long the flight takes
+
+  function updateYeetBelts(dt) {
+    for (var i = 0; i < level.solids.length; i++) {
+      var s = level.solids[i];
+      if (!s.yeet) continue;
+      if (!s.heat) s.heat = 0;
+      if (standingOn(s) && p.yeet <= 0) {
+        s.heat = Math.min(1, s.heat + dt / YEET_HEAT);
+        /* land near the far end and it would carry you off before it
+           was hot - so at the edge it goes at once */
+        var atEdge = s.belt > 0 ? p.x + p.w > s.x + s.w - 12 : p.x < s.x + 12;
+        if (atEdge) s.heat = 1;
+        if (s.heat >= 1) yeetToDoor(s);
+      } else if (p.yeet <= 0) {
+        s.heat = Math.max(0, s.heat - dt);    // cools off if you step off
+      }
+    }
+  }
+
+  function yeetToDoor(s) {
+    var d = level.door;
+    var T = YEET_TIME;
+    var tx = d.x + d.w / 2 - p.w / 2;
+    var ty = d.y + d.h - p.h - 30;             // into the doorway, not the floor
+    p.yeetVx = (tx - p.x) / T;
+    p.vy = (ty - p.y - 0.5 * GRAVITY * T * T) / T;
+    p.yeet = T + 0.3;
+    p.onGround = false;
+    p.dash = 0;
+    burst(p.x + p.w / 2, p.y + p.h, '#ff2d55', 40, 1.8);
+    state.flash = Math.max(state.flash, 0.3);
   }
 
   function jump(isDouble) {
@@ -2746,6 +2845,16 @@
       state.buffer = 0;
       if (p.dash <= 0) p.vx = MOVE_SPD * p.dashDir;   // drop back to a run
 
+    } else if (p.yeet > 0) {
+      /* --- thrown by a red belt: a plain arc, and nothing you press
+             changes it --- */
+      p.yeet -= dt;
+      p.vx = p.yeetVx;
+      p.face = p.yeetVx >= 0 ? 1 : -1;
+      state.buffer = 0;
+      p.vy += GRAVITY * dt;
+      if (p.vy > MAX_FALL) p.vy = MAX_FALL;
+
     } else {
       /* --- horizontal --- */
       var want = 0;
@@ -2790,6 +2899,7 @@
     movePlayer(dt);
 
     updateSinkers(dt);
+    updateYeetBelts(dt);
 
     /* --- remember safe ground, and checkpoint the save --- */
     if (p.onGround) { safeSpot.x = p.x; safeSpot.y = p.y; }
@@ -3296,8 +3406,20 @@
     rr(s.x, s.y, s.w, s.h, r);
     ctx.fill();
 
+    /* a yeet belt going red as it heats up under you */
+    if (s.heat > 0) {
+      ctx.save();
+      ctx.globalAlpha = s.heat;
+      ctx.fillStyle = '#c0182f';
+      ctx.shadowColor = '#ff2d55';
+      ctx.shadowBlur = 18 * s.heat;
+      rr(s.x, s.y, s.w, s.h, r);
+      ctx.fill();
+      ctx.restore();
+    }
+
     /* its top run, a little lighter where the light catches it */
-    ctx.fillStyle = '#6b717c';
+    ctx.fillStyle = s.heat > 0.5 ? '#ff6b80' : '#6b717c';
     ctx.fillRect(x0, s.y, x1 - x0, 3);
 
     /* the cleats, clipped to the straight runs */
