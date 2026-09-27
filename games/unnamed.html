@@ -1589,9 +1589,9 @@
   }
 
   /* Room Twenty-One. Everything so far, in one course, and quick about
-     it: fast belts both ways, quick blades, a platform that drops fast,
-     a belt running back at you with two pairs of spikes riding on it, a
-     dash onto a narrow landing, a platform and a yellow only X-ray
+     it: fast belts both ways that only X-ray shows, quick blades, a
+     platform that drops fast, the backward belt with two pairs of
+     spikes riding round it, a dash onto a narrow landing, a platform and a yellow only X-ray
      shows, a blade-swept ledge. And at the end, a belt that goes red
      under you and throws you across the last gap into the door. */
   function buildRoomTwentyOne() {
@@ -1606,12 +1606,14 @@
 
     var start = { x: -60, y: TOP, w: 340, h: 160 };  // lip at 280
     var a  = belt(360, 360, 240);                    // on with you, fast, lip 720
+    a.ghost = true;                                  // only X-ray shows it
     var b  = plat(940, TOP, 120);                    // 220, a quick blade in it
     var c  = { x: 1280, y: TOP, w: 130, h: 22, oneWay: true,   // 220, drops fast
                home: TOP, chain: null,
                rate: 180, back: 70, max: 99999, active: false, spike: null };
     var d  = belt(1630, 360, -200);                  // 220, back at you, lip 1990
-    d.riders = [0, 190];                             // two pairs of spikes on it
+    d.riders = [0, 368];                             // two pairs, half a loop apart
+    d.ghost = true;                                  // it and its spikes: X-ray only
     var e  = plat(2410, TOP, 140);                   // 420: the dash, lip 2550
     var f  = { x: 2770, y: TOP, w: 120, h: 26, oneWay: true, ghost: true };  // 220, unseen
     var g  = plat(2990, TOP - 180, 180);             // up off an unseen yellow, lip 3170
@@ -3077,9 +3079,15 @@
       var rs = level.solids[i];
       if (!rs.riders) continue;
       for (var rj = 0; rj < rs.riders.length; rj++) {
-        var rxl = riderX(rs, rs.riders[rj]);
-        if (rxl === null) continue;
-        if (hits(p, { x: rxl + 2, y: rs.y - 22, w: RIDER_W - 4, h: 22 })) { die(); return; }
+        var rt = riderTeeth(rs, rs.riders[rj]);
+        for (var rk = 0; rk < rt.length; rk++) {
+          /* judged along the straight runs, up top and hanging below;
+             going round a roller they are tucked in against it */
+          var tb = null;
+          if (rt[rk].side === 'top') tb = { x: rt[rk].x - 6, y: rs.y - 22, w: 12, h: 22 };
+          if (rt[rk].side === 'bottom') tb = { x: rt[rk].x - 6, y: rs.y + rs.h, w: 12, h: 22 };
+          if (tb && hits(p, tb)) { die(); return; }
+        }
       }
     }
     /* teeth carried on a sinking platform's own surface */
@@ -3408,16 +3416,41 @@
      each end, with cleats across it that travel the way it carries you
      - along the top, and back the other way underneath. */
   /* Spikes that ride a belt. Each rider is a pair of teeth fixed to
-     the rubber, so it travels at the belt's speed: along the top, round
-     the roller, back underneath, and up over the top again. `off` is
-     where on that loop it starts. Returns the left edge of the pair
-     while it is on top, or null while it is underneath. */
-  var RIDER_TOOTH = 16, RIDER_W = 32;
+     the rubber, so they go all the way round with it: along the top,
+     round the right-hand roller, back along the bottom hanging upside
+     down, round the left-hand roller and up over the top again.
 
-  function riderX(s, off) {
-    var L = 2 * s.w;
-    var u = ((off + state.t * s.belt) % L + L) % L;
-    return u <= s.w - RIDER_W ? s.x + u : null;
+     `off` is where on that loop the pair starts. The loop is measured
+     clockwise from the top of the left roller, so a belt running right
+     moves its riders forward along it and one running left, back. */
+  var RIDER_TOOTH = 16;
+
+  /* The point `u` along the loop, and which way is outward there. */
+  function beltLoopAt(s, u) {
+    var r = s.h / 2;
+    var x0 = s.x + r, x1 = s.x + s.w - r, cy = s.y + r;
+    var run = x1 - x0, arc = Math.PI * r;
+    var P = 2 * run + 2 * arc;
+    u = ((u % P) + P) % P;
+    var a;
+    if (u < run) return { x: x0 + u, y: s.y, ang: -Math.PI / 2, side: 'top' };
+    u -= run;
+    if (u < arc) {
+      a = -Math.PI / 2 + u / r;
+      return { x: x1 + Math.cos(a) * r, y: cy + Math.sin(a) * r, ang: a, side: 'round' };
+    }
+    u -= arc;
+    if (u < run) return { x: x1 - u, y: s.y + s.h, ang: Math.PI / 2, side: 'bottom' };
+    u -= run;
+    a = Math.PI / 2 + u / r;
+    return { x: x0 + Math.cos(a) * r, y: cy + Math.sin(a) * r, ang: a, side: 'round' };
+  }
+
+  /* The two teeth of a rider, each at the middle of its base. */
+  function riderTeeth(s, off) {
+    var u = off + state.t * s.belt;
+    return [ beltLoopAt(s, u + RIDER_TOOTH / 2),
+             beltLoopAt(s, u + RIDER_TOOTH * 1.5) ];
   }
 
   function drawBelt(s) {
@@ -3510,16 +3543,19 @@
       ctx.shadowColor = '#ff5f7e';
       ctx.shadowBlur = 12;
       for (var ri = 0; ri < s.riders.length; ri++) {
-        var rx0 = riderX(s, s.riders[ri]);
-        if (rx0 === null) continue;
-        for (var t2 = 0; t2 < 2; t2++) {
-          var tx0 = rx0 + t2 * RIDER_TOOTH;
+        var teeth2 = riderTeeth(s, s.riders[ri]);
+        for (var t2 = 0; t2 < teeth2.length; t2++) {
+          var tt = teeth2[t2];
+          ctx.save();
+          ctx.translate(tt.x, tt.y);
+          ctx.rotate(tt.ang + Math.PI / 2);   // point straight out from the belt
           ctx.beginPath();
-          ctx.moveTo(tx0, s.y);
-          ctx.lineTo(tx0 + RIDER_TOOTH / 2, s.y - 22);
-          ctx.lineTo(tx0 + RIDER_TOOTH, s.y);
+          ctx.moveTo(-RIDER_TOOTH / 2, 0);
+          ctx.lineTo(0, -22);
+          ctx.lineTo(RIDER_TOOTH / 2, 0);
           ctx.closePath();
           ctx.fill();
+          ctx.restore();
         }
       }
       ctx.restore();
