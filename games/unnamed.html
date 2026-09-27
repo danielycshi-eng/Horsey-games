@@ -3335,6 +3335,22 @@
       ctx.arc(0, 0, 1.8, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
+
+      /* a tiny green arrow on the hub, pointing the way it carries you
+         - it doesn't turn with the roller */
+      var ad = s.belt > 0 ? 1 : -1;
+      ctx.save();
+      ctx.translate(rx, cy);
+      ctx.fillStyle = '#7bffb2';
+      ctx.shadowColor = '#7bffb2';
+      ctx.shadowBlur = 4;
+      ctx.beginPath();
+      ctx.moveTo(4 * ad, 0);
+      ctx.lineTo(-2 * ad, -3.5);
+      ctx.lineTo(-2 * ad, 3.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
     }
   }
 
