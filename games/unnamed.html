@@ -1588,11 +1588,12 @@
     };
   }
 
-  /* Room Twenty-One. Everything so far, in one course: belts both
-     ways, blades, a platform that drops, spikes on a belt that runs you
-     back into them, a dash, a platform only X-ray shows, a yellow up to
-     a blade-swept ledge. And at the end, a belt that goes red under
-     you and throws you across the last gap into the door. */
+  /* Room Twenty-One. Everything so far, in one course, and quick about
+     it: fast belts both ways, quick blades, a platform that drops fast,
+     a belt running back at you with two pairs of spikes riding on it, a
+     dash onto a narrow landing, a platform and a yellow only X-ray
+     shows, a blade-swept ledge. And at the end, a belt that goes red
+     under you and throws you across the last gap into the door. */
   function buildRoomTwentyOne() {
     var TOP = 400;
 
@@ -1604,43 +1605,47 @@
     }
 
     var start = { x: -60, y: TOP, w: 340, h: 160 };  // lip at 280
-    var a  = belt(360, 360, 180);                    // on with you, lip 720
-    var b  = plat(940, TOP, 160);                    // 220, a blade in it
-    var c  = { x: 1320, y: TOP, w: 150, h: 22, oneWay: true,   // 220, and it drops
+    var a  = belt(360, 360, 240);                    // on with you, fast, lip 720
+    var b  = plat(940, TOP, 120);                    // 220, a quick blade in it
+    var c  = { x: 1280, y: TOP, w: 130, h: 22, oneWay: true,   // 220, drops fast
                home: TOP, chain: null,
-               rate: 90, back: 70, max: 99999, active: false, spike: null };
-    var d  = belt(1690, 300, -160);                  // 220, back at you, lip 1990
-    var e  = plat(2410, TOP, 200);                   // 420: the dash, lip 2610
-    var f  = { x: 2830, y: TOP, w: 140, h: 26, oneWay: true, ghost: true };  // 220, unseen
-    var g  = plat(3090, TOP - 180, 200);             // up off a yellow, lip 3290
-    var yeet = { x: 3490, y: TOP, w: 240, h: 14, oneWay: true,
+               rate: 180, back: 70, max: 99999, active: false, spike: null };
+    var d  = belt(1630, 360, -200);                  // 220, back at you, lip 1990
+    d.riders = [0, 190];                             // two pairs of spikes on it
+    var e  = plat(2410, TOP, 140);                   // 420: the dash, lip 2550
+    var f  = { x: 2770, y: TOP, w: 120, h: 26, oneWay: true, ghost: true };  // 220, unseen
+    var g  = plat(2990, TOP - 180, 180);             // up off an unseen yellow, lip 3170
+    var yeet = { x: 3370, y: TOP, w: 240, h: 14, oneWay: true,
                  belt: 200, yeet: true };            // 200 down and on
-    var end = { x: 4200, y: TOP, w: 560, h: 160 };   // across the void
+    var end = { x: 4080, y: TOP, w: 560, h: 160 };   // across the void
 
     return {
       name: 'Room Twenty-One',
-      worldW: 4700,
+      worldW: 4600,
       start: { x: 60, y: TOP - SIZE },
       fallY: 660,
 
       solids: [start, a, b, c, d, e, f, g, yeet, end],
       sinkers: [c],
-      /* spikes across the middle of the backward belt */
-      hazards: [ { x: 1790, y: TOP - 28, w: 100, h: 28 } ],
+      hazards: [],
       orbs: [ { x: 2150, y: TOP - 92, kind: 'dash', r: ORB_R },
-              { x: 3030, y: TOP - 20, kind: 'up', r: ORB_R_LAUNCH } ],
+              { x: 2930, y: TOP - 20, kind: 'up', r: ORB_R_LAUNCH, ghost: true } ],
       saws: [ { x0: 830, x1: 830, y0: TOP - 215, y1: TOP - 25,
-                r: 22, period: 1.9, phase: 0 },
+                r: 22, period: 1.4, phase: 0 },
+              { x0: 1170, x1: 1170, y0: TOP - 215, y1: TOP - 25,   // and after b
+                r: 22, period: 1.5, phase: 0.5 },
+              { x0: 2660, x1: 2660, y0: TOP - 215, y1: TOP - 25,   // before the unseen one
+                r: 22, period: 1.6, phase: 0.2 },
               { x0: g.x + 22, x1: g.x + g.w - 22,
                 y0: g.y - 22, y1: g.y - 22,
-                r: 22, period: 2.0, phase: 0.5 } ],
+                r: 22, period: 1.5, phase: 0.5 } ],
 
       waves: [],
       enemies: [],
       bombs: [],
       boss: null,
       pickups: [],
-      door: { x: 4400, y: TOP - 130, w: 60, h: 130, needs: null },
+      door: { x: 4280, y: TOP - 130, w: 60, h: 130, needs: null },
 
       arrows: [],
       hints: []
@@ -3067,6 +3072,16 @@
       var wb = waveBox(level.waves[i]);
       if (wb.h > 2 && hits(p, wb)) { die(); return; }
     }
+    /* spikes riding a conveyor */
+    for (i = 0; i < level.solids.length; i++) {
+      var rs = level.solids[i];
+      if (!rs.riders) continue;
+      for (var rj = 0; rj < rs.riders.length; rj++) {
+        var rxl = riderX(rs, rs.riders[rj]);
+        if (rxl === null) continue;
+        if (hits(p, { x: rxl + 2, y: rs.y - 22, w: RIDER_W - 4, h: 22 })) { die(); return; }
+      }
+    }
     /* teeth carried on a sinking platform's own surface */
     for (i = 0; i < level.sinkers.length; i++) {
       var sk = level.sinkers[i];
@@ -3392,6 +3407,19 @@
   /* A factory conveyor: a grey rubber belt looped round a roller at
      each end, with cleats across it that travel the way it carries you
      - along the top, and back the other way underneath. */
+  /* Spikes that ride a belt. Each rider is a pair of teeth fixed to
+     the rubber, so it travels at the belt's speed: along the top, round
+     the roller, back underneath, and up over the top again. `off` is
+     where on that loop it starts. Returns the left edge of the pair
+     while it is on top, or null while it is underneath. */
+  var RIDER_TOOTH = 16, RIDER_W = 32;
+
+  function riderX(s, off) {
+    var L = 2 * s.w;
+    var u = ((off + state.t * s.belt) % L + L) % L;
+    return u <= s.w - RIDER_W ? s.x + u : null;
+  }
+
   function drawBelt(s) {
     var r = s.h / 2;                           // the rollers fill its height
     var x0 = s.x + r, x1 = s.x + s.w - r;
@@ -3472,6 +3500,28 @@
       ctx.lineTo(-2 * ad, 3.5);
       ctx.closePath();
       ctx.fill();
+      ctx.restore();
+    }
+
+    /* the spikes riding on it */
+    if (s.riders) {
+      ctx.save();
+      ctx.fillStyle = '#ff5f7e';
+      ctx.shadowColor = '#ff5f7e';
+      ctx.shadowBlur = 12;
+      for (var ri = 0; ri < s.riders.length; ri++) {
+        var rx0 = riderX(s, s.riders[ri]);
+        if (rx0 === null) continue;
+        for (var t2 = 0; t2 < 2; t2++) {
+          var tx0 = rx0 + t2 * RIDER_TOOTH;
+          ctx.beginPath();
+          ctx.moveTo(tx0, s.y);
+          ctx.lineTo(tx0 + RIDER_TOOTH / 2, s.y - 22);
+          ctx.lineTo(tx0 + RIDER_TOOTH, s.y);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
       ctx.restore();
     }
   }
