@@ -1589,10 +1589,9 @@
   }
 
   /* Room Twenty-One. Everything so far, in one course, and quick about
-     it: fast belts both ways that only X-ray shows, quick blades, a
-     platform that drops fast, the backward belt with two pairs of
-     spikes riding round it, a dash onto a narrow landing, a platform and a yellow only X-ray
-     shows, a blade-swept ledge. And at the end, a belt that goes red
+     it: fast belts both ways, quick blades, a platform that drops
+     fast, the backward belt with two pairs of spikes riding round it,
+     a dash onto a narrow landing, a yellow up to a blade-swept ledge. And at the end, a belt that goes red
      under you and throws you across the last gap into the door. */
   function buildRoomTwentyOne() {
     var TOP = 400;
@@ -1606,17 +1605,15 @@
 
     var start = { x: -60, y: TOP, w: 340, h: 160 };  // lip at 280
     var a  = belt(360, 360, 240);                    // on with you, fast, lip 720
-    a.ghost = true;                                  // only X-ray shows it
     var b  = plat(940, TOP, 120);                    // 220, a quick blade in it
     var c  = { x: 1280, y: TOP, w: 130, h: 22, oneWay: true,   // 220, drops fast
                home: TOP, chain: null,
                rate: 180, back: 70, max: 99999, active: false, spike: null };
     var d  = belt(1630, 360, -200);                  // 220, back at you, lip 1990
     d.riders = [0, 368];                             // two pairs, half a loop apart
-    d.ghost = true;                                  // it and its spikes: X-ray only
     var e  = plat(2410, TOP, 140);                   // 420: the dash, lip 2550
-    var f  = { x: 2770, y: TOP, w: 120, h: 26, oneWay: true, ghost: true };  // 220, unseen
-    var g  = plat(2990, TOP - 180, 180);             // up off an unseen yellow, lip 3170
+    var f  = plat(2770, TOP, 120);                   // 220
+    var g  = plat(2990, TOP - 180, 180);             // up off a yellow, lip 3170
     var yeet = { x: 3370, y: TOP, w: 240, h: 14, oneWay: true,
                  belt: 200, yeet: true };            // 200 down and on
     var end = { x: 4080, y: TOP, w: 560, h: 160 };   // across the void
@@ -1631,12 +1628,12 @@
       sinkers: [c],
       hazards: [],
       orbs: [ { x: 2150, y: TOP - 92, kind: 'dash', r: ORB_R },
-              { x: 2930, y: TOP - 20, kind: 'up', r: ORB_R_LAUNCH, ghost: true } ],
+              { x: 2930, y: TOP - 20, kind: 'up', r: ORB_R_LAUNCH } ],
       saws: [ { x0: 830, x1: 830, y0: TOP - 215, y1: TOP - 25,
                 r: 22, period: 1.4, phase: 0 },
               { x0: 1170, x1: 1170, y0: TOP - 215, y1: TOP - 25,   // and after b
                 r: 22, period: 1.5, phase: 0.5 },
-              { x0: 2660, x1: 2660, y0: TOP - 215, y1: TOP - 25,   // before the unseen one
+              { x0: 2660, x1: 2660, y0: TOP - 215, y1: TOP - 25,   // before f
                 r: 22, period: 1.6, phase: 0.2 },
               { x0: g.x + 22, x1: g.x + g.w - 22,
                 y0: g.y - 22, y1: g.y - 22,
@@ -1654,6 +1651,72 @@
     };
   }
 
+  /* Room Twenty-Two. Dash orbs, and not one of them visible without
+     X-ray. The platforms show; the rings between them don't. Singles,
+     pairs, and a run of three chained over the widest gap in the game,
+     with blades cutting across the dash line and teeth on landings.
+
+     The spacing is Room Thirteen's, proved there: a ring 160 out from
+     a lip, 420 lip to landing for one, rings 320 apart when chained,
+     and the landing 280 past the last ring. */
+  function buildRoomTwentyTwo() {
+    var TOP = 400;
+    var LINE = TOP - 92;                     // the height a dash flies at
+
+    function orb(x) {
+      return { x: x, y: LINE, kind: 'dash', r: ORB_R, ghost: true };
+    }
+    function plat(x, w) {
+      return { x: x, y: TOP, w: w, h: 26, oneWay: true };
+    }
+    /* sweeps up and down through the dash line */
+    function blade(x, period, phase) {
+      return { x0: x, x1: x, y0: TOP - 260, y1: TOP - 40,
+               r: 22, period: period, phase: phase };
+    }
+
+    var start = { x: -60, y: TOP, w: 340, h: 160 };  // lip 280
+
+    var p1 = plat(700, 200);       // one ring:   280 -> 700,  lip 900
+    var p2 = plat(1660, 200);      // two:        900 -> 1660, lip 1860
+    var p3 = plat(2280, 200);      // one, a blade across it: lip 2480
+    var p4 = plat(3560, 140);      // three:      2480 -> 3560, lip 3700
+    var end = { x: 4460, y: TOP, w: 560, h: 160 };  // two more: 3700 -> 4460
+
+    return {
+      name: 'Room Twenty-Two',
+      worldW: 5020,
+      start: { x: 60, y: TOP - SIZE },
+      fallY: 660,
+
+      solids: [start, p1, p2, p3, p4, end],
+      /* teeth on the near lip of two landings: dash too short and you
+         land on them */
+      hazards: [ { x: 700,  y: TOP - 22, w: 44, h: 22 },
+                 { x: 3560, y: TOP - 22, w: 44, h: 22 } ],
+      orbs: [ orb(440),
+              orb(1060), orb(1380),
+              orb(1980),
+              orb(2640), orb(2960), orb(3280),
+              orb(3860), orb(4180) ],
+      saws: [ blade(1220, 1.6, 0.0),     // between the pair
+              blade(2150, 1.4, 0.3),     // on the single's line
+              blade(3120, 1.5, 0.6),     // in the run of three
+              blade(4020, 1.3, 0.2) ],   // between the last pair
+
+      waves: [],
+      enemies: [],
+      bombs: [],
+      sinkers: [],
+      boss: null,
+      pickups: [],
+      door: { x: 4720, y: TOP - 130, w: 60, h: 130, needs: null },
+
+      arrows: [],
+      hints: []
+    };
+  }
+
   var BUILDERS = [buildTutorial, buildRoomOne, buildRoomTwo,
                   buildRoomThree, buildRoomFour, buildRoomFive,
                   buildRoomSix, buildRoomSeven, buildRoomEight,
@@ -1661,7 +1724,7 @@
                   buildRoomTwelve, buildRoomThirteen, buildRoomFourteen,
                   buildRoomFifteen, buildRoomSixteen, buildRoomSeventeen,
                   buildRoomEighteen, buildRoomNineteen, buildRoomTwenty,
-                  buildRoomTwentyOne];
+                  buildRoomTwentyOne, buildRoomTwentyTwo];
 
   var GRAB_MAX = 2;              // seconds of being held before you die
 
