@@ -1989,7 +1989,7 @@
     'But...',
     "You didn't think there wasn't going to be a final boss fight, did you?"
   ];
-  var FINAL_GX = 600;            // where he stands, centre
+  var FINAL_GX = 1090;           // where he comes down, on the top platform
 
   /* His arena is the second boss's, gone red: the side platforms
      smaller, a spike pit under the middle one, and spike pits at both
@@ -2014,7 +2014,7 @@
     return {
       name: 'The Final Boss',
       worldW: 2400,
-      start: { x: 380, y: GROUND - SIZE },
+      start: { x: 900, y: 210 - SIZE },    // the top platform
       fallY: 620,
 
       solids: [floorL, floorR, lowL, high, lowR],
@@ -2029,7 +2029,7 @@
 
       /* sat on the floor in his throne, asleep until the scene is over */
       boss: {
-        x: FINAL_GX - 37, y: GROUND - 56, w: 74, h: 56,
+        x: FINAL_GX - 37, y: 210 - 56, w: 74, h: 56,   // landed on the top platform
         vx: 120,
         hp: 3, maxHp: 3,               // three blue bombs and you win...for now
         flash: 0, dead: false, deadT: 0,
@@ -2756,8 +2756,8 @@
 
     } else if (mv.kind === 'saws') {
       /* five walls, a little slower, from alternate sides */
-      mv.orbit = 1.2;
-      mv.gather = 0;
+      mv.orbit = 1.7;                    // circling him, as ever
+      mv.gather = 0.5;                   // and flying out to their edge, each wall
       mv.speed = 450;
       mv.gapH = 58;
       mv.walls = [];
@@ -2765,11 +2765,11 @@
       var open = [412, 296, 180];
       for (i = 0; i < FINAL_SAW_WALLS; i++) {
         mv.walls.push({ dir: dir, from: dir > 0 ? -90 : level.worldW + 90,
-                        start: mv.orbit + i * FINAL_SAW_GAP,
+                        start: mv.orbit + mv.gather + i * FINAL_SAW_GAP,
                         gapY: open[Math.floor(Math.random() * open.length)] });
         dir = -dir;
       }
-      mv.dur = mv.orbit + (FINAL_SAW_WALLS - 1) * FINAL_SAW_GAP +
+      mv.dur = mv.orbit + mv.gather + (FINAL_SAW_WALLS - 1) * FINAL_SAW_GAP +
                (level.worldW + 180) / mv.speed + 0.2;
 
     } else if (mv.kind === 'spikeballs') {
@@ -2807,6 +2807,7 @@
      side of the room - off platforms, onto the floor, and on until
      they go off an edge. */
   var BALL_R = 22, BALL_SPEED = 300;
+  var BALL_BOSS_SPEED = 420;     // how fast he moves while he drops them (120 otherwise)
 
   function updateSpikeballs(dt) {
     var list = level.spikeballs;
@@ -2876,10 +2877,25 @@
     /* a second eruption in the same move (the final boss: platform,
        then floor) adds to the beds already up, starting from now */
     if (!mv.beds) { mv.beds = []; mv.since = 0; }
-    mv.surfY = surf ? surf.y : GROUND;
 
-    var from = surf ? surf.x : -60;
-    var to   = surf ? surf.x + surf.w : level.worldW + 60;
+    /* The floor - or down in a pit - means every piece of floor there
+       is, and nothing over the pits between them. */
+    if (!surf || !surf.oneWay) {
+      var any = false;
+      for (var i = 0; i < level.solids.length; i++) {
+        var fl = level.solids[i];
+        if (fl.oneWay || fl.y !== GROUND) continue;
+        any = true;
+        eruptAlong(mv, originX, fl.y, fl.x, fl.x + fl.w);
+      }
+      if (any) return;
+    }
+    if (surf) eruptAlong(mv, originX, surf.y, surf.x, surf.x + surf.w);
+    else eruptAlong(mv, originX, GROUND, -60, level.worldW + 60);
+  }
+
+  function eruptAlong(mv, originX, y, from, to) {
+    mv.surfY = y;
     /* One tooth to a bed, so they come up out of the floor one at a
        time rather than in threes. */
     var BED = 36;
@@ -3126,7 +3142,7 @@
       /* he keeps moving, and drops them one at a time; they roll away
          from whichever side of the room he's on */
       b.y += (b.hover - b.y) * Math.min(1, dt * 3);
-      b.x += b.vx * dt;
+      b.x += (b.vx > 0 ? 1 : -1) * BALL_BOSS_SPEED * dt;     // and quick about it
       if (b.x < 240) { b.x = 240; b.vx = Math.abs(b.vx); }
       if (b.x + b.w > level.worldW - 240) {
         b.x = level.worldW - 240 - b.w;
@@ -3326,11 +3342,12 @@
     var was = it.phase;
     introNext(it);
     if (was === 'smash') {             // he lands, and there is the room - in a fireball
-      b.y = GROUND - b.h;
-      level.fireball = { x: b.x + b.w / 2, y: GROUND - 20, at: state.t };
-      burst(b.x + b.w / 2, GROUND, '#ff8c42', 90, 3.0);
-      burst(b.x + b.w / 2, GROUND, '#ffd166', 60, 2.4);
-      burst(b.x + b.w / 2, GROUND, '#ff2d55', 50, 2.0);
+      var top = level.solids[3].y;       // the top platform, beside you - it doesn't hurt you
+      b.y = top - b.h;
+      level.fireball = { x: b.x + b.w / 2, y: top - 20, at: state.t };
+      burst(b.x + b.w / 2, top, '#ff8c42', 90, 3.0);
+      burst(b.x + b.w / 2, top, '#ffd166', 60, 2.4);
+      burst(b.x + b.w / 2, top, '#ff2d55', 50, 2.0);
       state.flash = Math.max(state.flash, 0.8);
     }
     if (it.phase === 'over') endIntro();
@@ -4744,19 +4761,30 @@
       } else if (mv.kind === 'saws') {
         var blades = [];
         if (mv.walls) {
-          /* the final boss's: circling him while he winds up, then the walls */
-          if (mv.t < mv.orbit) {
-            for (var s = 0; s < 6; s++) blades.push(orbitSaw(b, mv, s, 6));
-          }
+          /* the final boss's: they circle him, then before each wall its
+             blades fly out from round him to their edge, then it comes */
           for (var wi = 0; wi < mv.walls.length; wi++) {
             var wall = mv.walls[wi];
-            var wx = sawWallX(mv, wall);
-            if (wx === null) continue;
+            var live = [];
             for (var s = 0; s < mv.slots.length; s++) {
               var sy = mv.slots[s];
               if (sy > wall.gapY - mv.gapH / 2 && sy < wall.gapY + mv.gapH / 2) continue;
-              blades.push({ x: wx, y: sy });
+              live.push(sy);
             }
+            if (wi === 0 && mv.t < mv.orbit) {
+              for (var s = 0; s < live.length; s++) blades.push(orbitSaw(b, mv, s, live.length));
+            }
+            if (mv.t >= wall.start - mv.gather && mv.t < wall.start) {
+              var g = (mv.t - (wall.start - mv.gather)) / mv.gather;
+              for (var s = 0; s < live.length; s++) {
+                var o = orbitSaw(b, mv, s, live.length);
+                blades.push({ x: o.x + (wall.from - o.x) * g,
+                              y: o.y + (live[s] - o.y) * g });
+              }
+            }
+            var wx = sawWallX(mv, wall);
+            if (wx === null) continue;
+            for (var s = 0; s < live.length; s++) blades.push({ x: wx, y: live[s] });
           }
         } else if (mv.colX === null) {
           /* orbiting, or streaking out to the edge */
@@ -5607,10 +5635,14 @@
       level.barrier.open = true;
       if (level.scarecrow) level.scarecrow.everBroken = true;
     }
-    p.x = s.x;
-    p.y = s.y;
-    safeSpot.x = s.x;
-    safeSpot.y = s.y;
+    /* the final boss's room always starts from its own start, with the
+       scene: a spot saved in it may be somewhere it has since changed */
+    if (!level.intro) {
+      p.x = s.x;
+      p.y = s.y;
+      safeSpot.x = s.x;
+      safeSpot.y = s.y;
+    }
     cam.x = Math.max(0, Math.min(level.worldW - W, p.x + p.w / 2 - W / 2));
     enterGame();
   }
