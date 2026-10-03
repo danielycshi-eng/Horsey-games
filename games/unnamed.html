@@ -1867,7 +1867,7 @@
     }
     function drop(x, w, chain, bed) {        // falls; its teeth are X-ray only
       return { x: x, y: TOP, w: w, h: 22, oneWay: true,
-               home: TOP, chain: chain, rate: 150, back: 70, max: 99999,
+               home: TOP, chain: chain, rate: 230, back: 70, max: 99999,
                active: false, spike: bed, spikeGhost: !!bed };
     }
     function blade(x, period, phase, ghost) {
@@ -1880,12 +1880,12 @@
     var waves = [];
     var BED = 40;                                            // one tooth to a bed
     for (var i = 0; 400 + i * BED < 1100; i++) {
-      waves.push({ x: 400 + i * BED, w: BED, h: 34,
+      waves.push({ x: 400 + i * BED, y: TOP, w: BED, h: 34,
                    period: 4.6, phase: (i * (0.26 / 3)) % 1 });
     }
 
     /* 2. a belt on with you, a blade in the gap before it */
-    var b1 = belt(1320, 360, 200);                           // 220, lip 1680
+    var b1 = belt(1320, 360, 260);                           // 220, lip 1680
     /* 3. a falling platform with hidden teeth at the back */
     var f1 = drop(1900, 150, null, { off: 100, w: 50 });     // 220, lip 2050
     /* 4. a platform only X-ray shows */
@@ -1893,7 +1893,7 @@
     /* 5. a dash across 420, past an unseen blade, onto teeth-lipped landing */
     var p5 = plat(2830, TOP, 200);                           // lip 3030
     /* 6. a belt running back at you, teeth riding round it */
-    var b2 = belt(3250, 360, -180);                          // 220, lip 3610
+    var b2 = belt(3250, 360, -230);                          // 220, lip 3610
     b2.riders = [0, 368];
     /* 7. a yellow up onto a blade-swept ledge */
     var high = plat(3730, TOP - 180, 200);                   // lip 3930
@@ -1905,13 +1905,15 @@
     var wall = { x: 5800, y: TOP - 160, w: 40, h: 160, ghost: true };   // unseen
     /* 10. the red belt, and across the void onto the last platform */
     var yeet = { x: 6490, y: TOP, w: 240, h: 14, oneWay: true,
-                 belt: 200, yeet: true };                    // 220, lip 6730
+                 belt: 200, yeet: true,                      // 220, lip 6730
+                 to: { x: 7420, y: TOP } };                 // lands you left of middle, clear of both lasers
     var arena = { x: 7200, y: TOP, w: 900, h: 160 };         // 7200 .. 8100
 
-    var reds = [ redOn(ground, 700), redOn(ground, 950),
-                 redOn(p5, 2960),
-                 redOn(high, 3880),
-                 redOn(p9, 5600), redOn(p9, 6000), redOn(p9, 6150) ];
+    var reds = [ redOn(ground, 600), redOn(ground, 800), redOn(ground, 1000),
+                 redOn(p5, 2900), redOn(p5, 3000),
+                 redOn(high, 3800), redOn(high, 3900),
+                 redOn(p9, 5500), redOn(p9, 5650), redOn(p9, 5950),
+                 redOn(p9, 6100), redOn(p9, 6230) ];
 
     /* the three purples, not there until the lasers come down */
     var spots = [7450, 7650, 7850];
@@ -1933,22 +1935,27 @@
 
       solids: [ground, b1, f1, g1, p5, b2, high, f2, f3, p9, wall, yeet, arena],
       sinkers: [f1, f2, f3],
-      hazards: [ { x: 2830, y: TOP - 22, w: 44, h: 22 } ],   // dash too short
+      hazards: [ { x: 2830, y: TOP - 22, w: 44, h: 22, ghost: true } ],   // dash too short
       waves: waves,
       orbs: [ { x: 2570, y: LINE, kind: 'dash', r: ORB_R },
-              { x: 3670, y: TOP - 20, kind: 'up', r: ORB_R_LAUNCH },
+              { x: 3670, y: TOP - 20, kind: 'up', r: ORB_R_LAUNCH, ghost: true },
               { x: 4770, y: LINE, kind: 'dash', r: ORB_R },
               { x: 5090, y: LINE, kind: 'dash', r: ORB_R, ghost: true } ],
-      saws: [ blade(1210, 1.6, 0.0),                  // before the first belt
-              blade(2160, 1.5, 0.4),                  // before the unseen platform
+      saws: [ blade(1210, 1.2, 0.0),                  // before the first belt
+              blade(1790, 1.2, 0.5, true),            // before the falling one, unseen
+              blade(2160, 1.1, 0.4),                  // before the unseen platform
               { x0: 2700, x1: 2700, y0: TOP - 260, y1: TOP - 40,   // across the dash, unseen
-                r: 22, period: 1.5, phase: 0.2, ghost: true },
+                r: 22, period: 1.1, phase: 0.2, ghost: true },
+              blade(3140, 1.2, 0.7, true),            // before the backward belt, unseen
               { x0: high.x + 22, x1: high.x + high.w - 22,         // along the high ledge
                 y0: high.y - 22, y1: high.y - 22,
-                r: 22, period: 1.8, phase: 0.5 },
-              blade(4380, 1.4, 0.3),                  // between the falling pair
+                r: 22, period: 1.3, phase: 0.5 },
+              blade(4040, 1.1, 0.1),                  // before the falling pair
+              blade(4380, 1.1, 0.3, true),            // between them, unseen
               { x0: 4930, x1: 4930, y0: TOP - 260, y1: TOP - 40,   // between the rings
-                r: 22, period: 1.4, phase: 0.6 } ],
+                r: 22, period: 1.1, phase: 0.6 },
+              { x0: 5400, x1: 5760, y0: TOP - 22, y1: TOP - 22,   // along the long floor
+                r: 22, period: 1.6, phase: 0.0 } ],
 
       enemies: reds,
       bombs: [],
@@ -2452,6 +2459,10 @@
     var T = YEET_TIME;
     var tx = d.x + d.w / 2 - p.w / 2;
     var ty = d.y + d.h - p.h - 30;             // into the doorway, not the floor
+    if (s.to) {                                // or onto a spot the room picked
+      tx = s.to.x - p.w / 2;
+      ty = s.to.y - p.h - 30;
+    }
     p.yeetVx = (tx - p.x) / T;
     p.vy = (ty - p.y - 0.5 * GRAVITY * T * T) / T;
     p.yeet = T + 0.3;
