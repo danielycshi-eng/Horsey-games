@@ -2025,7 +2025,7 @@
         final: true,
         asleep: true
       },
-      intro: { t: 0, done: false },
+      intro: { phase: 'dark', t: 0, line: 0, chars: 0, done: false },
 
       pickups: [
         { kind: 'bomb', x: 0, y: 0, w: 26, h: 26, hidden: true,
@@ -3024,44 +3024,55 @@
 
   /* ============================================================
      THE FINAL BOSS'S ENTRANCE
-     Black, then him, then what he has to say, one line at a time.
-     Then red round the edges, the throne, up, and down on the floor.
+     All of it on black: him, big, in the middle of the screen, and you
+     nowhere to be seen. Click to move his lines on. Then a layer of
+     red round his green, the throne builds itself round him, up on
+     its rockets, and down - and it is the smash that brings the room
+     up around the pair of you.
      ============================================================ */
-  var INTRO_DARK   = 1.2;        // all black
-  var INTRO_FADE   = 1.0;        // black lifting
-  var INTRO_TYPE   = 34;         // characters a second, like his other lines
-  var INTRO_HOLD   = 1.5;        // how long a line stays once it's all there
-  var INTRO_RED    = 1.0;        // his outline going red
-  var INTRO_THRONE = 1.2;        // the throne building itself round him
-  var INTRO_RISE   = 0.9;        // up on its rockets
-  var INTRO_SMASH  = 0.22;       // down onto the floor
-  var INTRO_SETTLE = 0.6;        // the dust, before the first attack
+  var INTRO_TYPE  = 34;          // characters a second, like his other lines
+  var INTRO_SCALE = 4;           // how big he is on the black
+  var INTRO_TIMED = {
+    dark:   0.8,                 // nothing at all
+    appear: 0.6,                 // him, fading in out of it
+    red:    1.0,                 // the red coming up round him
+    throne: 1.2,                 // the throne building itself
+    rise:   0.9,                 // up on its rockets
+    smash:  0.25,                // and down
+    settle: 0.7                  // the room, the dust, before the first attack
+  };
+  var INTRO_ORDER = ['dark', 'appear', 'lines', 'red', 'throne',
+                     'rise', 'smash', 'settle'];
 
   var finalIntroSeen = false;    // after once, dying doesn't replay it
-
-  function introSegments() {
-    var segs = [ ['dark', INTRO_DARK], ['fade', INTRO_FADE] ];
-    for (var i = 0; i < FINAL_LINES.length; i++) {
-      segs.push(['line' + i, FINAL_LINES[i].length / INTRO_TYPE + INTRO_HOLD]);
-    }
-    segs.push(['red', INTRO_RED], ['throne', INTRO_THRONE], ['rise', INTRO_RISE],
-              ['smash', INTRO_SMASH], ['settle', INTRO_SETTLE]);
-    return segs;
-  }
-
-  /* Which part of the scene we're in, and how far through it (0..1). */
-  function introAt(t) {
-    var segs = introSegments();
-    for (var i = 0; i < segs.length; i++) {
-      if (t < segs[i][1]) return { name: segs[i][0], k: t / segs[i][1], t: t };
-      t -= segs[i][1];
-    }
-    return { name: 'over', k: 1, t: 0 };
-  }
 
   function introRunning() {
     return !!(level && level.intro && !level.intro.done);
   }
+
+  function introNext(it) {
+    it.phase = INTRO_ORDER[INTRO_ORDER.indexOf(it.phase) + 1] || 'over';
+    it.t = 0;
+  }
+
+  /* how far through the current timed part, 0..1 */
+  function introK(it) {
+    var d = INTRO_TIMED[it.phase];
+    return d ? Math.min(1, it.t / d) : 1;
+  }
+
+  /* A click finishes the line that is typing, or moves on to the next. */
+  function introClick() {
+    if (!introRunning()) return;
+    var it = level.intro;
+    if (it.phase !== 'lines') return;
+    var full = FINAL_LINES[it.line].length;
+    if (it.chars < full) { it.chars = full; return; }
+    it.line++;
+    it.chars = 0;
+    if (it.line >= FINAL_LINES.length) introNext(it);
+  }
+  canvas.addEventListener('click', introClick);
 
   function endIntro() {
     var b = level.boss;
@@ -3075,39 +3086,33 @@
   function updateIntro(dt) {
     var it = level.intro;
     var b = level.boss;
-    var before = introAt(it.t).name;
-    it.t += dt;
-    var at = introAt(it.t);
     state.titleT = 0;
 
-    var floorY = GROUND - b.h;
-    if (at.name === 'rise') {
-      var e = at.k * at.k * (3 - 2 * at.k);
-      b.y = floorY + (b.hover - floorY) * e;
-    } else if (at.name === 'smash') {
-      b.y = b.hover + (floorY - b.hover) * at.k * at.k;
-    } else if (at.name === 'settle' || at.name === 'over') {
-      b.y = floorY;
+    if (it.phase === 'lines') {
+      it.chars = Math.min(FINAL_LINES[it.line].length, it.chars + dt * INTRO_TYPE);
+      return;
     }
+    it.t += dt;
+    if (it.t < INTRO_TIMED[it.phase]) return;
 
-    if (at.name === 'settle' && before !== 'settle') {     // he lands
+    var was = it.phase;
+    introNext(it);
+    if (was === 'smash') {             // he lands, and there is the room
+      b.y = GROUND - b.h;
       burst(b.x + b.w / 2, GROUND, '#7bffb2', 70, 2.4);
       burst(b.x + b.w / 2, GROUND, '#ff2d55', 40, 2.0);
       state.flash = Math.max(state.flash, 0.6);
     }
-    if (at.name === 'throne' && before !== 'throne') {
-      burst(b.x + b.w / 2, b.y + b.h / 2, '#ff2d55', 30, 1.2);
-    }
-    if (at.name === 'over') endIntro();
+    if (it.phase === 'over') endIntro();
   }
 
   /* The green fellow in his rocket throne. `throneK` is how built the
-     throne is (0..1), `redK` how red his outline has gone, and `fire`
-     whether the rockets are lit. */
-  function drawFinalBoss(b, throneK, redK, fire) {
+     throne is (0..1), `redK` how far the red layer round him has come
+     up, and `fire` whether the rockets are lit. `face` is optional. */
+  function drawFinalBoss(b, throneK, redK, fire, face) {
     var cx = b.x + b.w / 2, base = b.y + b.h;
     var float = b.asleep ? 0 : Math.sin(state.t * 2.2) * 3;
-    var face = (p.x + p.w / 2) < cx ? -1 : 1;
+    if (face === undefined) face = (p.x + p.w / 2) < cx ? -1 : 1;
 
     ctx.save();
     ctx.translate(0, float);
@@ -3180,39 +3185,62 @@
     /* him, sat in it */
     var cy = base - 12 - SIZE / 2;
     var col = b.flash > 0 ? '#ffffff' : (b.dead ? '#2e5a45' : '#7bffb2');
-    drawCube(cx, cy, SIZE, SIZE, col, face, 0);
-    if (redK > 0) {
+    if (redK > 0) {                                    // an extra layer of red round his green
       ctx.save();
       ctx.globalAlpha = redK;
-      ctx.strokeStyle = '#ff2d55';
+      ctx.fillStyle = '#ff2d55';
       ctx.shadowColor = '#ff2d55';
       ctx.shadowBlur = 16;
-      ctx.lineWidth = 3;
-      rr(cx - SIZE / 2 - 2, cy - SIZE / 2 - 2, SIZE + 4, SIZE + 4, 7);
-      ctx.stroke();
+      rr(cx - SIZE / 2 - 4, cy - SIZE / 2 - 4, SIZE + 8, SIZE + 8, 9);
+      ctx.fill();
       ctx.restore();
     }
+    drawCube(cx, cy, SIZE, SIZE, col, face, 0);
     ctx.restore();
   }
 
-  /* His lines, and the black, drawn by the room's draw pass. */
-  function drawIntro() {
+  /* While the entrance is on, the screen is black - the room and you
+     both hidden - and he is on it, big and in the middle, until the
+     smash. */
+  function drawIntroScreen() {
     if (!introRunning()) return;
-    var at = introAt(level.intro.t);
-    if (at.name.indexOf('line') === 0) {
-      var n = +at.name.substring(4);
-      var b = level.boss;
-      drawSpeech(b.x + b.w / 2, b.y + b.h - 12 - SIZE, FINAL_LINES[n],
-                 at.k * (FINAL_LINES[n].length / INTRO_TYPE + INTRO_HOLD) * INTRO_TYPE);
-    }
-  }
+    var it = level.intro;
+    if (it.phase === 'settle') return;             // the room is up
 
-  function introBlack() {
-    if (!introRunning()) return 0;
-    var at = introAt(level.intro.t);
-    if (at.name === 'dark') return 1;
-    if (at.name === 'fade') return 1 - at.k;
-    return 0;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+    if (it.phase === 'dark') return;
+
+    var at = INTRO_ORDER.indexOf(it.phase);
+    var k = introK(it);
+    var redK    = at < 3 ? 0 : at === 3 ? k : 1;
+    var throneK = at < 4 ? 0 : at === 4 ? k : 1;
+    var fire = it.phase === 'rise' || it.phase === 'smash';
+    var lift = 0;
+    if (it.phase === 'rise') lift = -140 * k * k * (3 - 2 * k);
+    if (it.phase === 'smash') lift = -140 + 460 * k * k;    // down, through the bottom
+
+    var cx = W / 2, cy = H / 2 + 60;
+    ctx.save();
+    ctx.globalAlpha = it.phase === 'appear' ? k : 1;
+    ctx.translate(cx, cy + lift);
+    ctx.scale(INTRO_SCALE, INTRO_SCALE);
+    drawFinalBoss({ x: -37, y: -28, w: 74, h: 56, flash: 0, dead: false, asleep: true },
+                  throneK, redK, fire, 1);
+    ctx.restore();
+
+    if (it.phase === 'lines') {
+      var top = cy + (28 - 12 - SIZE) * INTRO_SCALE;      // the top of his head
+      drawSpeech(cx, top, FINAL_LINES[it.line], it.chars);
+      if (it.chars >= FINAL_LINES[it.line].length && Math.sin(state.t * 6) > -0.3) {
+        ctx.save();
+        ctx.fillStyle = '#7bffb2';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText('click ▶', cx + 155, top - 30);
+        ctx.restore();
+      }
+    }
   }
 
   function updateBoss(dt) {
@@ -4491,16 +4519,8 @@
 
     /* the last one is the green fellow, in his throne */
     if (b.final) {
-      var throneK = 1, redK = 1, fire = !b.dead;
-      if (introRunning()) {
-        var at = introAt(level.intro.t);
-        var order = ['red', 'throne', 'rise', 'smash', 'settle'];
-        var stage = order.indexOf(at.name);            // -1: still talking
-        redK    = stage < 0 ? 0 : stage === 0 ? at.k : 1;
-        throneK = stage < 1 ? 0 : stage === 1 ? at.k : 1;
-        fire    = at.name === 'rise' || at.name === 'smash';
-      }
-      drawFinalBoss(b, throneK, redK, fire);
+      /* the entrance itself is drawn on the black, over everything */
+      drawFinalBoss(b, 1, 1, !b.dead && !b.asleep);
       return;
     }
 
@@ -5074,7 +5094,7 @@
     ctx.restore();
 
     /* boss health, across the top */
-    if (level.boss && !introRunning()) {
+    if (level.boss && !level.boss.final) {     // no bar for the last one
       var bb = level.boss;
       var bw = 320, bx = W / 2 - bw / 2;
       ctx.save();
@@ -5193,16 +5213,10 @@
     drawCheckpoint();
     drawPlayer();
     drawParticles();
-    drawIntro();
 
     ctx.restore();
     drawHUD();
-
-    var black = introBlack();      // the final boss's way in
-    if (black > 0) {
-      ctx.fillStyle = 'rgba(0,0,0,' + black + ')';
-      ctx.fillRect(0, 0, W, H);
-    }
+    drawIntroScreen();             // the final boss's way in
   }
 
   /* ============================================================
