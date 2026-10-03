@@ -2208,10 +2208,15 @@
 
      Once a flag has gone down in a room, the door will not let you on
      to the next one - picking it up again or dying does not undo that.
-     Only coming into the room afresh (Try Again) does. */
+     Only coming into the room afresh (Try Again) does.
+
+     In a boss room a checkpoint also keeps your progress: the hits you
+     had landed on the boss when you died are still landed when you
+     come back - every boss, the final one too. */
   function respawn() {
     var cp = checkpoint;
     var used = state.cpUsed;
+    var bossHp = level.boss ? level.boss.hp : null;
     loadLevel(levelIndex);
     state.cpUsed = used;
     if (level.intro && finalIntroSeen) {     // you've seen him; straight back to the fight
@@ -2220,6 +2225,13 @@
     }
     if (!cp) return;
     checkpoint = cp;
+    if (level.boss && bossHp !== null) {
+      level.boss.hp = bossHp;
+      if (bossHp <= 0) {                     // already beaten: it stays beaten
+        level.boss.dead = true;
+        dropKey(level.boss);
+      }
+    }
     p.x = cp.x;
     p.y = cp.y;
     p.vx = 0; p.vy = 0;
