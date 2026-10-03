@@ -1970,6 +1970,72 @@
                    spawnAt: { x: 7635, y: TOP - 26 },
                    home: { x: 7635, y: TOP - 26 } } ],
       door: { x: 7980, y: TOP - 130, w: 60, h: 130, needs: 'key' },
+      straightOn: true,        // no cleared screen: the dark, and him
+
+      arrows: [],
+      hints: []
+    };
+  }
+
+  /* The final boss. Out of Room Twenty-Five's door the screen goes
+     black, and the green fellow is there. He has a few things to say.
+     Then his outline goes red, a rocket throne builds itself round him,
+     he goes up, comes down on the floor, and it starts: the second
+     boss's arena and every one of its attacks, from him. */
+  var FINAL_LINES = [
+    'A Platformer Game.',
+    'You did a great job',
+    'More things will be added later!',
+    'But...',
+    "You didn't think there wasn't going to be a final boss fight, did you?"
+  ];
+  var FINAL_GX = 600;            // where he stands, centre
+
+  function buildFinalBoss() {
+    var ground = { x: -60,  y: GROUND, w: 2520, h: 160 };
+    var lowL   = { x: 420,  y: 330,    w: 320,  h: 24, oneWay: true };
+    var high   = { x: 880,  y: 210,    w: 320,  h: 24, oneWay: true };
+    var lowR   = { x: 1340, y: 330,    w: 320,  h: 24, oneWay: true };
+
+    return {
+      name: 'The Final Boss',
+      worldW: 2400,
+      start: { x: 120, y: GROUND - SIZE },
+      fallY: 620,
+
+      solids: [ground, lowL, high, lowR],
+      hazards: [],
+      saws: [],
+      waves: [],
+      enemies: [],
+      bombs: [],
+      sinkers: [],
+      orbs: [],
+
+      /* sat on the floor in his throne, asleep until the scene is over */
+      boss: {
+        x: FINAL_GX - 37, y: GROUND - 56, w: 74, h: 56,
+        vx: 120,
+        hp: 5, maxHp: 5,
+        flash: 0, dead: false,
+        hover: 96,
+        idle: 0, rest: 1.4,
+        moves: [],
+        mk2: true,
+        final: true,
+        asleep: true
+      },
+      intro: { t: 0, done: false },
+
+      pickups: [
+        { kind: 'bomb', x: 0, y: 0, w: 26, h: 26, hidden: true,
+          grounded: true, vy: 0, flying: false,
+          home: { x: 1000, y: GROUND - 26 } },
+        { kind: 'key', x: 1020, y: 184, w: 30, h: 26, hidden: true,
+          spawnAt: { x: 1020, y: 184 },
+          home: { x: 1020, y: 184 } }
+      ],
+      door: { x: 2100, y: 310, w: 60, h: 130, needs: 'key' },
 
       arrows: [],
       hints: []
@@ -1985,7 +2051,7 @@
                   buildRoomEighteen, buildRoomNineteen, buildRoomTwenty,
                   buildRoomTwentyOne, buildRoomTwentyTwo,
                   buildRoomTwentyThree, buildRoomTwentyFour,
-                  buildRoomTwentyFive];
+                  buildRoomTwentyFive, buildFinalBoss];
 
   var GRAB_MAX = 2;              // seconds of being held before you die
 
@@ -2134,6 +2200,10 @@
     var used = state.cpUsed;
     loadLevel(levelIndex);
     state.cpUsed = used;
+    if (level.intro && finalIntroSeen) {     // you've seen him; straight back to the fight
+      level.intro.done = true;
+      level.boss.asleep = false;
+    }
     if (!cp) return;
     checkpoint = cp;
     p.x = cp.x;
@@ -2196,7 +2266,7 @@
   window.addEventListener('keydown', function (e) {
     if (BLOCK.indexOf(e.code) !== -1) e.preventDefault();
     if (!state.running) return;
-    if (!keys[e.code]) press(e.code);
+    if (!keys[e.code] && !introRunning()) press(e.code);   // nothing works while he talks
     keys[e.code] = true;
   });
   window.addEventListener('keyup', function (e) { keys[e.code] = false; });
@@ -2952,9 +3022,202 @@
     }
   }
 
+  /* ============================================================
+     THE FINAL BOSS'S ENTRANCE
+     Black, then him, then what he has to say, one line at a time.
+     Then red round the edges, the throne, up, and down on the floor.
+     ============================================================ */
+  var INTRO_DARK   = 1.2;        // all black
+  var INTRO_FADE   = 1.0;        // black lifting
+  var INTRO_TYPE   = 34;         // characters a second, like his other lines
+  var INTRO_HOLD   = 1.5;        // how long a line stays once it's all there
+  var INTRO_RED    = 1.0;        // his outline going red
+  var INTRO_THRONE = 1.2;        // the throne building itself round him
+  var INTRO_RISE   = 0.9;        // up on its rockets
+  var INTRO_SMASH  = 0.22;       // down onto the floor
+  var INTRO_SETTLE = 0.6;        // the dust, before the first attack
+
+  var finalIntroSeen = false;    // after once, dying doesn't replay it
+
+  function introSegments() {
+    var segs = [ ['dark', INTRO_DARK], ['fade', INTRO_FADE] ];
+    for (var i = 0; i < FINAL_LINES.length; i++) {
+      segs.push(['line' + i, FINAL_LINES[i].length / INTRO_TYPE + INTRO_HOLD]);
+    }
+    segs.push(['red', INTRO_RED], ['throne', INTRO_THRONE], ['rise', INTRO_RISE],
+              ['smash', INTRO_SMASH], ['settle', INTRO_SETTLE]);
+    return segs;
+  }
+
+  /* Which part of the scene we're in, and how far through it (0..1). */
+  function introAt(t) {
+    var segs = introSegments();
+    for (var i = 0; i < segs.length; i++) {
+      if (t < segs[i][1]) return { name: segs[i][0], k: t / segs[i][1], t: t };
+      t -= segs[i][1];
+    }
+    return { name: 'over', k: 1, t: 0 };
+  }
+
+  function introRunning() {
+    return !!(level && level.intro && !level.intro.done);
+  }
+
+  function endIntro() {
+    var b = level.boss;
+    level.intro.done = true;
+    finalIntroSeen = true;
+    b.asleep = false;
+    b.idle = 0;
+    state.titleT = 2.4;          // and now the name card
+  }
+
+  function updateIntro(dt) {
+    var it = level.intro;
+    var b = level.boss;
+    var before = introAt(it.t).name;
+    it.t += dt;
+    var at = introAt(it.t);
+    state.titleT = 0;
+
+    var floorY = GROUND - b.h;
+    if (at.name === 'rise') {
+      var e = at.k * at.k * (3 - 2 * at.k);
+      b.y = floorY + (b.hover - floorY) * e;
+    } else if (at.name === 'smash') {
+      b.y = b.hover + (floorY - b.hover) * at.k * at.k;
+    } else if (at.name === 'settle' || at.name === 'over') {
+      b.y = floorY;
+    }
+
+    if (at.name === 'settle' && before !== 'settle') {     // he lands
+      burst(b.x + b.w / 2, GROUND, '#7bffb2', 70, 2.4);
+      burst(b.x + b.w / 2, GROUND, '#ff2d55', 40, 2.0);
+      state.flash = Math.max(state.flash, 0.6);
+    }
+    if (at.name === 'throne' && before !== 'throne') {
+      burst(b.x + b.w / 2, b.y + b.h / 2, '#ff2d55', 30, 1.2);
+    }
+    if (at.name === 'over') endIntro();
+  }
+
+  /* The green fellow in his rocket throne. `throneK` is how built the
+     throne is (0..1), `redK` how red his outline has gone, and `fire`
+     whether the rockets are lit. */
+  function drawFinalBoss(b, throneK, redK, fire) {
+    var cx = b.x + b.w / 2, base = b.y + b.h;
+    var float = b.asleep ? 0 : Math.sin(state.t * 2.2) * 3;
+    var face = (p.x + p.w / 2) < cx ? -1 : 1;
+
+    ctx.save();
+    ctx.translate(0, float);
+
+    if (throneK > 0) {
+      ctx.save();
+      ctx.globalAlpha = throneK;
+
+      /* the rockets, one each side, and their flames */
+      for (var s = -1; s <= 1; s += 2) {
+        var rx = cx + s * (b.w / 2 - 7);
+        if (fire) {
+          var fl = 16 + Math.random() * 14;
+          ctx.fillStyle = '#ff8c42';
+          ctx.shadowColor = '#ff8c42';
+          ctx.shadowBlur = 20;
+          ctx.beginPath();
+          ctx.moveTo(rx - 6, base + 4);
+          ctx.lineTo(rx, base + 4 + fl);
+          ctx.lineTo(rx + 6, base + 4);
+          ctx.closePath();
+          ctx.fill();
+          ctx.fillStyle = '#ffd166';
+          ctx.beginPath();
+          ctx.moveTo(rx - 3, base + 4);
+          ctx.lineTo(rx, base + 4 + fl * 0.6);
+          ctx.lineTo(rx + 3, base + 4);
+          ctx.closePath();
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+        ctx.fillStyle = '#8a93ad';                     // the tube
+        rr(rx - 7, base - 40, 14, 44, 5);
+        ctx.fill();
+        ctx.fillStyle = '#ff2d55';                     // the nose
+        ctx.beginPath();
+        ctx.moveTo(rx - 7, base - 38);
+        ctx.lineTo(rx, base - 52);
+        ctx.lineTo(rx + 7, base - 38);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      /* the throne: a high back, arms, and a seat */
+      ctx.fillStyle = '#3a2a5c';
+      ctx.shadowColor = '#ff2d55';
+      ctx.shadowBlur = 16 * throneK;
+      rr(cx - 26, base - 62, 52, 20, 6);               // the back, over his head
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#ffd166';                       // three points on top
+      for (var c = -1; c <= 1; c++) {
+        ctx.beginPath();
+        ctx.moveTo(cx + c * 16 - 5, base - 62);
+        ctx.lineTo(cx + c * 16, base - 72);
+        ctx.lineTo(cx + c * 16 + 5, base - 62);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.fillStyle = '#3a2a5c';
+      rr(cx - 30, base - 30, 12, 26, 4);               // arms
+      ctx.fill();
+      rr(cx + 18, base - 30, 12, 26, 4);
+      ctx.fill();
+      rr(cx - 30, base - 12, 60, 12, 4);               // the seat
+      ctx.fill();
+      ctx.restore();
+    }
+
+    /* him, sat in it */
+    var cy = base - 12 - SIZE / 2;
+    var col = b.flash > 0 ? '#ffffff' : (b.dead ? '#2e5a45' : '#7bffb2');
+    drawCube(cx, cy, SIZE, SIZE, col, face, 0);
+    if (redK > 0) {
+      ctx.save();
+      ctx.globalAlpha = redK;
+      ctx.strokeStyle = '#ff2d55';
+      ctx.shadowColor = '#ff2d55';
+      ctx.shadowBlur = 16;
+      ctx.lineWidth = 3;
+      rr(cx - SIZE / 2 - 2, cy - SIZE / 2 - 2, SIZE + 4, SIZE + 4, 7);
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  /* His lines, and the black, drawn by the room's draw pass. */
+  function drawIntro() {
+    if (!introRunning()) return;
+    var at = introAt(level.intro.t);
+    if (at.name.indexOf('line') === 0) {
+      var n = +at.name.substring(4);
+      var b = level.boss;
+      drawSpeech(b.x + b.w / 2, b.y + b.h - 12 - SIZE, FINAL_LINES[n],
+                 at.k * (FINAL_LINES[n].length / INTRO_TYPE + INTRO_HOLD) * INTRO_TYPE);
+    }
+  }
+
+  function introBlack() {
+    if (!introRunning()) return 0;
+    var at = introAt(level.intro.t);
+    if (at.name === 'dark') return 1;
+    if (at.name === 'fade') return 1 - at.k;
+    return 0;
+  }
+
   function updateBoss(dt) {
     var b = level.boss;
-    if (!b) return;
+    if (!b || b.asleep) return;
     if (b.flash > 0) b.flash -= dt;
     if (!b.dead) {
       updateSeekers(dt);
@@ -3231,6 +3494,13 @@
     }
 
     if (state.complete) return;
+
+    /* --- the final boss's entrance: you stand and watch --- */
+    if (introRunning()) {
+      updateIntro(dt);
+      updateCamera(dt);
+      return;
+    }
 
     /* --- somebody catching you, in the one room that has somebody.
            While he has hold of you the rest of the room is off. --- */
@@ -4219,6 +4489,21 @@
       }
     }
 
+    /* the last one is the green fellow, in his throne */
+    if (b.final) {
+      var throneK = 1, redK = 1, fire = !b.dead;
+      if (introRunning()) {
+        var at = introAt(level.intro.t);
+        var order = ['red', 'throne', 'rise', 'smash', 'settle'];
+        var stage = order.indexOf(at.name);            // -1: still talking
+        redK    = stage < 0 ? 0 : stage === 0 ? at.k : 1;
+        throneK = stage < 1 ? 0 : stage === 1 ? at.k : 1;
+        fire    = at.name === 'rise' || at.name === 'smash';
+      }
+      drawFinalBoss(b, throneK, redK, fire);
+      return;
+    }
+
     /* the thing itself */
     ctx.save();
     ctx.translate(b.x + b.w / 2, b.y + b.h / 2);
@@ -4789,7 +5074,7 @@
     ctx.restore();
 
     /* boss health, across the top */
-    if (level.boss) {
+    if (level.boss && !introRunning()) {
       var bb = level.boss;
       var bw = 320, bx = W / 2 - bw / 2;
       ctx.save();
@@ -4908,9 +5193,16 @@
     drawCheckpoint();
     drawPlayer();
     drawParticles();
+    drawIntro();
 
     ctx.restore();
     drawHUD();
+
+    var black = introBlack();      // the final boss's way in
+    if (black > 0) {
+      ctx.fillStyle = 'rgba(0,0,0,' + black + ')';
+      ctx.fillRect(0, 0, W, H);
+    }
   }
 
   /* ============================================================
@@ -5010,6 +5302,14 @@
 
   function finishLevel() {
     state.running = false;
+
+    /* Room Twenty-Five runs straight on into the dark, no cleared
+       screen - unless a flag went down, then it's the usual Try Again */
+    if (level.straightOn && !blocked()) {
+      loadLevel(levelIndex + 1);
+      enterGame();
+      return;
+    }
 
     /* a flagged tutorial does not hand you back to the cleared room's
        screen either - it keeps you here until you do it clean */
