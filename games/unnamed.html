@@ -1991,20 +1991,35 @@
   ];
   var FINAL_GX = 600;            // where he stands, centre
 
+  /* His arena is the second boss's, gone red: the side platforms
+     smaller, a spike pit under the middle one, and spike pits at both
+     ends where the floor - and the door - used to be. The floor is two
+     slabs and there is no walking off it. */
+  var FINAL_PITS = [ { x: -60,  w: 360 },     // the left end,  -60 .. 300
+                     { x: 880,  w: 320 },     // under the high one, 880 .. 1200
+                     { x: 2100, w: 360 } ];   // the right end, 2100 .. 2460
+
   function buildFinalBoss() {
-    var ground = { x: -60,  y: GROUND, w: 2520, h: 160 };
-    var lowL   = { x: 420,  y: 330,    w: 320,  h: 24, oneWay: true };
-    var high   = { x: 880,  y: 210,    w: 320,  h: 24, oneWay: true };
-    var lowR   = { x: 1340, y: 330,    w: 320,  h: 24, oneWay: true };
+    var floorL = { x: 300,  y: GROUND, w: 580,  h: 160, red: true };   // 300 .. 880
+    var floorR = { x: 1200, y: GROUND, w: 900,  h: 160, red: true };   // 1200 .. 2100
+    var lowL   = { x: 480,  y: 330,    w: 200,  h: 24, oneWay: true, red: true };
+    var high   = { x: 880,  y: 210,    w: 320,  h: 24, oneWay: true, red: true };
+    var lowR   = { x: 1400, y: 330,    w: 200,  h: 24, oneWay: true, red: true };
+
+    var pitSpikes = [];
+    for (var i = 0; i < FINAL_PITS.length; i++) {
+      pitSpikes.push({ x: FINAL_PITS[i].x, y: 512, w: FINAL_PITS[i].w, h: 28 });
+    }
 
     return {
       name: 'The Final Boss',
       worldW: 2400,
-      start: { x: 120, y: GROUND - SIZE },
+      start: { x: 380, y: GROUND - SIZE },
       fallY: 620,
 
-      solids: [ground, lowL, high, lowR],
-      hazards: [],
+      solids: [floorL, floorR, lowL, high, lowR],
+      hazards: pitSpikes,
+      spikeballs: [],
       saws: [],
       waves: [],
       enemies: [],
@@ -2016,8 +2031,8 @@
       boss: {
         x: FINAL_GX - 37, y: GROUND - 56, w: 74, h: 56,
         vx: 120,
-        hp: 5, maxHp: 5,
-        flash: 0, dead: false,
+        hp: 3, maxHp: 3,               // three blue bombs and you win...for now
+        flash: 0, dead: false, deadT: 0,
         hover: 96,
         idle: 0, rest: 1.4,
         moves: [],
@@ -2027,15 +2042,14 @@
       },
       intro: { phase: 'dark', t: 0, line: 0, chars: 0, done: false },
 
+      /* the blue bomb only - there is no key and no door here; beating
+         him is the end of the room */
       pickups: [
         { kind: 'bomb', x: 0, y: 0, w: 26, h: 26, hidden: true,
           grounded: true, vy: 0, flying: false,
-          home: { x: 1000, y: GROUND - 26 } },
-        { kind: 'key', x: 1020, y: 184, w: 30, h: 26, hidden: true,
-          spawnAt: { x: 1020, y: 184 },
-          home: { x: 1020, y: 184 } }
+          home: { x: 600, y: GROUND - 26 } }
       ],
-      door: { x: 2100, y: 310, w: 60, h: 130, needs: 'key' },
+      door: { x: -9999, y: 0, w: 0, h: 0, needs: 'key' },
 
       arrows: [],
       hints: []
@@ -2704,7 +2718,123 @@
       mv.dur = 1.0;
       mv.sent = false;
     }
+    if (b.final) finalMove(b, mv);
     b.moves.push(mv);
+  }
+
+  /* The final boss's versions of the attacks, and his two of his own. */
+  var FINAL_SAW_WALLS = 5;
+  var FINAL_SAW_GAP   = 1.1;     // seconds between walls
+  var FINAL_BALLS     = 5;
+  var FINAL_HELPERS   = 10;
+
+  function finalMove(b, mv) {
+    var i;
+    if (mv.kind === 'laser') {
+      /* quicker, and it sweeps there and back */
+      mv.charge = 0.8;
+      mv.pass = 2.4;
+      mv.dur = mv.charge + 2 * mv.pass;
+
+    } else if (mv.kind === 'crash') {
+      mv.speed = 2400;                   // comes down faster
+
+    } else if (mv.kind === 'spikes') {
+      mv.speed = 2400;
+      mv.dur = 7.4;                      // a platform first, then the floor
+      mv.twoStage = true;
+
+    } else if (mv.kind === 'bombs') {
+      /* faster, more of them, and the blue one somewhere in 7..10s */
+      mv.dur = 11;
+      mv.every = 0.3;
+      mv.vx = (Math.random() < 0.5 ? 1 : -1) * 620;
+      mv.blueAt = 7 + Math.random() * 3;
+
+    } else if (mv.kind === 'seekers') {
+      mv.count = 3;                      // three, and bigger
+
+    } else if (mv.kind === 'saws') {
+      /* five walls, a little slower, from alternate sides */
+      mv.orbit = 1.2;
+      mv.gather = 0;
+      mv.speed = 450;
+      mv.gapH = 58;
+      mv.walls = [];
+      var dir = Math.random() < 0.5 ? 1 : -1;
+      var open = [412, 296, 180];
+      for (i = 0; i < FINAL_SAW_WALLS; i++) {
+        mv.walls.push({ dir: dir, from: dir > 0 ? -90 : level.worldW + 90,
+                        start: mv.orbit + i * FINAL_SAW_GAP,
+                        gapY: open[Math.floor(Math.random() * open.length)] });
+        dir = -dir;
+      }
+      mv.dur = mv.orbit + (FINAL_SAW_WALLS - 1) * FINAL_SAW_GAP +
+               (level.worldW + 180) / mv.speed + 0.2;
+
+    } else if (mv.kind === 'spikeballs') {
+      mv.dur = 0.3 + FINAL_BALLS * 1.0 + 0.3;
+      mv.sent = 0;
+
+    } else if (mv.kind === 'helpers') {
+      mv.dur = 1.6;
+      mv.sent = false;
+    }
+  }
+
+  /* Somewhere on the floor, not over a pit: for the blue bomb. */
+  function finalSafeX(x, w) {
+    x = Math.max(320, Math.min(2080 - w, x));
+    for (var i = 0; i < FINAL_PITS.length; i++) {
+      var pit = FINAL_PITS[i];
+      if (x + w > pit.x && x < pit.x + pit.w) {
+        x = (x + w / 2 < pit.x + pit.w / 2) ? pit.x - w - 10 : pit.x + pit.w + 10;
+      }
+    }
+    return x;
+  }
+
+  /* A wall of the final boss's saws: where it is, or null if it isn't
+     out yet or has gone. */
+  function sawWallX(mv, wall) {
+    if (mv.t < wall.start) return null;
+    var x = wall.from + wall.dir * mv.speed * (mv.t - wall.start);
+    if (x < -120 || x > level.worldW + 120) return null;
+    return x;
+  }
+
+  /* The spike balls: they drop from him, land, and roll away from his
+     side of the room - off platforms, onto the floor, and on until
+     they go off an edge. */
+  var BALL_R = 22, BALL_SPEED = 300;
+
+  function updateSpikeballs(dt) {
+    var list = level.spikeballs;
+    if (!list) return;
+    for (var i = list.length - 1; i >= 0; i--) {
+      var o = list[i];
+      o.vy = Math.min(MAX_FALL, o.vy + GRAVITY * dt);
+      var prevBottom = o.y + o.r;
+      o.y += o.vy * dt;
+      o.x += o.vx * dt;
+      o.rot += o.vx * dt / o.r;
+
+      for (var k = 0; k < level.solids.length; k++) {
+        var s = level.solids[k];
+        if (o.x < s.x || o.x > s.x + s.w) continue;
+        if (o.vy >= 0 && prevBottom <= s.y + 0.5 && o.y + o.r >= s.y) {
+          o.y = s.y - o.r;                 // landed: on it rolls
+          o.vy = 0;
+        } else if (!s.oneWay && o.y > s.y + 2 && o.y - o.r < s.y + s.h) {
+          /* down in a pit, against the side of a slab: no rolling into it */
+          o.x = o.vx > 0 ? s.x - 0.5 : s.x + s.w + 0.5;
+          o.vx = 0;
+        }
+      }
+
+      if (circleHitsBox(o.x, o.y, o.r - 4, p)) { die(); return; }
+      if (o.y > level.fallY) list.splice(i, 1);
+    }
   }
 
   /* Which saw slots are solid blades (the gap is the way through). */
@@ -2743,8 +2873,9 @@
   /* Spikes run along whatever it landed on. Slam the floor and they
      cross the floor; slam a platform and they only cover that platform. */
   function eruptFrom(mv, originX, surf) {
-    mv.beds = [];
-    mv.since = 0;
+    /* a second eruption in the same move (the final boss: platform,
+       then floor) adds to the beds already up, starting from now */
+    if (!mv.beds) { mv.beds = []; mv.since = 0; }
     mv.surfY = surf ? surf.y : GROUND;
 
     var from = surf ? surf.x : -60;
@@ -2754,8 +2885,8 @@
     var BED = 36;
     for (var x = from; x < to - 18; x += BED) {
       var w = Math.min(BED, to - x);
-      mv.beds.push({ x: x, w: w,
-                     upAt: Math.abs(x + w / 2 - originX) / mv.spread });
+      mv.beds.push({ x: x, w: w, y: mv.surfY,
+                     upAt: mv.since + Math.abs(x + w / 2 - originX) / mv.spread });
     }
   }
 
@@ -2764,6 +2895,24 @@
      boss, and stacking it reads as unfair rather than hard. */
   function chooseAttack(b) {
     if (Math.random() < 0.33) { startMove(b, 'bombs'); return; }
+
+    /* the final boss has all eight, and only the beam, the seekers and
+       the saws ever double up - the rest move him or fill the room */
+    if (b.final) {
+      var fpool = ['laser', 'crash', 'spikes', 'saws', 'spikeballs', 'helpers'];
+      if (level.seekers.length === 0) fpool.push('seekers');
+      var fFirst = fpool[Math.floor(Math.random() * fpool.length)];
+      startMove(b, fFirst);
+      var pairs = ['laser', 'saws', 'seekers'];
+      if (pairs.indexOf(fFirst) !== -1 && Math.random() < 0.3) {
+        var fOthers = [];
+        for (var fi = 0; fi < pairs.length; fi++) {
+          if (pairs[fi] !== fFirst && fpool.indexOf(pairs[fi]) !== -1) fOthers.push(pairs[fi]);
+        }
+        if (fOthers.length) startMove(b, fOthers[Math.floor(Math.random() * fOthers.length)]);
+      }
+      return;
+    }
 
     var pool = ['laser', 'crash', 'spikes', 'saws'];
     if (b.mk2 && level.seekers.length === 0) pool.push('seekers');
@@ -2808,6 +2957,7 @@
       b.dead = true;
       b.moves.length = 0;
       level.seekers.length = 0;        // its spikes go with it
+      if (level.spikeballs) level.spikeballs.length = 0;
       burst(b.x + b.w / 2, b.y + b.h / 2, '#ffd166', 70, 2.2);
       dropKey(b);
     }
@@ -2823,6 +2973,10 @@
         b.y += (b.hover - b.y) * Math.min(1, dt * 4);
       } else {
         var k = Math.min(1, (mv.t - mv.charge) / (mv.dur - mv.charge));
+        if (mv.pass) {                   // the final boss: there and back
+          var k2 = Math.min(2, (mv.t - mv.charge) / mv.pass);
+          k = k2 <= 1 ? k2 : 2 - k2;
+        }
         b.x = mv.fromX + (mv.toX - mv.fromX) * k;
         var bx = b.x + b.w / 2;
         var stop = beamFloor(bx, b.y + b.h);
@@ -2842,7 +2996,7 @@
         if (mv.subT > 0.3) { mv.sub = 'drop'; mv.subT = 0; }
 
       } else if (mv.sub === 'drop') {
-        b.y += CRASH_SPEED * dt;
+        b.y += (mv.speed || CRASH_SPEED) * dt;
         /* once it has bounced off a platform it goes through it, so
            only look for what is under that platform */
         var fromY = mv.through ? Math.max(b.y, mv.through.y + 1) : b.y;
@@ -2906,29 +3060,99 @@
         if (mv.subT > 0.35) { mv.sub = 'drop'; mv.subT = 0; }
 
       } else if (mv.sub === 'drop') {
-        var surf = solidUnder(b.x + b.w / 2, b.y);
+        /* after a bounce it comes down through that platform */
+        var below = mv.through ? mv.through.y + 1 : b.y;
+        var surf = solidUnder(b.x + b.w / 2, below);
         var landY = surf ? surf.y : GROUND;
-        b.y += CRASH_SPEED * dt;
+        b.y += (mv.speed || CRASH_SPEED) * dt;
         if (hits(p, bossBox(b))) { die(); return; }
         if (b.y + b.h >= landY) {
           b.y = landY - b.h;
-          mv.sub = 'erupt';
-          mv.subT = 0;
           eruptFrom(mv, b.x + b.w / 2, surf);
           burst(b.x + b.w / 2, landY, '#ff5f7e', 50, 1.9);
           state.flash = 0.6;
+          mv.subT = 0;
+          /* the final boss: a platform gets its spikes, and then he
+             bounces off it and gives the floor its spikes too */
+          if (mv.twoStage && surf && surf.oneWay && !mv.through) {
+            mv.through = surf;
+            mv.bvy = -420;
+            mv.sub = 'bounce';
+          } else {
+            mv.sub = 'erupt';
+          }
+        }
+
+      } else if (mv.sub === 'bounce') {
+        mv.bvy += GRAVITY * dt;
+        b.y += mv.bvy * dt;
+        if (hits(p, bossBox(b))) { die(); return; }
+        if (mv.bvy > 0 && b.y + b.h >= mv.through.y) {
+          b.y = mv.through.y - b.h;
+          mv.sub = 'drop';
+          mv.subT = 0;
         }
 
       } else {
-        mv.since += dt;
         if (mv.subT > 0.9) b.y += (b.hover - b.y) * Math.min(1, dt * 2.5);
+      }
+
+      /* the teeth that are up, wherever they came up */
+      if (mv.beds) {
+        mv.since += dt;
         for (i = 0; i < mv.beds.length; i++) {
           var bd = mv.beds[i];
           var out = bedOut(mv, bd);
           if (out <= 0.05) continue;
-          var hz = { x: bd.x, y: mv.surfY - 44 * out, w: bd.w, h: 44 * out };
+          var hz = { x: bd.x, y: bd.y - 44 * out, w: bd.w, h: 44 * out };
           if (hits(p, hz)) { die(); return; }
         }
+      }
+
+    } else if (mv.kind === 'saws' && mv.walls) {
+      /* the final boss's: wall after wall, from alternate sides */
+      for (var wi = 0; wi < mv.walls.length; wi++) {
+        var wall = mv.walls[wi];
+        var wx = sawWallX(mv, wall);
+        if (wx === null) continue;
+        for (i = 0; i < mv.slots.length; i++) {
+          y = mv.slots[i];
+          if (y > wall.gapY - mv.gapH / 2 && y < wall.gapY + mv.gapH / 2) continue;
+          if (circleHitsBox(wx, y, 24, p)) { die(); return; }
+        }
+      }
+
+    } else if (mv.kind === 'spikeballs') {
+      /* he keeps moving, and drops them one at a time; they roll away
+         from whichever side of the room he's on */
+      b.y += (b.hover - b.y) * Math.min(1, dt * 3);
+      b.x += b.vx * dt;
+      if (b.x < 240) { b.x = 240; b.vx = Math.abs(b.vx); }
+      if (b.x + b.w > level.worldW - 240) {
+        b.x = level.worldW - 240 - b.w;
+        b.vx = -Math.abs(b.vx);
+      }
+      while (mv.sent < FINAL_BALLS && mv.t >= 0.3 + mv.sent * 1.0) {
+        var bcx = b.x + b.w / 2;
+        level.spikeballs.push({ x: bcx, y: b.y + b.h + BALL_R, r: BALL_R, rot: 0,
+                                vx: (bcx > level.worldW / 2 ? -1 : 1) * BALL_SPEED,
+                                vy: 0 });
+        burst(bcx, b.y + b.h, '#ff2d55', 14, 1.0);
+        mv.sent++;
+      }
+
+    } else if (mv.kind === 'helpers') {
+      /* ten reds, dropped in all along the floor */
+      if (!mv.sent && mv.t > 0.4) {
+        mv.sent = true;
+        for (i = 0; i < FINAL_HELPERS; i++) {
+          var hx = finalSafeX(340 + i * (1720 / (FINAL_HELPERS - 1)), 22);
+          var red = redOn({ y: GROUND }, hx);
+          red.y = 40;
+          level.enemies.push(red);
+          burst(hx + 11, 60, '#ff5f7e', 16, 1.0);
+        }
+        state.flash = Math.max(state.flash, 0.3);
       }
 
     } else if (mv.kind === 'saws') {
@@ -2959,23 +3183,27 @@
         b.x = level.worldW - 240 - b.w;
         mv.vx = -Math.abs(mv.vx);
       }
-      var due = Math.floor(mv.t / 0.5);
+      var due = Math.floor(mv.t / (mv.every || 0.5));
       while (mv.dropped < due) {
         spawnBomb(b.x + b.w / 2 - 12, false, b.y + b.h);
         mv.dropped++;
       }
       var blue = level.pickups[0];
-      if (!mv.blueDropped && mv.t > 3.5 && blue.hidden) {
+      if (!mv.blueDropped && mv.t > (mv.blueAt || 3.5) && blue.hidden) {
         mv.blueDropped = true;
-        spawnBomb(b.x + b.w / 2 - blue.w / 2, true, b.y + b.h);
+        var blueX = b.x + b.w / 2 - blue.w / 2;
+        if (b.final) blueX = finalSafeX(blueX, blue.w);    // never into a pit
+        spawnBomb(blueX, true, b.y + b.h);
       }
 
     } else if (mv.kind === 'seekers') {
       if (!mv.sent && mv.t > 0.5) {
         mv.sent = true;
-        for (var sk = -1; sk <= 1; sk += 2) {
-          level.seekers.push({ x: b.x + b.w / 2 + sk * 50, y: b.y + b.h / 2,
-                               side: sk, t: 0 });
+        /* two; the final boss sends three, and bigger */
+        var sides = mv.count === 3 ? [-1, 0, 1] : [-1, 1];
+        for (var sk = 0; sk < sides.length; sk++) {
+          level.seekers.push({ x: b.x + b.w / 2 + sides[sk] * 50, y: b.y + b.h / 2,
+                               side: sides[sk], t: 0, big: mv.count === 3 });
         }
         burst(b.x + b.w / 2, b.y + b.h / 2, '#ffd166', 30, 1.3);
       }
@@ -3011,7 +3239,7 @@
       s.x += dx / d * stepL;
       s.y += dy / d * stepL;
 
-      if (circleHitsBox(s.x, s.y, 12, p)) { die(); return; }
+      if (circleHitsBox(s.x, s.y, s.big ? 18 : 12, p)) { die(); return; }
 
       if (s.t >= SEEKER_LIFE) {
         /* it becomes a bomb with no fuse left, and goes off next tick */
@@ -3279,9 +3507,20 @@
     if (!b.dead) {
       updateSeekers(dt);
       if (p.dead) return;
+      updateSpikeballs(dt);
+      if (p.dead) return;
     }
     if (b.dead) {
       b.y += (b.hover - 40 - b.y) * Math.min(1, dt * 2);
+      /* there's no door in his room: beating him ends it...for now */
+      if (b.final) {
+        b.deadT += dt;
+        if (b.deadT > 2.5 && !state.complete) {
+          state.complete = true;
+          saveGame();
+          finishLevel();
+        }
+      }
       return;
     }
 
@@ -4167,12 +4406,13 @@
 
     if (s.belt) { drawBelt(s); return; }
 
-    ctx.fillStyle = '#16224d';
+    /* `red`: the final boss's floor and platforms */
+    ctx.fillStyle = s.red ? '#4d1622' : '#16224d';
     ctx.fillRect(s.x, s.y, s.w, s.h);
-    ctx.fillStyle = 'rgba(78,195,255,0.10)';
+    ctx.fillStyle = s.red ? 'rgba(255,45,85,0.10)' : 'rgba(78,195,255,0.10)';
     ctx.fillRect(s.x, s.y, s.w, Math.min(10, s.h));
-    ctx.fillStyle = '#4ec3ff';
-    ctx.shadowColor = '#4ec3ff';
+    ctx.fillStyle = s.red ? '#ff2d55' : '#4ec3ff';
+    ctx.shadowColor = s.red ? '#ff2d55' : '#4ec3ff';
     ctx.shadowBlur = 14;
     ctx.fillRect(s.x, s.y - 3, s.w, 5);
     ctx.shadowBlur = 0;
@@ -4482,7 +4722,7 @@
               ctx.save();
               ctx.globalAlpha = warn;
               ctx.fillStyle = '#ffd166';
-              ctx.fillRect(bd.x + 2, mv.surfY - 5, bd.w - 4, 5);
+              ctx.fillRect(bd.x + 2, bd.y - 5, bd.w - 4, 5);
               ctx.restore();
             }
             var out = bedOut(mv, bd);
@@ -4492,9 +4732,9 @@
             ctx.shadowColor = '#ff2d55';
             ctx.shadowBlur = 14;
             ctx.beginPath();                       // the one tooth
-            ctx.moveTo(bd.x, mv.surfY);
-            ctx.lineTo(bd.x + bd.w / 2, mv.surfY - hgt);
-            ctx.lineTo(bd.x + bd.w, mv.surfY);
+            ctx.moveTo(bd.x, bd.y);
+            ctx.lineTo(bd.x + bd.w / 2, bd.y - hgt);
+            ctx.lineTo(bd.x + bd.w, bd.y);
             ctx.closePath();
             ctx.fill();
             ctx.shadowBlur = 0;
@@ -4503,7 +4743,22 @@
 
       } else if (mv.kind === 'saws') {
         var blades = [];
-        if (mv.colX === null) {
+        if (mv.walls) {
+          /* the final boss's: circling him while he winds up, then the walls */
+          if (mv.t < mv.orbit) {
+            for (var s = 0; s < 6; s++) blades.push(orbitSaw(b, mv, s, 6));
+          }
+          for (var wi = 0; wi < mv.walls.length; wi++) {
+            var wall = mv.walls[wi];
+            var wx = sawWallX(mv, wall);
+            if (wx === null) continue;
+            for (var s = 0; s < mv.slots.length; s++) {
+              var sy = mv.slots[s];
+              if (sy > wall.gapY - mv.gapH / 2 && sy < wall.gapY + mv.gapH / 2) continue;
+              blades.push({ x: wx, y: sy });
+            }
+          }
+        } else if (mv.colX === null) {
           /* orbiting, or streaking out to the edge */
           var live = [];
           for (var s = 0; s < mv.slots.length; s++) {
@@ -4543,6 +4798,34 @@
           ctx.fill();
           ctx.restore();
         }
+      }
+    }
+
+    /* his spike balls, rolling */
+    if (level.spikeballs) {
+      for (var bi = 0; bi < level.spikeballs.length; bi++) {
+        var ball = level.spikeballs[bi];
+        ctx.save();
+        ctx.translate(ball.x, ball.y);
+        ctx.rotate(ball.rot);
+        ctx.fillStyle = '#ff2d55';
+        ctx.shadowColor = '#ff2d55';
+        ctx.shadowBlur = 16;
+        ctx.beginPath();
+        for (var k = 0; k < 12; k++) {
+          var a0 = (k / 12) * Math.PI * 2;
+          var a1 = ((k + 0.5) / 12) * Math.PI * 2;
+          ctx.lineTo(Math.cos(a0) * (ball.r + 8), Math.sin(a0) * (ball.r + 8));
+          ctx.lineTo(Math.cos(a1) * ball.r * 0.8, Math.sin(a1) * ball.r * 0.8);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#4d1622';
+        ctx.beginPath();
+        ctx.arc(0, 0, ball.r * 0.55, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
       }
     }
 
@@ -4588,7 +4871,7 @@
       ctx.beginPath();
       for (var k = 0; k < 8; k++) {
         var a = (k / 8) * Math.PI * 2;
-        var r = k % 2 === 0 ? 17 : 6;
+        var r = (k % 2 === 0 ? 17 : 6) * (s.big ? 1.55 : 1);
         ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
       }
       ctx.closePath();
@@ -4971,6 +5254,7 @@
 
   function drawDoor() {
     var d = level.door;
+    if (d.w <= 0) return;              // a room with no door (the final boss)
     var ready = doorReady();
     var pulse = 0.6 + Math.sin(state.t * 3) * 0.25;
     ctx.save();
