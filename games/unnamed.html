@@ -1717,6 +1717,73 @@
     };
   }
 
+  /* Room Twenty-Three. What you can't see: belts and blades that only
+     X-ray shows, walls you walk straight into, and falling platforms
+     that look clean until X-ray shows the teeth on them. */
+  function buildRoomTwentyThree() {
+    var TOP = 400;
+    var LINE = TOP - 92;                     // the height a dash flies at
+
+    function belt(x, w, speed) {             // unseen
+      return { x: x, y: TOP, w: w, h: 14, oneWay: true, belt: speed, ghost: true };
+    }
+    function wall(x, y, h) {                 // unseen, and solid
+      return { x: x, y: y - h, w: 40, h: h, ghost: true };
+    }
+    /* the platform shows; its teeth don't */
+    function drop(x, w, bed) {
+      return { x: x, y: TOP, w: w, h: 22, oneWay: true,
+               home: TOP, chain: null,
+               rate: 150, back: 70, max: 99999, active: false,
+               spike: bed, spikeGhost: true };
+    }
+    function blade(x, period, phase) {       // up and down through a gap, unseen
+      return { x0: x, x1: x, y0: TOP - 215, y1: TOP - 25,
+               r: 22, period: period, phase: phase, ghost: true };
+    }
+
+    var start = { x: -60, y: TOP, w: 340, h: 160 };       // lip 280
+    var b1 = belt(500, 360, 200);                          // 220, on with you, lip 860
+    var f1 = drop(1080, 160, { off: 110, w: 50 });         // 220, teeth at the back
+    var b2 = belt(1460, 360, -160);                        // 220, back at you, lip 1820
+    var ledge = { x: 2040, y: TOP, w: 200, h: 26, oneWay: true };  // 220, lip 2240
+    var w1 = wall(2140, TOP, 160);                         // on the ledge
+    var f2 = drop(2460, 140, { off: 0, w: 50 });           // 220, teeth at the front, lip 2600
+    var b3 = belt(3020, 300, 220);                         // 420: the dash, lip 3320
+    var end = { x: 3540, y: TOP, w: 760, h: 160 };         // 220
+    var w2 = wall(3700, TOP, 160);
+    var w3 = wall(3860, TOP - 160, 120);                   // hanging, over the gap you'd jump
+
+    return {
+      name: 'Room Twenty-Three',
+      worldW: 4300,
+      start: { x: 60, y: TOP - SIZE },
+      fallY: 660,
+
+      solids: [start, b1, f1, b2, ledge, w1, f2, b3, end, w2, w3],
+      sinkers: [f1, f2],
+      hazards: [],
+      orbs: [ { x: 2760, y: LINE, kind: 'dash', r: ORB_R } ],
+      saws: [ blade(970, 1.8, 0.0),                        // before f1
+              blade(1350, 1.6, 0.4),                       // before b2
+              { x0: 2850, x1: 2850, y0: TOP - 260, y1: TOP - 40,   // across the dash line
+                r: 22, period: 1.5, phase: 0.2, ghost: true },
+              { x0: b3.x + 22, x1: b3.x + b3.w - 22,              // along the last belt
+                y0: TOP - 22, y1: TOP - 22,
+                r: 22, period: 2.0, phase: 0.5, ghost: true } ],
+
+      waves: [],
+      enemies: [],
+      bombs: [],
+      boss: null,
+      pickups: [],
+      door: { x: 4150, y: TOP - 130, w: 60, h: 130, needs: null },
+
+      arrows: [],
+      hints: []
+    };
+  }
+
   var BUILDERS = [buildTutorial, buildRoomOne, buildRoomTwo,
                   buildRoomThree, buildRoomFour, buildRoomFive,
                   buildRoomSix, buildRoomSeven, buildRoomEight,
@@ -1724,7 +1791,8 @@
                   buildRoomTwelve, buildRoomThirteen, buildRoomFourteen,
                   buildRoomFifteen, buildRoomSixteen, buildRoomSeventeen,
                   buildRoomEighteen, buildRoomNineteen, buildRoomTwenty,
-                  buildRoomTwentyOne, buildRoomTwentyTwo];
+                  buildRoomTwentyOne, buildRoomTwentyTwo,
+                  buildRoomTwentyThree];
 
   var GRAB_MAX = 2;              // seconds of being held before you die
 
@@ -3444,8 +3512,9 @@
       }
     }
 
-    /* teeth sitting on part of the platform's own surface */
-    var bed = teethOf(s);
+    /* teeth sitting on part of the platform's own surface - `spikeGhost`
+       teeth only show under X-ray, though the platform itself does */
+    var bed = (s.spikeGhost && !state.xray) ? [] : teethOf(s);
     for (var bi = 0; bi < bed.length; bi++) {
       var tx = s.x + bed[bi].off, tw = bed[bi].w;
       ctx.fillStyle = '#ff5f7e';
