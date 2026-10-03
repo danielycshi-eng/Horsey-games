@@ -1496,6 +1496,7 @@ ok('and it drops the key on the high platform',
 B.moves.length = 0;
 placeOn(level.door.x - 40, GROUND);
 state.picked = true;
+p.holding = { kind: level.door.needs };
 hold('ArrowRight');
 var outBoss = false;
 for (var i = 0; i < 150; i++) { step(1); if (state.complete) { outBoss = true; break; } }
@@ -3293,6 +3294,7 @@ loadLevel(14); state.running = true;
 level.waves = [];
 for (var i = 0; i < 10; i++) level.enemies[i].dead = true;
 state.picked = true;
+p.holding = { kind: level.door.needs };
 placeOn(level.door.x - 60, GROUND);
 hold('ArrowRight');
 for (var i = 0; i < 200 && !state.complete; i++) step(1);

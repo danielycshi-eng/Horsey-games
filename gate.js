@@ -39,7 +39,7 @@
     'delivery-master':     'Delivery Master',
     'protect-the-crystal': 'Protect the Crystal',
     shapes:                'Shapes',
-    unnamed:               '???'
+    unnamed:               'A Platformer Game'
   };
 
   var script = document.currentScript;

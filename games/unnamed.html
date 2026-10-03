@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>???</title>
+  <title>A Platformer Game</title>
   <link rel="stylesheet" href="../style.css">
   <script src="../gate.js" data-gate="unnamed"></script>
   <style>
@@ -41,9 +41,10 @@
     .screen.hidden { display: none; }
 
     .qmark {
-      font-size: clamp(3.5rem, 12vw, 7rem);
+      font-size: clamp(2rem, 7vw, 4.5rem);
       font-weight: 800;
-      letter-spacing: 12px;
+      letter-spacing: 4px;
+      text-align: center;
       color: #4ec3ff;
       text-shadow: 0 0 24px rgba(78, 195, 255, 0.7), 0 0 70px rgba(78, 195, 255, 0.3);
       animation: qpulse 2.6s ease-in-out infinite;
@@ -159,8 +160,7 @@
     <canvas id="game" width="960" height="540"></canvas>
 
     <div class="screen" id="titleScreen">
-      <div class="qmark">???</div>
-      <p>A story with no name yet</p>
+      <div class="qmark">A Platformer Game</div>
 
       <div class="panel hide" id="menuPanel">
         <button id="continueBtn" class="tbtn" type="button">Continue Game</button>
@@ -171,8 +171,6 @@
         <input id="nameInput" type="text" maxlength="12" placeholder="NAME YOUR HERO" autocomplete="off" spellcheck="false">
         <button id="beginBtn" class="tbtn" type="button">Begin</button>
       </div>
-
-      <div class="keys">One life. No checkpoints. Mind the gap.</div>
 
       <button id="adminBtn" type="button">ADMIN: OFF</button>
     </div>
@@ -1751,8 +1749,7 @@
     var f2 = drop(2460, 140, { off: 0, w: 50 });           // 220, teeth at the front, lip 2600
     var b3 = belt(3020, 300, 220);                         // 420: the dash, lip 3320
     var end = { x: 3540, y: TOP, w: 760, h: 160 };         // 220
-    var w2 = wall(3700, TOP, 160);
-    var w3 = wall(3860, TOP - 160, 120);                   // hanging, over the gap you'd jump
+    var w2 = wall(3800, TOP, 160);                         // one wall on the floor
 
     return {
       name: 'Room Twenty-Three',
@@ -1760,7 +1757,7 @@
       start: { x: 60, y: TOP - SIZE },
       fallY: 660,
 
-      solids: [start, b1, f1, b2, ledge, w1, f2, b3, end, w2, w3],
+      solids: [start, b1, f1, b2, ledge, w1, f2, b3, end, w2],
       sinkers: [f1, f2],
       hazards: [],
       orbs: [ { x: 2760, y: LINE, kind: 'dash', r: ORB_R } ],
@@ -2177,9 +2174,11 @@
     return dx * dx + dy * dy < r * r;
   }
 
-  /* The door only wants a key if the room says so. */
+  /* The door only wants a key if the room says so - and then you have
+     to be carrying it as you walk through, not just have picked it up. */
   function doorReady() {
-    return !level.door.needs || state.picked;
+    return !level.door.needs ||
+           (!!p.holding && p.holding.kind === level.door.needs);
   }
 
   function movePlayer(dt) {
