@@ -3025,9 +3025,9 @@
   /* ============================================================
      THE FINAL BOSS'S ENTRANCE
      All of it on black: him, big, in the middle of the screen, and you
-     nowhere to be seen. Click to move his lines on. Then a layer of
-     red round his green, the throne builds itself round him, up on
-     its rockets, and down - and it is the smash that brings the room
+     nowhere to be seen. Click to move his lines on. Then his green
+     goes red, the throne builds itself round him, up on
+     its rockets, and down in a fireball - and it is the smash that brings the room
      up around the pair of you.
      ============================================================ */
   var INTRO_TYPE  = 34;          // characters a second, like his other lines
@@ -3035,11 +3035,11 @@
   var INTRO_TIMED = {
     dark:   0.8,                 // nothing at all
     appear: 0.6,                 // him, fading in out of it
-    red:    1.0,                 // the red coming up round him
+    red:    1.0,                 // his green going red
     throne: 1.2,                 // the throne building itself
     rise:   0.9,                 // up on its rockets
     smash:  0.25,                // and down
-    settle: 0.7                  // the room, the dust, before the first attack
+    settle: 1.1                  // the room, the fireball, before the first attack
   };
   var INTRO_ORDER = ['dark', 'appear', 'lines', 'red', 'throne',
                      'rise', 'smash', 'settle'];
@@ -3097,17 +3097,19 @@
 
     var was = it.phase;
     introNext(it);
-    if (was === 'smash') {             // he lands, and there is the room
+    if (was === 'smash') {             // he lands, and there is the room - in a fireball
       b.y = GROUND - b.h;
-      burst(b.x + b.w / 2, GROUND, '#7bffb2', 70, 2.4);
-      burst(b.x + b.w / 2, GROUND, '#ff2d55', 40, 2.0);
-      state.flash = Math.max(state.flash, 0.6);
+      level.fireball = { x: b.x + b.w / 2, y: GROUND - 20, at: state.t };
+      burst(b.x + b.w / 2, GROUND, '#ff8c42', 90, 3.0);
+      burst(b.x + b.w / 2, GROUND, '#ffd166', 60, 2.4);
+      burst(b.x + b.w / 2, GROUND, '#ff2d55', 50, 2.0);
+      state.flash = Math.max(state.flash, 0.8);
     }
     if (it.phase === 'over') endIntro();
   }
 
   /* The green fellow in his rocket throne. `throneK` is how built the
-     throne is (0..1), `redK` how far the red layer round him has come
+     throne is (0..1), `redK` how far his green has gone red
      up, and `fire` whether the rockets are lit. `face` is optional. */
   function drawFinalBoss(b, throneK, redK, fire, face) {
     var cx = b.x + b.w / 2, base = b.y + b.h;
@@ -3185,17 +3187,44 @@
     /* him, sat in it */
     var cy = base - 12 - SIZE / 2;
     var col = b.flash > 0 ? '#ffffff' : (b.dead ? '#2e5a45' : '#7bffb2');
-    if (redK > 0) {                                    // an extra layer of red round his green
+    drawCube(cx, cy, SIZE, SIZE, col, face, 0);
+    if (redK > 0 && b.flash <= 0) {                    // his green goes red
       ctx.save();
       ctx.globalAlpha = redK;
-      ctx.fillStyle = '#ff2d55';
-      ctx.shadowColor = '#ff2d55';
-      ctx.shadowBlur = 16;
-      rr(cx - SIZE / 2 - 4, cy - SIZE / 2 - 4, SIZE + 8, SIZE + 8, 9);
-      ctx.fill();
+      drawCube(cx, cy, SIZE, SIZE, b.dead ? '#5a1e2a' : '#ff2d55', face, 0);
       ctx.restore();
     }
-    drawCube(cx, cy, SIZE, SIZE, col, face, 0);
+    ctx.restore();
+  }
+
+  /* The fireball he lands in: it blows out wide and burns away. Only
+     a sight - it doesn't hurt you. */
+  var FIREBALL_LIFE = 1.1;
+
+  function drawFireball() {
+    var f = level.fireball;
+    if (!f) return;
+    var age = state.t - f.at;
+    if (age >= FIREBALL_LIFE) { level.fireball = null; return; }
+    var k = age / FIREBALL_LIFE;
+    var r = 60 + 260 * (1 - Math.pow(1 - k, 3));       // fast out, then slows
+    var a = k < 0.35 ? 1 : 1 - (k - 0.35) / 0.65;
+
+    ctx.save();
+    ctx.globalAlpha = a;
+    var g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, r);
+    g.addColorStop(0,    '#ffffff');
+    g.addColorStop(0.18, '#fff3b0');
+    g.addColorStop(0.4,  '#ffd166');
+    g.addColorStop(0.65, '#ff8c42');
+    g.addColorStop(0.85, 'rgba(255,45,85,0.7)');
+    g.addColorStop(1,    'rgba(255,45,85,0)');
+    ctx.fillStyle = g;
+    ctx.shadowColor = '#ff8c42';
+    ctx.shadowBlur = 60;
+    ctx.beginPath();
+    ctx.arc(f.x, f.y, r, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
 
@@ -5213,6 +5242,7 @@
     drawCheckpoint();
     drawPlayer();
     drawParticles();
+    drawFireball();
 
     ctx.restore();
     drawHUD();
