@@ -1781,6 +1781,71 @@
     };
   }
 
+  /* Room Twenty-Four. Fifty reds on small platforms over nothing, and
+     one purple. The purple takes ten hits and swells with each; the
+     tenth lights it, and it goes off like a bomb, only far bigger. The
+     key comes out on the far side once every one of them is down. */
+  function buildRoomTwentyFour() {
+    var TOP = 400, HIGH = 270;
+
+    function plat(x, y) {
+      return { x: x, y: y, w: 100, h: 26, oneWay: true };
+    }
+
+    var start = { x: -60, y: TOP, w: 340, h: 160 };      // lip 280
+    var solids = [start];
+    var reds = [];
+
+    /* two staggered rows, 180 apart along each: 13 low, 12 high */
+    var plats = [];
+    var i;
+    for (i = 0; i < 13; i++) plats.push(plat(400 + i * 280, TOP));
+    for (i = 0; i < 12; i++) plats.push(plat(540 + i * 280, HIGH));
+    for (i = 0; i < plats.length; i++) {
+      solids.push(plats[i]);
+      reds.push(redOn(plats[i], plats[i].x + 12),
+                redOn(plats[i], plats[i].x + 66));    // two to a platform: fifty
+    }
+
+    var end = { x: 4040, y: TOP, w: 600, h: 160 };
+    solids.push(end);
+
+    /* the purple, in the middle of the high row */
+    var mid = plats[13 + 6];
+    var purple = redOn(mid, mid.x + 39);
+    purple.purple = true;
+    purple.hp = 10;
+    purple.maxHp = 10;
+    reds.push(purple);
+
+    return {
+      name: 'Room Twenty-Four',
+      worldW: 4600,
+      start: { x: 60, y: TOP - SIZE },
+      fallY: 660,
+
+      solids: solids,
+      sinkers: [],
+      hazards: [],
+      orbs: [],
+      saws: [],
+
+      enemies: reds,
+      waves: [],
+      bombs: [],
+      boss: null,
+
+      /* when the last one goes down, the key appears on the far side */
+      pickups: [ { kind: 'key', x: 0, y: 0, w: 30, h: 26, hidden: true,
+                   spawnAt: { x: 4140, y: TOP - 26 },
+                   home: { x: 4140, y: TOP - 26 } } ],
+      door: { x: 4440, y: TOP - 130, w: 60, h: 130, needs: 'key' },
+
+      arrows: [],
+      hints: []
+    };
+  }
+
   var BUILDERS = [buildTutorial, buildRoomOne, buildRoomTwo,
                   buildRoomThree, buildRoomFour, buildRoomFive,
                   buildRoomSix, buildRoomSeven, buildRoomEight,
@@ -1789,9 +1854,14 @@
                   buildRoomFifteen, buildRoomSixteen, buildRoomSeventeen,
                   buildRoomEighteen, buildRoomNineteen, buildRoomTwenty,
                   buildRoomTwentyOne, buildRoomTwentyTwo,
-                  buildRoomTwentyThree];
+                  buildRoomTwentyThree, buildRoomTwentyFour];
 
   var GRAB_MAX = 2;              // seconds of being held before you die
+
+  /* the purple one: ten hits, bigger with each, then it blows */
+  var PURPLE_GROW  = 6;          // px wider and taller per hit
+  var PURPLE_FUSE  = 1.2;        // seconds of flashing before it goes
+  var PURPLE_BLAST = 200;        // blast radius; a bomb's is 74
 
   /* ============================================================
      STATE
@@ -2790,7 +2860,7 @@
 
       if (bo.blast > 0) {
         bo.blast -= dt;
-        if (circleHitsBox(bo.x + bo.w / 2, bo.y + bo.h / 2, 74, p)) { die(); return; }
+        if (circleHitsBox(bo.x + bo.w / 2, bo.y + bo.h / 2, bo.r || 74, p)) { die(); return; }
         if (bo.blast <= 0) level.bombs.splice(i, 1);
         continue;
       }
@@ -3316,6 +3386,23 @@
 
     if (e.flash > 0) e.flash -= dt;
 
+    /* a lit purple stands still, flashing, and then goes up like a
+       bomb - a much bigger one */
+    if (e.fuse > 0) {
+      e.fuse -= dt;
+      if (e.fuse <= 0) {
+        var cx = e.x + e.w / 2, cy = e.y + e.h / 2;
+        level.bombs.push({ x: cx - 12, y: cy - 12, w: 24, h: 24,
+                           vy: 0, grounded: true, fuse: 0, blast: 0.3,
+                           r: PURPLE_BLAST, color: '#c77dff' });
+        burst(cx, cy, '#c77dff', 90, 2.6);
+        state.flash = Math.max(state.flash, 0.5);
+        e.dead = true;
+        if (allDead()) dropKey(e);
+      }
+      return;
+    }
+
     var toward = (p.x + p.w / 2) - (e.x + e.w / 2);
 
     /* knockback carries it for a moment, then it comes for you again */
@@ -3381,7 +3468,7 @@
        key never drops and the room can't be finished */
     if (e.y > level.fallY) {
       e.x = e.spawn.x;
-      e.y = e.spawn.y;
+      e.y = e.spawn.y - (e.h - 22);    // a swollen purple stands on the same spot
       e.vx = 0; e.vy = 0;
       e.knock = 0;
     }
@@ -3391,9 +3478,27 @@
   function hitEnemies(hb) {
     for (var n = 0; n < level.enemies.length; n++) {
       var e = level.enemies[n];
-      if (e.dead || !hits(hb, e)) continue;
+      if (e.dead || e.fuse > 0 || !hits(hb, e)) continue;
 
       e.hp--;
+
+      /* the purple one swells with every hit, standing where it stood,
+         and the last one lights it rather than killing it */
+      if (e.purple) {
+        if (e.hp > 0) {
+          e.x -= PURPLE_GROW / 2;
+          e.y -= PURPLE_GROW;
+          e.w += PURPLE_GROW;
+          e.h += PURPLE_GROW;
+        } else {
+          e.fuse = PURPLE_FUSE;
+          e.vx = 0;
+        }
+        e.flash = 0.18;
+        burst(e.x + e.w / 2, e.y + e.h / 2, '#c77dff', 16);
+        continue;
+      }
+
       e.flash = 0.18;
       e.vx = p.face * 300;             // knocked back, so one swing isn't three
       e.vy = -260;
@@ -3962,11 +4067,11 @@
       if (bo.blast > 0) {
         ctx.save();
         ctx.globalAlpha = Math.max(0, bo.blast / 0.3);
-        ctx.fillStyle = '#ff5f7e';
-        ctx.shadowColor = '#ff5f7e';
+        ctx.fillStyle = bo.color || '#ff5f7e';
+        ctx.shadowColor = bo.color || '#ff5f7e';
         ctx.shadowBlur = 40;
         ctx.beginPath();
-        ctx.arc(bo.x + bo.w / 2, bo.y + bo.h / 2, 74, 0, Math.PI * 2);
+        ctx.arc(bo.x + bo.w / 2, bo.y + bo.h / 2, bo.r || 74, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
         continue;
@@ -4244,20 +4349,24 @@
 
     ctx.save();
     ctx.translate(e.x + e.w / 2, e.y + e.h / 2);
-    ctx.fillStyle = e.flash > 0 ? '#ffffff' : '#ff5f7e';
-    ctx.shadowColor = '#ff5f7e';
-    ctx.shadowBlur = 18;
+    var body = e.purple ? '#c77dff' : '#ff5f7e';
+    var lit = e.fuse > 0 && Math.sin(state.t * 40) > 0;   // flashing, about to go
+    ctx.fillStyle = (e.flash > 0 || lit) ? '#ffffff' : body;
+    ctx.shadowColor = body;
+    ctx.shadowBlur = e.fuse > 0 ? 40 : 18;
     rr(-e.w / 2, -e.h / 2, e.w, e.h, 5);
     ctx.fill();
     ctx.shadowBlur = 0;
-    ctx.fillStyle = '#3a0713';
-    ctx.fillRect(e.face > 0 ? 0 : -5, -4, 4, 6);      // two mean little eyes
-    ctx.fillRect(e.face > 0 ? -6 : 2, -4, 4, 6);
+    ctx.fillStyle = e.purple ? '#24073a' : '#3a0713';
+    var k = e.w / 22;                                 // the eyes grow with it
+    ctx.fillRect((e.face > 0 ? 0 : -5) * k, -4 * k, 4 * k, 6 * k);      // two mean little eyes
+    ctx.fillRect((e.face > 0 ? -6 : 2) * k, -4 * k, 4 * k, 6 * k);
     ctx.restore();
 
+    var pipL = e.x + e.w / 2 - (e.maxHp * 10 - 3) / 2;
     for (var i = 0; i < e.maxHp; i++) {               // hit pips
-      ctx.fillStyle = i < e.hp ? '#ff5f7e' : 'rgba(255,95,126,0.18)';
-      ctx.fillRect(e.x - 3 + i * 10, e.y - 12, 7, 4);
+      ctx.fillStyle = i < e.hp ? body : (e.purple ? 'rgba(199,125,255,0.18)' : 'rgba(255,95,126,0.18)');
+      ctx.fillRect(e.purple ? pipL + i * 10 : e.x - 3 + i * 10, e.y - 12, 7, 4);
     }
   }
 
