@@ -1846,6 +1846,129 @@
     };
   }
 
+  /* Room Twenty-Five. The last one, and everything at once: a spike
+     carpet, belts both ways with teeth riding round one, falling
+     platforms with teeth only X-ray shows, a platform only X-ray
+     shows, dashes, a yellow, blades, an invisible wall, reds along the
+     way, and the red belt that throws you onto the last platform.
+
+     Walk far enough onto that platform and lasers come down at both
+     ends of it, and three purples appear. Beat all three and the
+     lasers go and the key comes out. */
+  function buildRoomTwentyFive() {
+    var TOP = 400;
+    var LINE = TOP - 92;                     // the height a dash flies at
+
+    function plat(x, y, w) {
+      return { x: x, y: y, w: w, h: 26, oneWay: true };
+    }
+    function belt(x, w, speed) {
+      return { x: x, y: TOP, w: w, h: 14, oneWay: true, belt: speed };
+    }
+    function drop(x, w, chain, bed) {        // falls; its teeth are X-ray only
+      return { x: x, y: TOP, w: w, h: 22, oneWay: true,
+               home: TOP, chain: chain, rate: 150, back: 70, max: 99999,
+               active: false, spike: bed, spikeGhost: !!bed };
+    }
+    function blade(x, period, phase, ghost) {
+      return { x0: x, x1: x, y0: TOP - 215, y1: TOP - 25,
+               r: 22, period: period, phase: phase, ghost: !!ghost };
+    }
+
+    /* 1. a spike carpet rolling along the first floor, two reds on it */
+    var ground = { x: -60, y: TOP, w: 1160, h: 160 };        // lip 1100
+    var waves = [];
+    var BED = 40;                                            // one tooth to a bed
+    for (var i = 0; 400 + i * BED < 1100; i++) {
+      waves.push({ x: 400 + i * BED, w: BED, h: 34,
+                   period: 4.6, phase: (i * (0.26 / 3)) % 1 });
+    }
+
+    /* 2. a belt on with you, a blade in the gap before it */
+    var b1 = belt(1320, 360, 200);                           // 220, lip 1680
+    /* 3. a falling platform with hidden teeth at the back */
+    var f1 = drop(1900, 150, null, { off: 100, w: 50 });     // 220, lip 2050
+    /* 4. a platform only X-ray shows */
+    var g1 = { x: 2270, y: TOP, w: 140, h: 26, oneWay: true, ghost: true };  // 220, lip 2410
+    /* 5. a dash across 420, past an unseen blade, onto teeth-lipped landing */
+    var p5 = plat(2830, TOP, 200);                           // lip 3030
+    /* 6. a belt running back at you, teeth riding round it */
+    var b2 = belt(3250, 360, -180);                          // 220, lip 3610
+    b2.riders = [0, 368];
+    /* 7. a yellow up onto a blade-swept ledge */
+    var high = plat(3730, TOP - 180, 200);                   // lip 3930
+    /* 8. two chained falling platforms - stepping on one drops both */
+    var f2 = drop(4150, 120, 'a', null);                     // 220
+    var f3 = drop(4490, 120, 'a', { off: 70, w: 50 });       // 220, lip 4610
+    /* 9. two dashes chained over 760, the second ring X-ray only */
+    var p9 = { x: 5370, y: TOP, w: 900, h: 160 };            // lip 6270
+    var wall = { x: 5800, y: TOP - 160, w: 40, h: 160, ghost: true };   // unseen
+    /* 10. the red belt, and across the void onto the last platform */
+    var yeet = { x: 6490, y: TOP, w: 240, h: 14, oneWay: true,
+                 belt: 200, yeet: true };                    // 220, lip 6730
+    var arena = { x: 7200, y: TOP, w: 900, h: 160 };         // 7200 .. 8100
+
+    var reds = [ redOn(ground, 700), redOn(ground, 950),
+                 redOn(p5, 2960),
+                 redOn(high, 3880),
+                 redOn(p9, 5600), redOn(p9, 6000), redOn(p9, 6150) ];
+
+    /* the three purples, not there until the lasers come down */
+    var spots = [7450, 7650, 7850];
+    for (i = 0; i < spots.length; i++) {
+      var pu = redOn(arena, spots[i]);
+      pu.purple = true;
+      pu.hp = 10;
+      pu.maxHp = 10;
+      pu.dormant = true;
+      pu.arena = true;
+      reds.push(pu);
+    }
+
+    return {
+      name: 'Room Twenty-Five',
+      worldW: 8200,
+      start: { x: 60, y: TOP - SIZE },
+      fallY: 660,
+
+      solids: [ground, b1, f1, g1, p5, b2, high, f2, f3, p9, wall, yeet, arena],
+      sinkers: [f1, f2, f3],
+      hazards: [ { x: 2830, y: TOP - 22, w: 44, h: 22 } ],   // dash too short
+      waves: waves,
+      orbs: [ { x: 2570, y: LINE, kind: 'dash', r: ORB_R },
+              { x: 3670, y: TOP - 20, kind: 'up', r: ORB_R_LAUNCH },
+              { x: 4770, y: LINE, kind: 'dash', r: ORB_R },
+              { x: 5090, y: LINE, kind: 'dash', r: ORB_R, ghost: true } ],
+      saws: [ blade(1210, 1.6, 0.0),                  // before the first belt
+              blade(2160, 1.5, 0.4),                  // before the unseen platform
+              { x0: 2700, x1: 2700, y0: TOP - 260, y1: TOP - 40,   // across the dash, unseen
+                r: 22, period: 1.5, phase: 0.2, ghost: true },
+              { x0: high.x + 22, x1: high.x + high.w - 22,         // along the high ledge
+                y0: high.y - 22, y1: high.y - 22,
+                r: 22, period: 1.8, phase: 0.5 },
+              blade(4380, 1.4, 0.3),                  // between the falling pair
+              { x0: 4930, x1: 4930, y0: TOP - 260, y1: TOP - 40,   // between the rings
+                r: 22, period: 1.4, phase: 0.6 } ],
+
+      enemies: reds,
+      bombs: [],
+      boss: null,
+
+      /* lasers at both ends of the last platform; walk in past `atX`
+         and they come down, and the purples wake */
+      arena: { left: arena.x + 6, right: arena.x + arena.w - 6,
+               atX: arena.x + 100, floor: arena.y, phase: 'waiting' },
+
+      pickups: [ { kind: 'key', x: 0, y: 0, w: 30, h: 26, hidden: true,
+                   spawnAt: { x: 7635, y: TOP - 26 },
+                   home: { x: 7635, y: TOP - 26 } } ],
+      door: { x: 7980, y: TOP - 130, w: 60, h: 130, needs: 'key' },
+
+      arrows: [],
+      hints: []
+    };
+  }
+
   var BUILDERS = [buildTutorial, buildRoomOne, buildRoomTwo,
                   buildRoomThree, buildRoomFour, buildRoomFive,
                   buildRoomSix, buildRoomSeven, buildRoomEight,
@@ -1854,7 +1977,8 @@
                   buildRoomFifteen, buildRoomSixteen, buildRoomSeventeen,
                   buildRoomEighteen, buildRoomNineteen, buildRoomTwenty,
                   buildRoomTwentyOne, buildRoomTwentyTwo,
-                  buildRoomTwentyThree, buildRoomTwentyFour];
+                  buildRoomTwentyThree, buildRoomTwentyFour,
+                  buildRoomTwentyFive];
 
   var GRAB_MAX = 2;              // seconds of being held before you die
 
@@ -2852,6 +2976,72 @@
     }
   }
 
+  /* The last platform of the last room. Walk in past `atX` and a laser
+     comes down at each end of it, and the dormant purples wake. Once
+     every one of them is down the lasers go and the key comes out. */
+  var LASER_W = 16;
+
+  function arenaLasers(a) {
+    return [ { x: a.left - LASER_W / 2,  y: -400, w: LASER_W, h: a.floor + 400 },
+             { x: a.right - LASER_W / 2, y: -400, w: LASER_W, h: a.floor + 400 } ];
+  }
+
+  function updateArena() {
+    var a = level.arena;
+    if (!a) return;
+    var i, e;
+
+    if (a.phase === 'waiting') {
+      if (p.onGround && p.x > a.atX && p.x < a.right && p.y + p.h <= a.floor + 2) {
+        a.phase = 'fight';
+        state.flash = Math.max(state.flash, 0.4);
+        for (i = 0; i < level.enemies.length; i++) {
+          e = level.enemies[i];
+          if (!e.arena) continue;
+          e.dormant = false;
+          burst(e.x + e.w / 2, e.y + e.h / 2, '#c77dff', 40, 1.6);
+        }
+      }
+      return;
+    }
+    if (a.phase !== 'fight') return;
+
+    var beams = arenaLasers(a);
+    for (i = 0; i < beams.length; i++) {
+      if (hits(p, beams[i])) { die(); return; }
+    }
+
+    for (i = 0; i < level.enemies.length; i++) {
+      e = level.enemies[i];
+      if (e.arena && !e.dead) return;
+    }
+    a.phase = 'done';                  // all three down: lasers off, key out
+    burst(a.left, a.floor - 120, '#ff2d55', 30, 1.4);
+    burst(a.right, a.floor - 120, '#ff2d55', 30, 1.4);
+    dropKey(null);
+  }
+
+  function drawArena() {
+    var a = level.arena;
+    if (!a || a.phase !== 'fight') return;
+    var beams = arenaLasers(a);
+    var pulse = 0.75 + Math.sin(state.t * 40) * 0.25;
+    for (var i = 0; i < beams.length; i++) {
+      var bm = beams[i];
+      ctx.save();
+      ctx.globalAlpha = pulse;
+      ctx.fillStyle = '#ff2d55';
+      ctx.shadowColor = '#ff2d55';
+      ctx.shadowBlur = 30;
+      ctx.fillRect(bm.x - 9, bm.y, bm.w + 18, bm.h);
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(bm.x + 2, bm.y, bm.w - 4, bm.h);
+      ctx.restore();
+      ctx.fillStyle = 'rgba(255,45,85,0.5)';       // scorch where it lands
+      ctx.fillRect(bm.x - 18, a.floor - 5, bm.w + 36, 5);
+    }
+  }
+
   /* Red bombs fall, sit, then go off. Being near one when it does is
      the whole danger; the blue one is the opportunity. */
   function updateBombs(dt) {
@@ -3154,6 +3344,8 @@
     if (p.dead) return;
     updateBombs(dt);
     if (p.dead) return;
+    updateArena();
+    if (p.dead) return;
 
     /* --- carried and dropped things --- */
     for (var pi = 0; pi < level.pickups.length; pi++) {
@@ -3376,13 +3568,13 @@
   function touchingAnyEnemy() {
     for (var n = 0; n < level.enemies.length; n++) {
       var e = level.enemies[n];
-      if (!e.dead && hits(p, e)) return true;
+      if (!e.dead && !e.dormant && hits(p, e)) return true;
     }
     return false;
   }
 
   function updateEnemy(e, dt) {
-    if (e.dead) return;
+    if (e.dead || e.dormant) return;
 
     if (e.flash > 0) e.flash -= dt;
 
@@ -3478,7 +3670,7 @@
   function hitEnemies(hb) {
     for (var n = 0; n < level.enemies.length; n++) {
       var e = level.enemies[n];
-      if (e.dead || e.fuse > 0 || !hits(hb, e)) continue;
+      if (e.dead || e.dormant || e.fuse > 0 || !hits(hb, e)) continue;
 
       e.hp--;
 
@@ -4345,7 +4537,7 @@
   }
 
   function drawEnemy(e) {
-    if (e.dead) return;
+    if (e.dead || e.dormant) return;
 
     ctx.save();
     ctx.translate(e.x + e.w / 2, e.y + e.h / 2);
@@ -4695,6 +4887,7 @@
     drawDoor();
     drawScarecrow();
     drawBoss();
+    drawArena();
     drawBombs();
     drawNpc();
     drawRescue();
