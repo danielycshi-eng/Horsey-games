@@ -4039,7 +4039,7 @@
      (What he does from here comes next.)
      ============================================================ */
   var ARENA3_X     = BOARD_X + BOARD_LEN;   // the red platform at the end of the board
-  var ARENA3_W     = 1800;
+  var ARENA3_W     = W + 80;     // just a little wider than the screen
   var ANGRY_FAN    = 0.7;        // the fan coming off
   var ANGRY_ZOOM   = 0.8;        // the camera closing in
   var ANGRY_RAGE   = 1.6;        // red, and the shaking
@@ -4116,7 +4116,7 @@
         swapToArena3(b);
         b.stage = 'angry';             // still in the scene while it pulls out
         b.x = ARENA3_X + ARENA3_W / 2 - b.w / 2;
-        b.y = b.hover;
+        b.y = GROUND - b.h;            // still down on his floor; he goes up after
         state.flash = Math.max(state.flash, 0.6);
       }
       var o = Math.min(1, (t - ANGRY_FAN - ANGRY_ZOOM - ANGRY_RAGE) / ANGRY_OUT);
