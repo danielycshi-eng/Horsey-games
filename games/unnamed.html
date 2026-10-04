@@ -2399,7 +2399,22 @@
       saveGame();
       return;
     }
-    if (st) return;                    // there already, or getting angry
+    /* on his last red platform: Y puts a blue bomb down next to you */
+    if (st === 'phase3') {
+      if (p.jet || p.holding || level.boss.dead) return;
+      var bb = level.pickups[0];
+      bb.hidden = false;
+      bb.held = false;
+      bb.flying = false;
+      bb.grounded = false;
+      bb.vy = 0;
+      bb.x = finalSafeX(p.x + p.w / 2 + p.face * 40 - bb.w / 2, bb.w);
+      bb.y = p.y;
+      bb.home = { x: bb.x, y: GROUND - bb.h };
+      burst(bb.x + bb.w / 2, bb.y + bb.h / 2, '#4ec3ff', 16, 1.0);
+      return;
+    }
+    if (st) return;                    // getting angry
     if (levelIndex !== last) loadLevel(last);
     level.intro.done = true;
     finalIntroSeen = true;
@@ -4597,6 +4612,7 @@
       burst(b.x + b.w / 2, b.y + b.h / 2, '#4ec3ff', 70, 2.2);
       state.flash = Math.max(state.flash, 0.6);
       p.vy = 0;
+      b.waitLand = true;               // nothing new until you're back on your feet
       if (b.hp <= 0) { b.dead = true; b.deadT = 0; }
     }
   }
@@ -4637,6 +4653,13 @@
       var e = roomEdges();
       if (b.x < e.L + 200) { b.x = e.L + 200; b.vx = Math.abs(b.vx); }
       if (b.x + b.w > e.R - 200) { b.x = e.R - 200 - b.w; b.vx = -Math.abs(b.vx); }
+      /* after a jetpack hit you fall a long way; he waits until you've
+         landed before he starts anything, so you aren't picked off in the air */
+      if (b.waitLand) {
+        if (p.onGround) b.waitLand = false;
+        b.idle = 0;
+        return;
+      }
       b.idle += dt;
       if (b.idle >= b.rest) { b.idle = 0; chooseAttack(b); }
     }
