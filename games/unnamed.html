@@ -4529,10 +4529,36 @@
     { plats: [[0, 0.455], [0.595, 1]] }
   ];
 
-  /* one climb per hit: the first, then the second (and the second again
-     for the third, until that one has its own) */
+  /* The third climb, the hardest. Twice the way on is down: through a
+     gap at one end of a row, then back down onto that row to get under
+     a wall hanging from the row above, and up through that row's gap at
+     the other end. And saws: one sweeping across the first of those
+     chambers, one going up and down in a gap, and one sweeping along
+     the low way under the second wall. Rows are numbered from the
+     bottom; a wall hangs under row `from` and stops `clear` above row
+     `to`; a saw's heights are an offset from a row. */
+  var JET_ROWS_3 = [
+    { plats: [[0, 0.40], [0.55, 1]] },
+    { plats: [[0, 0.78]] },                                     // up on the right...
+    { plats: [[0.22, 1]] },                                     // ...down under the wall, up on the left
+    { slide: { w: 0.70, amp: 0.15, period: 1.9, phase: 0.3 } },
+    { plats: [[0, 0.20], [0.40, 1]] },                          // a saw going up and down in this gap
+    { plats: [[0, 0.85]] },                                     // up on the right...
+    { plats: [[0.25, 1]] },                                     // ...down under the saw's wall, up on the left
+    { slide: { w: 0.74, amp: 0.13, period: 1.7, phase: 1.1 } }
+  ];
+  var JET_WALLS_3 = [ { x: 0.58, from: 2, to: 1, clear: 100 },
+                      { x: 0.70, from: 6, to: 5, clear: 100 } ];
+  var JET_SAWS_3 = [
+    { x0: 0.05, x1: 0.50, row: 1, y0: -180, y1: -180, period: 2.2, phase: 0 },   // across the chamber
+    { x0: 0.30, x1: 0.30, row: 4, y0: 70, y1: 300, period: 1.6, phase: 0.25 },   // up and down in the gap
+    { x0: 0.30, x1: 0.66, row: 5, y0: -26, y1: -26, period: 2.0, phase: 0.5 }    // along the way under
+  ];
+
+  /* one climb per hit */
   var JET_COURSES = [ { rows: JET_ROWS,   fuse: JET_FUSE },
-                      { rows: JET_ROWS_2, fuse: 25 } ];
+                      { rows: JET_ROWS_2, fuse: 25 },
+                      { rows: JET_ROWS_3, fuse: 30, walls: JET_WALLS_3, saws: JET_SAWS_3 } ];
 
   function startJet() {
     var b = level.boss, e = roomEdges(), L = e.L, Wd = e.R - e.L;
@@ -4578,8 +4604,24 @@
     jet.solids.push({ x: L - 40, y: top, w: 40, h: GROUND + 160 - top, red: true });
     jet.solids.push({ x: e.R, y: top, w: 40, h: GROUND + 160 - top, red: true });
 
+    /* the third climb's hanging walls and saws */
+    function rowY(k) { return GROUND - (k + 1) * JET_ROW; }
+    jet.saws = [];
+    for (i = 0; course.walls && i < course.walls.length; i++) {
+      var hw = course.walls[i];
+      var wy = rowY(hw.from) + 20;
+      jet.solids.push({ x: L + hw.x * Wd, y: wy, w: 40, h: rowY(hw.to) - hw.clear - wy, red: true });
+    }
+    for (i = 0; course.saws && i < course.saws.length; i++) {
+      var cs = course.saws[i];
+      jet.saws.push({ x0: L + cs.x0 * Wd, x1: L + cs.x1 * Wd,
+                      y0: rowY(cs.row) + cs.y0, y1: rowY(cs.row) + cs.y1,
+                      r: 22, period: cs.period, phase: cs.phase });
+    }
+
     for (i = 0; i < jet.solids.length; i++) level.solids.push(jet.solids[i]);
     for (i = 0; i < jet.hazards.length; i++) level.hazards.push(jet.hazards[i]);
+    for (i = 0; i < jet.saws.length; i++) level.saws.push(jet.saws[i]);
     level.jet = jet;
   }
 
@@ -4594,6 +4636,10 @@
       for (i = 0; i < jet.hazards.length; i++) {
         var hi = level.hazards.indexOf(jet.hazards[i]);
         if (hi !== -1) level.hazards.splice(hi, 1);
+      }
+      for (i = 0; jet.saws && i < jet.saws.length; i++) {
+        var wi = level.saws.indexOf(jet.saws[i]);
+        if (wi !== -1) level.saws.splice(wi, 1);
       }
     }
     level.jet = null;
