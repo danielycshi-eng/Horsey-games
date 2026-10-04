@@ -2385,7 +2385,17 @@
      past the scene and the fight, stood at the end of his floor. */
   function skipToChase() {
     var last = BUILDERS.length - 1;
-    if (levelIndex === last && level.boss && level.boss.stage) return;   // already on it
+    var st = levelIndex === last && level.boss ? level.boss.stage : null;
+    /* on the chase already: Y goes on to his bare red platform */
+    if (st === 'grow' || st === 'chase' || st === 'toArena') {
+      camFx.zoom = 1;
+      camFx.shake = 0;
+      checkpoint = null;
+      setupPhase3();
+      saveGame();
+      return;
+    }
+    if (st) return;                    // there already, or getting angry
     if (levelIndex !== last) loadLevel(last);
     level.intro.done = true;
     finalIntroSeen = true;
