@@ -2223,11 +2223,28 @@
     var used = state.cpUsed;
     var bossHp = level.boss ? level.boss.hp : null;
     var chaseDeath = !!(level.boss && level.boss.stage);
+    /* got as far as his bare red platform: that's where you come back */
+    var arena3Death = !!(level.boss && (level.boss.stage === 'phase3' || level.boss.swapped));
     loadLevel(levelIndex);
     state.cpUsed = used;
+    camFx.zoom = 1;
+    camFx.shake = 0;
     if (level.intro && finalIntroSeen) {     // you've seen him; straight back to the fight
       level.intro.done = true;
       level.boss.asleep = false;
+    }
+    if (arena3Death) {
+      setupPhase3();
+      if (cp && cp.x >= ARENA3_X) {          // a flag down on it: there
+        checkpoint = cp;
+        p.x = cp.x;
+        p.y = cp.y;
+        safeSpot.x = p.x;
+        safeSpot.y = p.y;
+      } else {
+        checkpoint = null;
+      }
+      return;
     }
     /* died in the chase: back to his arena, him on one hit, so one more
        blue bomb starts it again - checkpoint or not */
@@ -2306,7 +2323,7 @@
     if (BLOCK.indexOf(e.code) !== -1) e.preventDefault();
     if (!state.running) return;
     /* nothing works while he talks - except Y, the skip */
-    if (!keys[e.code] && (!introRunning() || e.code === 'KeyY')) press(e.code);
+    if (!keys[e.code] && (!cutsceneRunning() || e.code === 'KeyY')) press(e.code);
     keys[e.code] = true;
   });
   window.addEventListener('keyup', function (e) { keys[e.code] = false; });
@@ -3729,7 +3746,11 @@
     if (p.holding) p.holding = null;
     state.flash = Math.max(state.flash, 0.5);
 
-    level.worldW = BOARD_X + BOARD_LEN + 100;
+    level.worldW = ARENA3_X + ARENA3_W + 360;
+    /* the red platform waiting at the far end of the board */
+    var a3 = arena3Solids(), pits3 = arena3Pits();
+    level.solids.push(a3[0]);
+    level.hazards.push(pits3[1]);
     var board = { x: BOARD_X, y: GROUND, w: BOARD_LEN, h: 40, wood: true };
     level.solids.push(board);
     level.chase = { board: board, x: cam.x, items: [], floats: [], growW: 0,
@@ -3973,14 +3994,21 @@
       c.x = Math.min(stopAt, c.x + SCROLL_SPEED * dt);
       b.x = c.x + W - 170;
       b.y = GROUND - b.h;                               // on the board, going with it
-      if (c.x >= stopAt) {                              // the end: he is off
-        b.stage = 'leave';
+      if (c.x >= stopAt) {              // the end of the board: he goes on to the red
+        b.stage = 'toArena';
         b.stageT = 0;
         c.on = false;
       }
-    } else if (b.stage === 'leave') {
-      b.y -= 400 * dt;
-      b.x += 200 * dt;
+    } else if (b.stage === 'toArena') {
+      /* off the board and out onto the middle of the red platform,
+         where he waits for you */
+      var ax = ARENA3_X + ARENA3_W / 2 - b.w / 2;
+      b.x += (ax - b.x) * Math.min(1, dt * 2);
+      b.y = GROUND - b.h;
+      if (p.onGround && p.x > ARENA3_X + 40 && p.y + p.h <= GROUND + 1) {
+        startAngry(b);
+        return;
+      }
     }
 
     /* off the left of the screen is off the board */
@@ -3999,12 +4027,140 @@
       if (circleHitsBox(fl.x, fl.y, fl.r - 3, p)) { die(); return; }
     }
 
-    /* the end of the board */
-    if (!c.done && p.onGround && p.x > c.endX) {
-      c.done = true;
-      state.complete = true;
-      saveGame();
-      finishLevel();
+  }
+
+  /* ============================================================
+     HE GETS ANGRY
+     The board ends at another red platform. Step onto it and he loses
+     the fan, the camera closes in on him, he goes a glowing red and
+     the screen shakes. Then the wood is gone and it's his platform
+     again - one flat red floor, no platforms on it, no pit in the
+     middle, spike pits off both ends - and he's back up over it.
+     (What he does from here comes next.)
+     ============================================================ */
+  var ARENA3_X     = BOARD_X + BOARD_LEN;   // the red platform at the end of the board
+  var ARENA3_W     = 1800;
+  var ANGRY_FAN    = 0.7;        // the fan coming off
+  var ANGRY_ZOOM   = 0.8;        // the camera closing in
+  var ANGRY_RAGE   = 1.6;        // red, and the shaking
+  var ANGRY_OUT    = 0.9;        // the camera pulling back out, on the new floor
+  var ANGRY_ZOOM_K = 2.2;        // how close it gets
+
+  var camFx = { zoom: 1, fx: 0, fy: 0, shake: 0 };   // zoom on a point, and shake
+
+  function arena3Solids() {
+    return [ { x: ARENA3_X, y: GROUND, w: ARENA3_W, h: 160, red: true } ];
+  }
+  function arena3Pits() {
+    return [ { x: ARENA3_X - 360, y: 512, w: 360, h: 28 },
+             { x: ARENA3_X + ARENA3_W, y: 512, w: 360, h: 28 } ];
+  }
+
+  function cutsceneRunning() {
+    return introRunning() || !!(level && level.boss && level.boss.stage === 'angry');
+  }
+
+  function startAngry(b) {
+    b.stage = 'angry';
+    b.stageT = 0;
+    p.vx = 0;
+    var base = b.y + b.h;
+    level.lostFan = { x: b.x + b.w / 2 - 30 - 26 * 0.6, y: base - 26,
+                      vx: -90, vy: -320, rot: 0 };
+    b.fanK = 0;
+    burst(level.lostFan.x, level.lostFan.y, '#c9d2e6', 24, 1.2);
+  }
+
+  /* the wood goes: his platform again, bare */
+  function swapToArena3(b) {
+    level.solids = arena3Solids();
+    level.hazards = arena3Pits();
+    level.enemies.length = 0;
+    level.orbs.length = 0;
+    level.bombs.length = 0;
+    level.chase = null;
+    level.lostFan = null;
+    level.worldW = ARENA3_X + ARENA3_W + 360;
+    b.stage = 'phase3';
+    b.rage = 1;
+    b.fanK = 0;
+  }
+
+  function updateAngry(b, dt) {
+    b.stageT += dt;
+    var t = b.stageT, cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    var f = level.lostFan;
+    if (f) {
+      f.vy += GRAVITY * dt;
+      f.x += f.vx * dt;
+      f.y += f.vy * dt;
+      f.rot += dt * 9;
+    }
+    camFx.fx = cx;
+    camFx.fy = cy;
+
+    if (t < ANGRY_FAN) {
+      camFx.zoom = 1;
+    } else if (t < ANGRY_FAN + ANGRY_ZOOM) {
+      var k = (t - ANGRY_FAN) / ANGRY_ZOOM;
+      camFx.zoom = 1 + (ANGRY_ZOOM_K - 1) * k * k * (3 - 2 * k);
+    } else if (t < ANGRY_FAN + ANGRY_ZOOM + ANGRY_RAGE) {
+      var r = (t - ANGRY_FAN - ANGRY_ZOOM) / ANGRY_RAGE;
+      camFx.zoom = ANGRY_ZOOM_K;
+      b.rage = Math.min(1, r * 1.6);
+      camFx.shake = 10 * Math.min(1, r * 3);
+      if (Math.random() < 0.3) burst(cx, cy, '#ff2d55', 4, 0.8);
+    } else {
+      if (b.stage === 'angry' && !b.swapped) {
+        b.swapped = true;
+        swapToArena3(b);
+        b.stage = 'angry';             // still in the scene while it pulls out
+        b.x = ARENA3_X + ARENA3_W / 2 - b.w / 2;
+        b.y = b.hover;
+        state.flash = Math.max(state.flash, 0.6);
+      }
+      var o = Math.min(1, (t - ANGRY_FAN - ANGRY_ZOOM - ANGRY_RAGE) / ANGRY_OUT);
+      camFx.zoom = ANGRY_ZOOM_K + (1 - ANGRY_ZOOM_K) * o;
+      camFx.shake = 10 * (1 - o);
+      camFx.fx = b.x + b.w / 2;
+      camFx.fy = b.y + b.h / 2;
+      if (o >= 1) {
+        camFx.zoom = 1;
+        camFx.shake = 0;
+        b.stage = 'phase3';
+        b.stageT = 0;
+      }
+    }
+  }
+
+  /* Straight into the bare red arena: for coming back to it after a
+     death there, and for when the scene above is done. */
+  function setupPhase3() {
+    var b = level.boss;
+    level.intro.done = true;
+    b.asleep = false;
+    b.hp = 0;
+    b.moves.length = 0;
+    swapToArena3(b);
+    b.x = ARENA3_X + ARENA3_W / 2 - b.w / 2;
+    b.y = b.hover;
+    p.x = ARENA3_X + 200;
+    p.y = GROUND - SIZE;
+    p.vx = 0; p.vy = 0;
+    p.onGround = true;
+    safeSpot.x = p.x;
+    safeSpot.y = p.y;
+    cam.x = Math.max(0, Math.min(level.worldW - W, p.x + p.w / 2 - W / 2));
+  }
+
+  /* For now he only drifts over his bare floor. */
+  function updatePhase3(b, dt) {
+    b.y += (b.hover - b.y) * Math.min(1, dt * 3);
+    b.x += b.vx * dt;
+    if (b.x < ARENA3_X + 240) { b.x = ARENA3_X + 240; b.vx = Math.abs(b.vx); }
+    if (b.x + b.w > ARENA3_X + ARENA3_W - 240) {
+      b.x = ARENA3_X + ARENA3_W - 240 - b.w;
+      b.vx = -Math.abs(b.vx);
     }
   }
 
@@ -4012,6 +4168,8 @@
     var b = level.boss;
     if (!b || b.asleep) return;
     if (b.flash > 0) b.flash -= dt;
+    if (b.stage === 'angry') { updateAngry(b, dt); return; }
+    if (b.stage === 'phase3') { updatePhase3(b, dt); return; }
     if (b.stage) { updateChase(b, dt); return; }
     if (!b.dead) {
       updateSeekers(dt);
@@ -4303,6 +4461,12 @@
     /* --- the final boss's entrance: you stand and watch --- */
     if (introRunning()) {
       updateIntro(dt);
+      updateCamera(dt);
+      return;
+    }
+    /* --- and him getting angry: you stand and watch that too --- */
+    if (cutsceneRunning()) {
+      updateBoss(dt);
       updateCamera(dt);
       return;
     }
@@ -5140,22 +5304,28 @@
       ctx.restore();
     }
 
-    /* the finish: a gold flag at the end of the board */
-    var fx = c.endX + 40;
-    if (fx > cam.x - 40 && fx < cam.x + W + 40) {
-      ctx.fillStyle = '#c08a4e';
-      ctx.fillRect(fx, GROUND - 130, 5, 130);
-      ctx.fillStyle = '#ffd166';
-      ctx.shadowColor = '#ffd166';
-      ctx.shadowBlur = 16;
+  }
+
+  /* the fan on its own, once it has come off the throne */
+  function drawFanAt(x, y, r, rot) {
+    ctx.save();
+    ctx.fillStyle = '#2b2f36';
+    ctx.strokeStyle = '#8a93ad';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.fillStyle = '#c9d2e6';
+    for (var bl = 0; bl < 4; bl++) {
+      ctx.rotate(Math.PI / 2);
       ctx.beginPath();
-      ctx.moveTo(fx + 5, GROUND - 130);
-      ctx.lineTo(fx + 55, GROUND - 112);
-      ctx.lineTo(fx + 5, GROUND - 94);
-      ctx.closePath();
+      ctx.ellipse(r * 0.45, 0, r * 0.45, r * 0.16, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.shadowBlur = 0;
     }
+    ctx.restore();
   }
 
   /* A factory conveyor: a grey rubber belt looped round a roller at
@@ -5559,7 +5729,19 @@
     /* the last one is the green fellow, in his throne */
     if (b.final) {
       /* the entrance itself is drawn on the black, over everything */
+      if (b.rage > 0) {                                 // angry: a red glow round him
+        var gr = 70 + Math.sin(state.t * 10) * 8;
+        var gcx = b.x + b.w / 2, gcy = b.y + b.h / 2;
+        var grad = ctx.createRadialGradient(gcx, gcy, 10, gcx, gcy, gr);
+        grad.addColorStop(0, 'rgba(255,45,85,' + (0.55 * b.rage) + ')');
+        grad.addColorStop(1, 'rgba(255,45,85,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(gcx, gcy, gr, 0, Math.PI * 2);
+        ctx.fill();
+      }
       drawFinalBoss(b, 1, 1, !b.dead && !b.asleep);
+      if (level.lostFan) drawFanAt(level.lostFan.x, level.lostFan.y, 26, level.lostFan.rot);
       return;
     }
 
@@ -6226,6 +6408,17 @@
     if (!level) return;
 
     ctx.save();
+    /* the camera closing in on a point, and shaking (the final boss
+       getting angry); at zoom 1 with no shake this does nothing */
+    if (camFx.zoom !== 1 || camFx.shake > 0) {
+      var zk = Math.max(0, (camFx.zoom - 1) / (ANGRY_ZOOM_K - 1));
+      var tx = W / 2 + (camFx.fx - cam.x - W / 2) * zk;
+      var ty = H / 2 + (camFx.fy - H / 2) * zk;
+      ctx.translate(W / 2 + (Math.random() - 0.5) * 2 * camFx.shake,
+                    H / 2 + (Math.random() - 0.5) * 2 * camFx.shake);
+      ctx.scale(camFx.zoom, camFx.zoom);
+      ctx.translate(-tx, -ty);
+    }
     ctx.translate(-Math.round(cam.x), 0);
 
     var i;
