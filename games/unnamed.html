@@ -2807,24 +2807,26 @@
   /* The last part of the final fight, on his bare red platform: his
      attacks again, angrier, and three of his own.
        crash      six slams, no break between them
-       seekers    the three yellow stars
+       seekers    two yellow stars, smaller and slower
        spikeballs and him racing back and forth
        saws       five walls from alternate sides; the way through is the
                   ground slot, or the 2nd and 3rd up, or the 3rd and 4th
        helpers    ten reds
        screech    two yellow guys up in the corners; a dotted line
-                  follows you, then each fires along it - one, then the other
-       rain       13 to 20 spikes dropped on the floor, which stay for two
+                  follows you, then each charges down it at you - one, then the other
+       rain       5 to 9 spikes dropped on the floor, which stay for two
                   more attacks and then sink away
-       fire       fireballs, aimed at you
+       fire       ten quick fireballs, aimed at you
        bombs      they go off the moment they land, he races, and the blue
                   one comes 8 to 13 seconds in */
   var P3_SLAMS      = 6;
   var P3_RACE       = 800;       // him back and forth, in the spike balls
   var P3_BOMB_RACE  = 900;       // and in the bombs
   var P3_SCREECH_AIM = [1.2, 2.2];   // how long each yellow guy follows you
-  var P3_FIREBALLS  = 6;
-  var P3_FIRE_SPEED = 430;
+  var P3_CHARGE     = 1100;      // and how fast it then charges down its line
+  var P3_FIREBALLS  = 10;
+  var P3_FIRE_GAP   = 0.28;      // seconds between them
+  var P3_FIRE_SPEED = 620;
   var P3_TOOTH      = 34;        // one dropped spike, one tooth
 
   function phase3Move(b, mv) {
@@ -2836,7 +2838,9 @@
       mv.dur = 10;
 
     } else if (mv.kind === 'seekers') {
-      mv.count = 3;
+      mv.count = 2;                      // two, normal size, slower - flying out first
+      mv.flyOut = true;
+      mv.slow = true;
 
     } else if (mv.kind === 'spikeballs') {
       mv.dur = 0.3 + FINAL_BALLS * 1.0 + 0.3;
@@ -2876,7 +2880,7 @@
       if (Math.random() < 0.5) mv.birds.reverse();       // either side goes first
       mv.birds[0].aimT = P3_SCREECH_AIM[0];
       mv.birds[1].aimT = P3_SCREECH_AIM[1];
-      mv.dur = 0.6 + P3_SCREECH_AIM[1] + 0.3 + 0.6;
+      mv.dur = 0.6 + P3_SCREECH_AIM[1] + 0.3 + 1700 / P3_CHARGE;
 
     } else if (mv.kind === 'rain') {
       /* 13..20 of the floor's tooth-wide slots, picked at random */
@@ -2886,7 +2890,7 @@
         var j = Math.floor(Math.random() * (i + 1));
         var tmp = slots[i]; slots[i] = slots[j]; slots[j] = tmp;
       }
-      var n = 13 + Math.floor(Math.random() * 8);
+      var n = 5 + Math.floor(Math.random() * 5);         // 5 to 9
       mv.drops = slots.slice(0, n);
       mv.sweep = 2.4;                    // he crosses the room dropping them
       mv.dir = (b.x + b.w / 2) < (e.L + e.R) / 2 ? 1 : -1;
@@ -2895,7 +2899,7 @@
 
     } else if (mv.kind === 'fire') {
       mv.fired = 0;
-      mv.dur = 0.5 + P3_FIREBALLS * 0.45 + 0.4;
+      mv.dur = 0.5 + P3_FIREBALLS * P3_FIRE_GAP + 0.4;
 
     } else if (mv.kind === 'bombs') {
       mv.dur = 14;
@@ -3532,12 +3536,18 @@
         if (mv.t < lockAt) {
           bd.ang = Math.atan2(p.y + p.h / 2 - bd.y, p.x + p.w / 2 - bd.x);   // following you
         }
-        bd.firing = mv.t >= fireAt && mv.t < fireAt + 0.25;
-        if (bd.firing && !bd.fired) {
-          bd.fired = true;
-          burst(bd.x, bd.y, '#ffd166', 20, 1.2);
+        /* then it charges, straight down the line, and on out of the room */
+        if (mv.t >= fireAt) {
+          if (!bd.fired) {
+            bd.fired = true;
+            burst(bd.x, bd.y, '#ffd166', 20, 1.2);
+          }
+          var run = P3_CHARGE * (mv.t - fireAt);
+          bd.x = bd.toX + Math.cos(bd.ang) * run;
+          bd.y = bd.toY + Math.sin(bd.ang) * run;
+          bd.gone = run > 1700;
+          if (!bd.gone && circleHitsBox(bd.x, bd.y, 14, p)) { die(); return; }
         }
-        if (bd.firing && screechLineHits(bd)) { die(); return; }
       }
 
     } else if (mv.kind === 'rain') {
@@ -3568,7 +3578,7 @@
       /* fireballs, one after another, each at where you are */
       b.y += (b.hover - b.y) * Math.min(1, dt * 3);
       if (!level.fireballs) level.fireballs = [];
-      while (mv.fired < P3_FIREBALLS && mv.t >= 0.5 + mv.fired * 0.45) {
+      while (mv.fired < P3_FIREBALLS && mv.t >= 0.5 + mv.fired * P3_FIRE_GAP) {
         var fx0 = b.x + b.w / 2, fy0 = b.y + b.h;
         var fdx = p.x + p.w / 2 - fx0, fdy = p.y + p.h / 2 - fy0;
         var fd = Math.sqrt(fdx * fdx + fdy * fdy) || 1;
@@ -3622,13 +3632,16 @@
         var sides = mv.count === 3 ? [-1, 0, 1] : [-1, 1];
         for (var sk = 0; sk < sides.length; sk++) {
           var sd = { x: b.x + b.w / 2 + sides[sk] * 50, y: b.y + b.h / 2,
-                     side: sides[sk], t: 0, big: mv.count === 3 };
+                     side: sides[sk], t: 0, big: mv.count === 3, slow: !!mv.slow };
           /* the final boss's fly out from him first - one to each side
-             of the room and one to the middle - and only then come */
-          if (mv.count === 3) {
+             of the room (and one to the middle, when there are three) -
+             and only then come */
+          if (mv.count === 3 || mv.flyOut) {
+            var se = roomEdges();
+            var spots = mv.count === 3 ? [se.L + 120, (se.L + se.R) / 2, se.R - 120]
+                                       : [se.L + 120, se.R - 120];
             sd.fly = { fromX: b.x + b.w / 2, fromY: b.y + b.h / 2,
-                       toX: [roomEdges().L + 120, (roomEdges().L + roomEdges().R) / 2, roomEdges().R - 120][sk],
-                       toY: 150, t: 0 };
+                       toX: spots[sk], toY: 150, t: 0 };
             sd.x = sd.fly.fromX;
             sd.y = sd.fly.fromY;
           }
@@ -3656,6 +3669,7 @@
      so the two don't merge into one. */
   var SEEKER_SPEED = 85;
   var SEEKER_LIFE  = 15;
+  var SEEKER_SLOW  = 55;         // the final boss's last two: slower
   var SEEKER_FLY   = 0.9;        // the final boss's: seconds flying out to their spots
 
   function updateSeekers(dt) {
@@ -3679,7 +3693,7 @@
       var tx = p.x + p.w / 2 + s.side * 22, ty = p.y + p.h / 2;
       var dx = tx - s.x, dy = ty - s.y;
       var d = Math.sqrt(dx * dx + dy * dy) || 1;
-      var stepL = Math.min(d, SEEKER_SPEED * dt);
+      var stepL = Math.min(d, (s.slow ? SEEKER_SLOW : SEEKER_SPEED) * dt);
       s.x += dx / d * stepL;
       s.y += dy / d * stepL;
 
@@ -6035,23 +6049,20 @@
           ctx.moveTo(bd.x, bd.y);
           ctx.lineTo(ex, ey);
           ctx.stroke();
-        } else if (bd.firing) {
-          ctx.strokeStyle = '#ffd166';
+        } else if (bd.fired && !bd.gone) {
+          /* charging: a streak behind it, back up its line */
+          ctx.strokeStyle = 'rgba(255,209,102,0.5)';
           ctx.shadowColor = '#ffd166';
-          ctx.shadowBlur = 24;
-          ctx.lineWidth = 14;
+          ctx.shadowBlur = 18;
+          ctx.lineWidth = 10;
+          ctx.lineCap = 'round';
           ctx.beginPath();
           ctx.moveTo(bd.x, bd.y);
-          ctx.lineTo(ex, ey);
-          ctx.stroke();
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 5;
+          ctx.lineTo(bd.x - Math.cos(bd.ang) * 90, bd.y - Math.sin(bd.ang) * 90);
           ctx.stroke();
         }
         ctx.restore();
-        if (smv.t < fireAt + 0.6) {
-          drawCube(bd.x, bd.y, 26, 26, '#ffd166', bd.x < p.x ? 1 : -1, 0);
-        }
+        if (!bd.gone) drawCube(bd.x, bd.y, 26, 26, '#ffd166', bd.x < p.x ? 1 : -1, 0);
       }
     }
 
