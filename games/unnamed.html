@@ -3710,7 +3710,7 @@
   var BELT_Y       = 46;         // the top of the conveyor, along the top of the screen
   var BELT_EDGE    = 600;        // its left end, where things fall off (screen x)
   var BELT_REL     = 220;        // how fast its top runs toward that edge
-  var BELT_START   = W - 70;     // its right end: things come out of the hopper there
+  var BELT_START   = W + 40;     // its right end is off the screen: things come in from there
   var BELT_RIDE_T  = (BELT_START - BELT_EDGE) / BELT_REL;   // seconds a thing is seen riding
   var PLAT_Y       = GROUND - 60;                       // where the platforms hang
 
@@ -3735,7 +3735,7 @@
     level.chase = { board: board, x: cam.x, items: [], floats: [], growW: 0,
                     endX: BOARD_X + BOARD_LEN - 140, on: false, done: false };
     /* the course itself is laid out when the chase starts, so the first
-       of it comes out of the hopper rather than appearing on the belt */
+       of it slides in from off the screen rather than appearing on the belt */
   }
 
   /* The course, a section at a time: the gap before a platform, the
@@ -3960,7 +3960,7 @@
         b.stage = 'chase';
         c.x = cam.x;
         c.on = true;
-        /* lay the course out from just past where the hopper is now */
+        /* lay the course out from just past where the belt comes on screen */
         buildChase(c, Math.max(BOARD_X + BOARD_SAFE - 20,
                                c.x + BELT_EDGE + SCROLL_SPEED * BELT_RIDE_T + 20));
       }
@@ -5030,29 +5030,35 @@
     drawNail(x + w - 5, y + h / 2);
   }
 
-  /* A crate, drawn the way the rest of the game is: a glowing block
-     with a dark square sunk into it (like the cubes), and a soft brace
-     across that so it still reads as a crate. */
+  /* a wooden crate: horizontal slats in a frame, with a brace plank
+     across it corner to corner, and nails where the brace meets the
+     frame */
   function drawCrate(x, y, w, h) {
-    var col = '#ff9f43';
+    var slats = 3, sh = h / slats;
+    for (var i = 0; i < slats; i++) drawPlankBody(x, y + i * sh, w, sh, Math.floor(x) + i * 5);
+
+    /* the brace */
+    var len = Math.sqrt(w * w + h * h), ang = Math.atan2(h - 12, w - 12);
     ctx.save();
-    ctx.fillStyle = col;
-    ctx.shadowColor = col;
-    ctx.shadowBlur = 16;
-    rr(x, y, w, h, 6);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = '#1f1206';
-    rr(x + 6, y + 6, w - 12, h - 12, 4);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255,159,67,0.55)';
-    ctx.lineWidth = 4;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(x + 12, y + h - 12);
-    ctx.lineTo(x + w - 12, y + 12);
-    ctx.stroke();
+    ctx.translate(x + 6, y + 6);
+    ctx.rotate(ang);
+    drawPlankBody(0, -4, len - 17, 8, Math.floor(y));
     ctx.restore();
+
+    /* the frame */
+    ctx.strokeStyle = WOOD_DARK;
+    ctx.lineWidth = 6;
+    ctx.strokeRect(x + 3, y + 3, w - 6, h - 6);
+    ctx.strokeStyle = WOOD_EDGE;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    ctx.strokeStyle = 'rgba(255,220,170,0.25)';
+    ctx.strokeRect(x + 6.5, y + 6.5, w - 13, h - 13);
+
+    drawNail(x + 6, y + 6);
+    drawNail(x + w - 6, y + 6);
+    drawNail(x + 6, y + h - 6);
+    drawNail(x + w - 6, y + h - 6);
   }
 
   /* Everything else of the chase: the conveyor overhead, his hangers,
@@ -5133,23 +5139,6 @@
       ctx.fill();
       ctx.restore();
     }
-
-    /* the hopper at the conveyor's start: everything comes out of it
-       onto the belt, so nothing just appears there */
-    var hx = cam.x + BELT_START + slide;
-    ctx.save();
-    ctx.fillStyle = '#ff9f43';
-    ctx.shadowColor = '#ff9f43';
-    ctx.shadowBlur = 16;
-    rr(hx - 6, BELT_Y - 76, W + 20 - BELT_START, 96, 8);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = '#1f1206';
-    rr(hx, BELT_Y - 70, W + 8 - BELT_START, 84, 5);
-    ctx.fill();
-    ctx.fillStyle = '#000';                            // the mouth things come out of
-    ctx.fillRect(hx - 6, BELT_Y - 60, 8, 60);
-    ctx.restore();
 
     /* the finish: a gold flag at the end of the board */
     var fx = c.endX + 40;
