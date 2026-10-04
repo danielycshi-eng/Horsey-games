@@ -2297,7 +2297,8 @@
   window.addEventListener('keydown', function (e) {
     if (BLOCK.indexOf(e.code) !== -1) e.preventDefault();
     if (!state.running) return;
-    if (!keys[e.code] && !introRunning()) press(e.code);   // nothing works while he talks
+    /* nothing works while he talks - except Y, the skip */
+    if (!keys[e.code] && (!introRunning() || e.code === 'KeyY')) press(e.code);
     keys[e.code] = true;
   });
   window.addEventListener('keyup', function (e) { keys[e.code] = false; });
@@ -2352,6 +2353,32 @@
     if (code === 'KeyB') toggleCarry();
     if (code === 'KeyP') placeCheckpoint();
     if (code === 'KeyR') respawn();
+    if (code === 'KeyY') skipToChase();
+  }
+
+  /* Y: straight to the final boss's conveyor chase, from anywhere -
+     past the scene and the fight, stood at the end of his floor. */
+  function skipToChase() {
+    var last = BUILDERS.length - 1;
+    if (levelIndex === last && level.boss && level.boss.stage) return;   // already on it
+    if (levelIndex !== last) loadLevel(last);
+    level.intro.done = true;
+    finalIntroSeen = true;
+    state.titleT = 0;
+    var b = level.boss;
+    b.asleep = false;
+    b.hp = 0;
+    p.x = BOARD_X - 200;
+    p.y = GROUND - SIZE;
+    p.vx = 0; p.vy = 0;
+    p.onGround = true;
+    safeSpot.x = p.x;
+    safeSpot.y = p.y;
+    cam.x = p.x + p.w / 2 - W / 2;
+    b.x = cam.x + W - 170;
+    b.y = GROUND - b.h;
+    startFinalScroll(b);
+    saveGame();
   }
 
   function attack() {
