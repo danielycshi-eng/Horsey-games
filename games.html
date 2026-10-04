@@ -326,6 +326,110 @@
     </div>
   </div>
 
+  <!-- After beating A Platformer Game and choosing Exit: the green
+       fellow pops up here with a few words. Click to move his lines on;
+       after the last one he's gone. -->
+  <div id="apgEpilogue" class="apg-epi hidden">
+    <div class="apg-bubble"><span id="apgLine"></span><em id="apgMore">click &#9654;</em></div>
+    <div class="apg-guy"><div class="apg-eye l"></div><div class="apg-eye r"></div></div>
+  </div>
+  <style>
+    .apg-epi {
+      position: fixed; inset: 0; z-index: 50;
+      background: rgba(5, 7, 15, 0.72);
+      display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+      padding-bottom: 8vh; cursor: pointer;
+    }
+    .apg-epi.hidden { display: none; }
+    .apg-guy {
+      position: relative; width: 120px; height: 120px; border-radius: 22px;
+      background: #7bffb2; box-shadow: 0 0 40px rgba(123, 255, 178, 0.6);
+      transform: translateY(70vh);
+      transition: transform 0.7s cubic-bezier(.2, 1.4, .4, 1);
+    }
+    .apg-guy::before {
+      content: ''; position: absolute; inset: 20px; border-radius: 14px; background: #05070f;
+    }
+    .apg-eye { position: absolute; top: 44px; width: 20px; height: 28px; background: #fff; z-index: 1; }
+    .apg-eye.l { left: 36px; }
+    .apg-eye.r { left: 64px; }
+    .apg-epi.up .apg-guy { transform: translateY(0); }
+    .apg-bubble {
+      position: relative; min-width: 300px; max-width: 80vw; margin-bottom: 26px;
+      padding: 18px 24px 26px; border: 2px solid #7bffb2; border-radius: 12px;
+      background: rgba(5, 7, 15, 0.92); color: #bfffe0;
+      font: 18px sans-serif; text-align: center;
+      opacity: 0; transition: opacity 0.3s;
+    }
+    .apg-bubble::after {
+      content: ''; position: absolute; left: 50%; bottom: -12px; margin-left: -8px;
+      border: 8px solid transparent; border-top-color: #7bffb2; border-bottom: 0;
+    }
+    .apg-epi.talking .apg-bubble { opacity: 1; }
+    #apgMore {
+      position: absolute; right: 12px; bottom: 6px;
+      font: bold 11px sans-serif; color: #7bffb2; font-style: normal; visibility: hidden;
+    }
+  </style>
+  <script>
+    (function () {
+      var KEY = 'apg_epilogue';
+      var seen = null;
+      try { seen = localStorage.getItem(KEY); } catch (e) {}
+      if (seen !== '1') return;
+
+      var LINES = [
+        'So, you were stronger than I thought!',
+        "But I won't just take that.",
+        'Next time you play,',
+        'Watch out for me...',
+        'Maybe another time.'
+      ];
+      var box  = document.getElementById('apgEpilogue');
+      var text = document.getElementById('apgLine');
+      var more = document.getElementById('apgMore');
+      var line = 0, shown = 0, timer = null;
+
+      function type() {
+        clearInterval(timer);
+        shown = 0;
+        text.textContent = '';
+        more.style.visibility = 'hidden';
+        timer = setInterval(function () {
+          shown++;
+          text.textContent = LINES[line].substring(0, shown);
+          if (shown >= LINES[line].length) {
+            clearInterval(timer);
+            more.style.visibility = 'visible';
+          }
+        }, 34);
+      }
+
+      box.classList.remove('hidden');
+      setTimeout(function () { box.classList.add('up'); }, 50);
+      setTimeout(function () { box.classList.add('talking'); type(); }, 800);
+
+      /* a click finishes the line that's typing, or moves on; after the
+         last one he's gone, and the games list is yours again */
+      box.addEventListener('click', function () {
+        if (!box.classList.contains('talking')) return;
+        if (shown < LINES[line].length) {
+          clearInterval(timer);
+          shown = LINES[line].length;
+          text.textContent = LINES[line];
+          more.style.visibility = 'visible';
+          return;
+        }
+        line++;
+        if (line < LINES.length) { type(); return; }
+        try { localStorage.removeItem(KEY); } catch (e) {}
+        box.classList.remove('talking');
+        box.classList.remove('up');
+        setTimeout(function () { box.classList.add('hidden'); }, 700);
+      });
+    })();
+  </script>
+
   <script src="bg.js"></script>
 </body>
 </html>

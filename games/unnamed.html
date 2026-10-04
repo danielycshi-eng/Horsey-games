@@ -7630,6 +7630,18 @@
       onAgain = last
         ? function () { returnToDone = finished; loadLevel(0); enterGame(); }
         : function () { loadLevel(finished); enterGame(); };
+
+      /* the final boss beaten: play it again, or exit - out to the games
+         list, where the green fellow has a few words, and a fresh start
+         waiting the next time you come in */
+      if (last) {
+        againBtn.textContent = 'Exit';
+        onAgain = function () {
+          clearSave();
+          try { localStorage.setItem('apg_epilogue', '1'); } catch (e) {}
+          window.location.href = '../games.html';
+        };
+      }
     }
 
     /* Put a flag down in the room you just finished? Then the way on
