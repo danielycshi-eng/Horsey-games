@@ -2107,7 +2107,7 @@
     t: 0
   };
 
-  var cam = { x: 0 };
+  var cam = { x: 0, y: 0 };      // y is 0 except up the final boss's jetpack course
   var particles = [];
 
   /* The last patch of solid ground you stood on. This is what gets
@@ -2140,6 +2140,8 @@
     p.atk = 0; p.cool = 0; p.swung = false;
     p.dash = 0; p.dashDir = 1;
     p.yeet = 0; p.yeetVx = 0;
+    p.jet = null;
+    cam.y = 0;
     p.holding = null;
     p.dead = false; p.deadT = 0;
 
@@ -2219,6 +2221,7 @@
      had landed on the boss when you died are still landed when you
      come back - every boss, the final one too. */
   function respawn() {
+    state.taunt = null;
     var cp = checkpoint;
     var used = state.cpUsed;
     var bossHp = level.boss ? level.boss.hp : null;
@@ -2425,6 +2428,7 @@
   }
 
   function toggleCarry() {
+    if (p.jet) return;                 // strapped on: no letting go of it
     if (p.holding) {
       var held = p.holding;
       held.x = p.x + p.w / 2 - held.w / 2 + p.face * 18;
@@ -2462,6 +2466,8 @@
 
     best.held = true;
     p.holding = best;
+    /* the final boss's last part: his blue bomb is a jetpack */
+    if (best.kind === 'bomb' && level.boss && level.boss.stage === 'phase3' && !p.jet) startJet();
     if (level.door.needs && best.kind === level.door.needs) state.picked = true;
     burst(best.x + best.w / 2, best.y + best.h / 2,
           best.kind === 'key' ? '#ffd166' : '#ff5f7e', 12);
@@ -2650,7 +2656,14 @@
     p.deadT = 0;
     state.flash = 1;
     burst(p.x + p.w / 2, p.y + p.h / 2, '#ff5f7e', 34, 1.4);
+    /* against the final boss: everything goes grey, and he has
+       something to say about it */
+    state.taunt = (level.boss && level.boss.final && !introRunning())
+      ? TAUNTS[Math.floor(Math.random() * TAUNTS.length)] : null;
   }
+
+  var TAUNTS = ['Maybe next time!', 'No refunds, haha', 'Come again!', 'byebye!'];
+  var TAUNT_TIME = 2.4;          // how long the grey lasts before you're back
 
   /* ============================================================
      SINKING PLATFORMS
@@ -4457,6 +4470,139 @@
   }
 
   /* For now he only drifts over his bare floor. */
+  /* ============================================================
+     THE JETPACK
+     On his bare platform, picking up the blue bomb straps it on as a
+     jetpack: hold jump to fly up, let go and you fall. A course goes up
+     over the platform - red platforms with spikes along their
+     undersides, some sliding side to side - and he rises ahead of you
+     as you climb. Fly into him at the top and the bomb goes off on him:
+     one hit, the jetpack's gone and you fall back down to carry on.
+     The fuse is 30 seconds; the climb takes about 15. If it runs out
+     the bomb goes off on you.
+     ============================================================ */
+  var JET_ACCEL  = 1400;         // how hard it lifts, beyond gravity
+  var JET_MAX    = 440;          // fastest it climbs
+  var JET_FUSE   = 30;
+  var JET_ROW    = 260;          // between rows of the course
+  var JET_TOP    = GROUND - 9 * JET_ROW - 200;   // where he waits for you
+  var JET_SPIKE  = 16;           // the teeth under a platform
+
+  /* The course, a row at a time from the bottom: each row is the
+     stretches of platform it has across the room (as fractions of its
+     width), or one that slides. The gaps are the way up. */
+  var JET_ROWS = [
+    { plats: [[0, 0.37], [0.58, 1]] },
+    { plats: [[0, 0.12], [0.33, 1]] },
+    { slide: { w: 0.67, amp: 0.16, period: 3.0, phase: 0 } },
+    { plats: [[0, 0.62], [0.84, 1]] },
+    { slide: { w: 0.72, amp: 0.13, period: 2.4, phase: 1.6 } },
+    { plats: [[0, 0.19], [0.4, 0.6], [0.81, 1]] },
+    { slide: { w: 0.58, amp: 0.2, period: 2.8, phase: 0.8 } },
+    { plats: [[0, 0.42], [0.63, 1]] }
+  ];
+
+  function startJet() {
+    var b = level.boss, e = roomEdges(), L = e.L, Wd = e.R - e.L;
+    p.jet = { fuse: JET_FUSE, thrust: false };
+    b.moves.length = 0;
+    b.idle = 0;
+    level.bombs.length = 0;
+    level.seekers.length = 0;
+    level.spikeballs.length = 0;
+    level.fireballs.length = 0;
+    level.enemies.length = 0;
+    state.flash = Math.max(state.flash, 0.4);
+    burst(p.x + p.w / 2, p.y + p.h, '#4ec3ff', 30, 1.4);
+
+    var jet = { solids: [], hazards: [], sliders: [] };
+    function plat(x, y, w) {
+      var s = { x: x, y: y, w: w, h: 20, red: true };
+      var hz = { x: x, y: y + 20, w: w, h: JET_SPIKE, down: true };
+      jet.solids.push(s);
+      jet.hazards.push(hz);
+      return { s: s, hz: hz };
+    }
+    for (var i = 0; i < JET_ROWS.length; i++) {
+      var row = JET_ROWS[i], y = GROUND - (i + 1) * JET_ROW;
+      if (row.plats) {
+        for (var k = 0; k < row.plats.length; k++) {
+          plat(L + row.plats[k][0] * Wd, y, (row.plats[k][1] - row.plats[k][0]) * Wd);
+        }
+      } else {
+        var sw = row.slide.w * Wd;
+        var pr = plat(L + (Wd - sw) / 2, y, sw);
+        jet.sliders.push({ s: pr.s, hz: pr.hz, x0: L + (Wd - sw) / 2,
+                           amp: row.slide.amp * Wd, period: row.slide.period,
+                           phase: row.slide.phase });
+      }
+    }
+    /* walls up the sides, so the way up is up - stopping short of his
+       floor, so its ends are still open over the pits */
+    var top = JET_TOP - 400;
+    jet.solids.push({ x: L - 40, y: top, w: 40, h: GROUND - 140 - top, red: true });
+    jet.solids.push({ x: e.R, y: top, w: 40, h: GROUND - 140 - top, red: true });
+
+    for (i = 0; i < jet.solids.length; i++) level.solids.push(jet.solids[i]);
+    for (i = 0; i < jet.hazards.length; i++) level.hazards.push(jet.hazards[i]);
+    level.jet = jet;
+  }
+
+  /* the course goes, and so does the jetpack */
+  function endJet() {
+    var jet = level.jet, i;
+    if (jet) {
+      for (i = 0; i < jet.solids.length; i++) {
+        var si = level.solids.indexOf(jet.solids[i]);
+        if (si !== -1) level.solids.splice(si, 1);
+      }
+      for (i = 0; i < jet.hazards.length; i++) {
+        var hi = level.hazards.indexOf(jet.hazards[i]);
+        if (hi !== -1) level.hazards.splice(hi, 1);
+      }
+    }
+    level.jet = null;
+    p.jet = null;
+    if (p.holding) { p.holding.hidden = true; p.holding.held = false; p.holding = null; }
+  }
+
+  function updateJet(b, dt) {
+    var jet = level.jet;
+    var i;
+    for (i = 0; i < jet.sliders.length; i++) {
+      var sl = jet.sliders[i];
+      var was = sl.s.x;
+      sl.s.x = sl.x0 + sl.amp * Math.sin(state.t * Math.PI * 2 / sl.period + sl.phase);
+      sl.hz.x = sl.s.x;
+      if (standingOn({ x: was, y: sl.s.y, w: sl.s.w, h: sl.s.h })) p.x += sl.s.x - was;   // it carries you
+    }
+
+    /* he goes up ahead of you, and waits at the top */
+    var want = Math.max(JET_TOP, Math.min(b.hover, p.y - 380));
+    b.y += (want - b.y) * Math.min(1, dt * 3);
+    var e = roomEdges();
+    b.x += ((e.L + e.R) / 2 - b.w / 2 - b.x) * Math.min(1, dt * 2);
+
+    p.jet.fuse -= dt;
+    if (p.jet.fuse <= 0) {                           // too slow: it goes off on you
+      burst(p.x + p.w / 2, p.y + p.h / 2, '#ff5f7e', 60, 2.2);
+      endJet();
+      die();
+      return;
+    }
+
+    /* into him with it: one hit, and down you go */
+    if (hits(p, bossBox(b))) {
+      endJet();
+      b.hp--;
+      b.flash = 0.4;
+      burst(b.x + b.w / 2, b.y + b.h / 2, '#4ec3ff', 70, 2.2);
+      state.flash = Math.max(state.flash, 0.6);
+      p.vy = 0;
+      if (b.hp <= 0) { b.dead = true; b.deadT = 0; }
+    }
+  }
+
   function updatePhase3(b, dt) {
     /* three blue bombs and he's down - for now, that's the end */
     if (b.dead) {
@@ -4469,6 +4615,9 @@
       }
       return;
     }
+
+    /* on the jetpack: no attacks, only the climb */
+    if (level.jet) { updateJet(b, dt); updateRainSpikes(dt); return; }
 
     updateSeekers(dt);      if (p.dead) return;
     updateSpikeballs(dt);   if (p.dead) return;
@@ -4785,7 +4934,7 @@
 
     if (p.dead) {
       p.deadT += dt;
-      if (p.deadT > 0.7) respawn();
+      if (p.deadT > (state.taunt ? TAUNT_TIME : 0.7)) respawn();
       return;
     }
 
@@ -4856,7 +5005,12 @@
       else state.coyote = Math.max(0, state.coyote - dt);
       state.buffer = Math.max(0, state.buffer - dt);
 
-      if (state.buffer > 0) {
+      if (p.jet) {
+        /* the jetpack: hold jump and it lifts you, let go and you fall */
+        state.buffer = 0;
+        p.jet.thrust = !!(keys.Space || keys.ArrowUp || keys.KeyW);
+        if (p.jet.thrust) p.vy = Math.max(-JET_MAX, p.vy - (GRAVITY + JET_ACCEL) * dt);
+      } else if (state.buffer > 0) {
         if (p.onGround || state.coyote > 0) {
           jump(false);
           p.airJumps = 1;
@@ -4870,7 +5024,7 @@
       }
 
       // short hop: release jump early and you rise less
-      if (p.vy < 0 && !(keys.Space || keys.ArrowUp || keys.KeyW)) p.vy += GRAVITY * 0.9 * dt;
+      if (!p.jet && p.vy < 0 && !(keys.Space || keys.ArrowUp || keys.KeyW)) p.vy += GRAVITY * 0.9 * dt;
 
       p.vy += GRAVITY * dt;
       if (p.vy > MAX_FALL) p.vy = MAX_FALL;
@@ -5105,6 +5259,13 @@
   }
 
   function updateCamera(dt) {
+    /* up and down only on the final boss's jetpack course, and coming
+       back down from it; everywhere else the camera stays level */
+    var up = level.jet || (level.boss && level.boss.stage === 'phase3' && p.y < GROUND - 300);
+    var ty = up ? Math.min(0, p.y + p.h / 2 - H * 0.55) : 0;
+    cam.y += (ty - cam.y) * Math.min(1, dt * 8);
+    if (!up && Math.abs(cam.y) < 0.5) cam.y = 0;
+
     if (level.chase && level.chase.on) { cam.x = level.chase.x; return; }   // autoscroll
     var target = p.x + p.w / 2 - W / 2;
     if (target < 0) target = 0;
@@ -5700,6 +5861,92 @@
     ctx.restore();
   }
 
+  /* The blue bomb strapped on as a jetpack, and its flame while you
+     hold jump. */
+  function drawJetpack() {
+    if (!p.jet || p.dead) return;
+    var bx = p.x + p.w / 2 - p.face * (p.w / 2 + 6), by = p.y + p.h / 2;
+    if (p.jet.thrust) {
+      var fl = 18 + Math.random() * 14;
+      ctx.save();
+      ctx.fillStyle = '#ff8c42';
+      ctx.shadowColor = '#ff8c42';
+      ctx.shadowBlur = 18;
+      ctx.beginPath();
+      ctx.moveTo(bx - 7, by + 10);
+      ctx.lineTo(bx, by + 10 + fl);
+      ctx.lineTo(bx + 7, by + 10);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#ffd166';
+      ctx.beginPath();
+      ctx.moveTo(bx - 4, by + 10);
+      ctx.lineTo(bx, by + 10 + fl * 0.6);
+      ctx.lineTo(bx + 4, by + 10);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.save();
+    ctx.fillStyle = '#4ec3ff';
+    ctx.shadowColor = '#4ec3ff';
+    ctx.shadowBlur = 14;
+    ctx.beginPath();
+    ctx.arc(bx, by, 12, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#8a93ad';                       // the nozzle
+    ctx.fillRect(bx - 5, by + 6, 10, 6);
+    /* the fuse, burning down: shorter as time runs out */
+    var left = p.jet.fuse / JET_FUSE;
+    ctx.strokeStyle = '#ffd166';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(bx, by - 12);
+    ctx.lineTo(bx + 3, by - 12 - 12 * left);
+    ctx.stroke();
+    if (Math.sin(state.t * 30) > 0) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(bx + 2, by - 14 - 12 * left, 3, 3);
+    }
+    ctx.restore();
+  }
+
+  /* the fuse, counting down, big across the top of the screen */
+  function drawJetHUD() {
+    if (!p.jet) return;
+    var s = Math.max(0, p.jet.fuse);
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 28px sans-serif';
+    ctx.fillStyle = s < 5 && Math.sin(state.t * 20) > 0 ? '#ffffff' : (s < 10 ? '#ff2d55' : '#4ec3ff');
+    ctx.shadowColor = ctx.fillStyle;
+    ctx.shadowBlur = 16;
+    ctx.fillText('FUSE ' + s.toFixed(1), W / 2, 70);
+    ctx.font = '12px sans-serif';
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#8ea7d6';
+    ctx.fillText('HOLD SPACE TO FLY  -  GET IT TO HIM', W / 2, 90);
+    ctx.restore();
+  }
+
+  /* Dead, against the final boss: everything goes grey, and he says
+     something, in a bubble over him. */
+  function drawDeathTaunt() {
+    if (!p.dead || !state.taunt) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'saturation';
+    ctx.fillStyle = '#808080';
+    ctx.globalAlpha = Math.min(1, p.deadT / 0.3);
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+    var b = level.boss;
+    var sx = b.x + b.w / 2 - cam.x, sy = b.y - cam.y;
+    sx = Math.max(175, Math.min(W - 175, sx));
+    sy = Math.max(110, Math.min(H - 20, sy));
+    drawSpeech(sx, sy, state.taunt, Math.max(0, p.deadT - 0.25) * 34);
+  }
+
   /* the fan on its own, once it has come off the throne */
   function drawFanAt(x, y, r, rot) {
     ctx.save();
@@ -5882,9 +6129,15 @@
     for (var i = 0; i < n; i++) {
       var x = hz.x + i * wide;
       ctx.beginPath();
-      ctx.moveTo(x, hz.y + hz.h);
-      ctx.lineTo(x + wide / 2, hz.y);
-      ctx.lineTo(x + wide, hz.y + hz.h);
+      if (hz.down) {                   // hanging under a platform, points down
+        ctx.moveTo(x, hz.y);
+        ctx.lineTo(x + wide / 2, hz.y + hz.h);
+        ctx.lineTo(x + wide, hz.y);
+      } else {
+        ctx.moveTo(x, hz.y + hz.h);
+        ctx.lineTo(x + wide / 2, hz.y);
+        ctx.lineTo(x + wide, hz.y + hz.h);
+      }
       ctx.closePath();
       ctx.fill();
     }
@@ -6868,13 +7121,13 @@
     if (camFx.zoom !== 1 || camFx.shake > 0) {
       var zk = Math.max(0, (camFx.zoom - 1) / (ANGRY_ZOOM_K - 1));
       var tx = W / 2 + (camFx.fx - cam.x - W / 2) * zk;
-      var ty = H / 2 + (camFx.fy - H / 2) * zk;
+      var ty = H / 2 + (camFx.fy - cam.y - H / 2) * zk;
       ctx.translate(W / 2 + (Math.random() - 0.5) * 2 * camFx.shake,
                     H / 2 + (Math.random() - 0.5) * 2 * camFx.shake);
       ctx.scale(camFx.zoom, camFx.zoom);
       ctx.translate(-tx, -ty);
     }
-    ctx.translate(-Math.round(cam.x), 0);
+    ctx.translate(-Math.round(cam.x), -Math.round(cam.y));
 
     var i;
     for (i = 0; i < level.hazards.length; i++) {
@@ -6901,12 +7154,15 @@
     drawHints();
     drawCheckpoint();
     drawPlayer();
+    drawJetpack();
     drawParticles();
     drawFireball();
 
     ctx.restore();
     drawHUD();
     drawIntroScreen();             // the final boss's way in
+    drawJetHUD();
+    drawDeathTaunt();
   }
 
   /* ============================================================
