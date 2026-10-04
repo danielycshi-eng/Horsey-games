@@ -2141,6 +2141,7 @@
     p.dash = 0; p.dashDir = 1;
     p.yeet = 0; p.yeetVx = 0;
     p.jet = null;
+    state.finale = null;
     cam.y = 0;
     p.holding = null;
     p.dead = false; p.deadT = 0;
@@ -2188,6 +2189,7 @@
 
   function placeCheckpoint() {
     if (!p.onGround) return;
+    if (level.jet) return;                 // not up the jetpack climbs
 
     if (checkpoint && Math.abs(checkpoint.x - p.x) < CP_REACH &&
         Math.abs(checkpoint.y - p.y) < CP_REACH) {
@@ -2666,6 +2668,7 @@
   }
 
   function die() {
+    if (state.finale) return;          // nothing can hurt you once he is going up
     if (p.dead) return;
     p.dead = true;
     p.deadT = 0;
@@ -4558,7 +4561,8 @@
   /* one climb per hit */
   var JET_COURSES = [ { rows: JET_ROWS,   fuse: JET_FUSE },
                       { rows: JET_ROWS_2, fuse: 25 },
-                      { rows: JET_ROWS_3, fuse: 30, walls: JET_WALLS_3, saws: JET_SAWS_3 } ];
+                      { rows: JET_ROWS_3, fuse: 60, walls: JET_WALLS_3, saws: JET_SAWS_3,
+                        foot: true } ];
 
   function startJet() {
     var b = level.boss, e = roomEdges(), L = e.L, Wd = e.R - e.L;
@@ -4575,7 +4579,11 @@
     state.flash = Math.max(state.flash, 0.4);
     burst(p.x + p.w / 2, p.y + p.h, '#4ec3ff', 30, 1.4);
 
-    var jet = { solids: [], hazards: [], sliders: [] };
+    var jet = { solids: [], hazards: [], sliders: [], tracks: [],
+                foot: !!course.foot, shot: null, broken: false,
+                /* where he waits: the top of the climb - or, on the last one,
+                   above the climb on foot that follows it */
+                bossTop: course.foot ? FOOT_F - FOOT_ORB_UP - FOOT_BOSS_UP : JET_TOP };
     function plat(x, y, w) {
       var s = { x: x, y: y, w: w, h: 20, red: true };
       var hz = { x: x, y: y + 20, w: w, h: JET_SPIKE, down: true };
@@ -4600,7 +4608,7 @@
     /* walls up the sides, so the way up is up - all the way down past
        his floor, with no gap at the bottom to slip out through (they go
        when the jetpack does) */
-    var top = JET_TOP - 400;
+    var top = Math.min(JET_TOP, jet.bossTop) - 400;
     jet.solids.push({ x: L - 40, y: top, w: 40, h: GROUND + 160 - top, red: true });
     jet.solids.push({ x: e.R, y: top, w: 40, h: GROUND + 160 - top, red: true });
 
@@ -4647,9 +4655,181 @@
     if (p.holding) { p.holding.hidden = true; p.holding.held = false; p.holding = null; }
   }
 
+  /* ============================================================
+     THE LAST CLIMB, ON FOOT, AND THE END
+     Near the top of the third climb he shoots a fireball that wrecks
+     the jetpack. A floor appears under you and you go on up on foot -
+     still carrying the bomb, still on its fuse: steps with saws, then
+     five tracks of thin little platforms you can jump up through, a
+     plain one and a spiked one on each, sliding back and forth at
+     their own speeds. Stand on a plain one too long and the spiked one
+     comes through it. At the top, a red orb: take it and it throws you
+     into him. Time slows, "NOOOOOOOOO!", a huge explosion, everything
+     goes white, and you've won.
+     ============================================================ */
+  var FOOT_F        = GROUND - 8 * JET_ROW - 160;   // the floor that appears
+  var FOOT_STEP     = 100;       // the steps, one above the next
+  var FOOT_TRACK    = 90;        // the tracks, one above the next
+  var FOOT_TRACKS   = 5;
+  var FOOT_ORB_UP   = 600 + FOOT_TRACKS * FOOT_TRACK + 80;   // the orb, above the floor
+  var FOOT_BOSS_UP  = 330;       // and him, above the orb
+  var JET_SHOT_SPEED = 900;
+  /* each track's plain platform and spiked platform: seconds for a
+     full swing across and back, and where in it they start */
+  var TRACK_PLAIN = [[7.0, 0.0], [6.0, 0.5], [8.0, 0.2], [5.5, 0.7], [6.5, 0.4]];
+  var TRACK_SPIKE = [[5.0, 0.5], [8.5, 0.0], [4.6, 0.3], [7.5, 0.9], [4.2, 0.1]];
+
+  /* he shoots: one fireball, fast, straight at you */
+  function shootJet(b) {
+    var jet = level.jet;
+    var sx = b.x + b.w / 2, sy = b.y + b.h;
+    jet.shot = { x: sx, y: sy };
+    burst(sx, sy, '#ff8c42', 20, 1.2);
+  }
+
+  /* the jetpack is wrecked: a floor, and the climb on foot */
+  function breakJet() {
+    var jet = level.jet, e = roomEdges(), L = e.L, Wd = e.R - e.L, i;
+    jet.broken = true;
+    jet.shot = null;
+    p.jet.thrust = false;
+    p.jet.broken = true;               // on foot from here - still on the fuse
+    burst(p.x + p.w / 2, p.y + p.h / 2, '#8a93ad', 40, 1.6);
+    burst(p.x + p.w / 2, p.y + p.h / 2, '#ff8c42', 30, 1.4);
+    state.flash = Math.max(state.flash, 0.5);
+
+    function add(s, hz) {
+      jet.solids.push(s); level.solids.push(s);
+      if (hz) { jet.hazards.push(hz); level.hazards.push(hz); }
+    }
+    function addSaw(sw) { sw.r = 22; jet.saws.push(sw); level.saws.push(sw); }
+
+    add({ x: L, y: FOOT_F, w: Wd, h: 20, red: true });                    // the floor
+    var steps = [[0.12, 1], [0.42, 2], [0.72, 3], [0.42, 4], [0.12, 5], [0.42, 6]];
+    for (i = 0; i < steps.length; i++) {
+      add({ x: L + steps[i][0] * Wd, y: FOOT_F - steps[i][1] * FOOT_STEP, w: 0.2 * Wd, h: 14,
+            oneWay: true, red: true });
+    }
+    addSaw({ x0: L + 0.37 * Wd, x1: L + 0.37 * Wd, y0: FOOT_F - 40, y1: FOOT_F - 240,
+             period: 1.6, phase: 0 });
+    addSaw({ x0: L + 0.45 * Wd, x1: L + 0.88 * Wd, y0: FOOT_F - 360, y1: FOOT_F - 360,
+             period: 2.0, phase: 0.3 });
+    addSaw({ x0: L + 0.37 * Wd, x1: L + 0.37 * Wd, y0: FOOT_F - 440, y1: FOOT_F - 600,
+             period: 1.4, phase: 0.6 });
+
+    /* the five tracks: thin, small, and you come up through them */
+    for (var k = 0; k < FOOT_TRACKS; k++) {
+      var ty = FOOT_F - 600 - (k + 1) * FOOT_TRACK;
+      var plain = { x: L, y: ty, w: 90, h: 8, oneWay: true, red: true };
+      var spiky = { x: L, y: ty, w: 90, h: 8, oneWay: true, red: true };
+      var teeth = { x: L, y: ty - 14, w: 90, h: 14 };
+      add(plain);
+      add(spiky, teeth);
+      jet.tracks.push({ s: plain, period: TRACK_PLAIN[k][0], phase: TRACK_PLAIN[k][1] });
+      jet.tracks.push({ s: spiky, hz: teeth, period: TRACK_SPIKE[k][0], phase: TRACK_SPIKE[k][1] });
+    }
+    moveTracks(0);
+
+    /* and the red orb, under him */
+    jet.orb = { x: L + Wd / 2, y: FOOT_F - FOOT_ORB_UP, kind: 'high', r: ORB_R_LAUNCH };
+    level.orbs.push(jet.orb);
+  }
+
+  /* the tracks' platforms, swinging back and forth across the room */
+  function moveTracks(dt) {
+    var jet = level.jet, e = roomEdges(), L = e.L, Wd = e.R - e.L;
+    for (var i = 0; i < jet.tracks.length; i++) {
+      var tr = jet.tracks[i], s = tr.s, was = s.x;
+      var u = 0.5 - 0.5 * Math.cos((state.t / tr.period + tr.phase) * Math.PI * 2);
+      s.x = L + 20 + (Wd - 40 - s.w) * u;
+      if (tr.hz) tr.hz.x = s.x;
+      if (dt > 0 && standingOn({ x: was, y: s.y, w: s.w, h: s.h })) p.x += s.x - was;   // it carries you
+    }
+  }
+
+  /* into him off the red orb: time slows, he has one last thing to
+     say, and then it all goes up */
+  var FINALE_SLOW  = 0.15;       // how slow everything goes
+  var FINALE_BOOM  = 2.2;        // real seconds until the explosion
+  var FINALE_WHITE = 1.2;        // the white coming up
+  var FINALE_END   = 4.2;        // and then you've won
+
+  function startFinale() {
+    state.finale = { t: 0, slow: FINALE_SLOW, boom: false };
+    p.vy = 0;
+  }
+
+  /* run on real time, not slowed time */
+  function advanceFinale(dt) {
+    var f = state.finale, b = level.boss;
+    f.t += dt;
+    if (!f.boom && f.t >= FINALE_BOOM) {
+      f.boom = true;
+      f.slow = 0;                                     // and everything stops
+      var cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+      burst(cx, cy, '#ffffff', 120, 4.0);
+      burst(cx, cy, '#ffd166', 100, 3.4);
+      burst(cx, cy, '#ff8c42', 90, 3.0);
+      burst(cx, cy, '#ff2d55', 80, 2.6);
+      level.fireball = { x: cx, y: cy, at: state.t };
+    }
+    if (f.boom) {                                     // the bits still fly
+      for (var i = particles.length - 1; i >= 0; i--) {
+        var q = particles[i];
+        q.life -= dt;
+        if (q.life <= 0) { particles.splice(i, 1); continue; }
+        q.vy += 900 * dt;
+        q.x += q.vx * dt;
+        q.y += q.vy * dt;
+      }
+      state.t += dt;                                  // so the fireball grows
+    }
+    if (f.t >= FINALE_END && !state.complete) {
+      state.complete = true;
+      level.boss.dead = true;
+      saveGame();
+      finishLevel();
+    }
+  }
+
+  function drawFinale() {
+    var f = state.finale;
+    if (!f) return;
+    ctx.save();
+    if (f.t < FINALE_BOOM + 0.3) {
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 64px sans-serif';
+      ctx.fillStyle = '#ff2d55';
+      ctx.shadowColor = '#ff2d55';
+      ctx.shadowBlur = 30;
+      var shake = f.t * 3;
+      ctx.fillText('NOOOOOOOOO!', W / 2 + (Math.random() - 0.5) * shake,
+                   H / 2 - 60 + (Math.random() - 0.5) * shake);
+    }
+    if (f.boom) {
+      var k = Math.min(1, (f.t - FINALE_BOOM) / FINALE_WHITE);
+      ctx.globalAlpha = k;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, W, H);
+    }
+    ctx.restore();
+  }
+
   function updateJet(b, dt) {
     var jet = level.jet;
     var i;
+    if (jet.tracks.length) moveTracks(dt);
+
+    /* his fireball, on its way to the jetpack */
+    if (jet.shot) {
+      var sdx = p.x + p.w / 2 - jet.shot.x, sdy = p.y + p.h / 2 - jet.shot.y;
+      var sd = Math.sqrt(sdx * sdx + sdy * sdy) || 1;
+      var stepS = JET_SHOT_SPEED * dt;
+      if (sd <= stepS + 16) { breakJet(); }
+      else { jet.shot.x += sdx / sd * stepS; jet.shot.y += sdy / sd * stepS; }
+    }
+    /* near the top of the last climb, he shoots the jetpack out */
+    if (jet.foot && !jet.broken && !jet.shot && p.y + p.h < FOOT_F - 20) shootJet(b);
     for (i = 0; i < jet.sliders.length; i++) {
       var sl = jet.sliders[i];
       var was = sl.s.x;
@@ -4659,7 +4839,7 @@
     }
 
     /* he goes up ahead of you, and waits at the top */
-    var want = Math.max(JET_TOP, Math.min(b.hover, p.y - 380));
+    var want = Math.max(jet.bossTop, Math.min(b.hover, p.y - 380));
     b.y += (want - b.y) * Math.min(1, dt * 3);
     var e = roomEdges();
     b.x += ((e.L + e.R) / 2 - b.w / 2 - b.x) * Math.min(1, dt * 2);
@@ -4672,8 +4852,12 @@
       return;
     }
 
-    /* into him with it: one hit, and down you go */
+    /* into him with it: one hit, and down you go - or, off the red orb
+       at the end of the last climb, the end of him */
+    if (state.finale) return;
+    if (jet.foot && !jet.broken) return;   // the last climb: only on foot, off the orb
     if (hits(p, bossBox(b))) {
+      if (jet.foot) { startFinale(); return; }
       endJet();
       b.hp--;
       b.flash = 0.4;
@@ -5094,7 +5278,7 @@
       else state.coyote = Math.max(0, state.coyote - dt);
       state.buffer = Math.max(0, state.buffer - dt);
 
-      if (p.jet) {
+      if (p.jet && !p.jet.broken) {
         /* the jetpack: hold jump and it lifts you, let go and you fall */
         state.buffer = 0;
         p.jet.thrust = !!(keys.Space || keys.ArrowUp || keys.KeyW);
@@ -5113,7 +5297,7 @@
       }
 
       // short hop: release jump early and you rise less
-      if (!p.jet && p.vy < 0 && !(keys.Space || keys.ArrowUp || keys.KeyW)) p.vy += GRAVITY * 0.9 * dt;
+      if (!(p.jet && !p.jet.broken) && p.vy < 0 && !(keys.Space || keys.ArrowUp || keys.KeyW)) p.vy += GRAVITY * 0.9 * dt;
 
       p.vy += GRAVITY * dt;
       if (p.vy > MAX_FALL) p.vy = MAX_FALL;
@@ -5352,7 +5536,7 @@
        back down from it; everywhere else the camera stays level */
     var up = level.jet || (level.boss && level.boss.stage === 'phase3' && p.y < GROUND - 300);
     /* on the jetpack you sit low on the screen, so you see what is above */
-    var ty = up ? Math.min(0, p.y + p.h / 2 - H * (level.jet ? 0.78 : 0.55)) : 0;
+    var ty = up ? Math.min(0, p.y + p.h / 2 - H * (level.jet ? (level.jet.broken ? 0.68 : 0.78) : 0.55)) : 0;
     cam.y += (ty - cam.y) * Math.min(1, dt * 8);
     if (!up && Math.abs(cam.y) < 0.5) cam.y = 0;
 
@@ -5951,55 +6135,62 @@
     ctx.restore();
   }
 
-  /* The blue bomb strapped on as a jetpack, and its flame while you
+  /* The jetpack on your back (the bomb rides over your head), and its flame while you
      hold jump. */
   function drawJetpack() {
-    if (!p.jet || p.dead) return;
-    var bx = p.x + p.w / 2 - p.face * (p.w / 2 + 6), by = p.y + p.h / 2;
+    /* his fireball on its way to it */
+    if (level.jet && level.jet.shot) {
+      var sh = level.jet.shot;
+      var g = ctx.createRadialGradient(sh.x, sh.y, 0, sh.x, sh.y, 22);
+      g.addColorStop(0, '#ffffff');
+      g.addColorStop(0.35, '#ffd166');
+      g.addColorStop(0.7, '#ff8c42');
+      g.addColorStop(1, 'rgba(255,45,85,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(sh.x, sh.y, 22, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (!p.jet || p.jet.broken || p.dead) return;
+
+    /* a grey, square-cornered pack on your back - nothing like the
+       round blue bomb - with two nozzles, and flame from them while
+       you hold jump */
+    var pw = 14, ph = 22;
+    var bx = p.x + p.w / 2 - p.face * (p.w / 2 + pw / 2 + 1) - pw / 2, by = p.y + 3;
     if (p.jet.thrust) {
-      var fl = 18 + Math.random() * 14;
       ctx.save();
-      ctx.fillStyle = '#ff8c42';
-      ctx.shadowColor = '#ff8c42';
-      ctx.shadowBlur = 18;
-      ctx.beginPath();
-      ctx.moveTo(bx - 7, by + 10);
-      ctx.lineTo(bx, by + 10 + fl);
-      ctx.lineTo(bx + 7, by + 10);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = '#ffd166';
-      ctx.beginPath();
-      ctx.moveTo(bx - 4, by + 10);
-      ctx.lineTo(bx, by + 10 + fl * 0.6);
-      ctx.lineTo(bx + 4, by + 10);
-      ctx.closePath();
-      ctx.fill();
+      for (var n = 0; n < 2; n++) {
+        var nx = bx + 3 + n * 8, fl = 14 + Math.random() * 12;
+        ctx.fillStyle = '#ff8c42';
+        ctx.shadowColor = '#ff8c42';
+        ctx.shadowBlur = 16;
+        ctx.beginPath();
+        ctx.moveTo(nx - 3, by + ph + 3);
+        ctx.lineTo(nx, by + ph + 3 + fl);
+        ctx.lineTo(nx + 3, by + ph + 3);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#ffd166';
+        ctx.beginPath();
+        ctx.moveTo(nx - 1.5, by + ph + 3);
+        ctx.lineTo(nx, by + ph + 3 + fl * 0.55);
+        ctx.lineTo(nx + 1.5, by + ph + 3);
+        ctx.closePath();
+        ctx.fill();
+      }
       ctx.restore();
     }
-    ctx.save();
-    ctx.fillStyle = '#4ec3ff';
-    ctx.shadowColor = '#4ec3ff';
-    ctx.shadowBlur = 14;
-    ctx.beginPath();
-    ctx.arc(bx, by, 12, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = '#8a93ad';                       // the nozzle
-    ctx.fillRect(bx - 5, by + 6, 10, 6);
-    /* the fuse, burning down: shorter as time runs out */
-    var left = p.jet.fuse / p.jet.full;
-    ctx.strokeStyle = '#ffd166';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(bx, by - 12);
-    ctx.lineTo(bx + 3, by - 12 - 12 * left);
-    ctx.stroke();
-    if (Math.sin(state.t * 30) > 0) {
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(bx + 2, by - 14 - 12 * left, 3, 3);
-    }
-    ctx.restore();
+    ctx.fillStyle = '#5c6274';                       // the pack
+    ctx.fillRect(bx, by, pw, ph);
+    ctx.fillStyle = '#8a93ad';
+    ctx.fillRect(bx + 2, by + 2, pw - 4, 6);         // its lid
+    ctx.fillStyle = '#3a3f4a';
+    ctx.fillRect(bx + 1, by + ph, 5, 3);             // the two nozzles
+    ctx.fillRect(bx + 8, by + ph, 5, 3);
+    ctx.strokeStyle = '#2b2f36';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx + 0.5, by + 0.5, pw - 1, ph - 1);
   }
 
   /* the fuse, counting down, big across the top of the screen */
@@ -6016,7 +6207,7 @@
     ctx.font = '12px sans-serif';
     ctx.shadowBlur = 0;
     ctx.fillStyle = '#8ea7d6';
-    ctx.fillText('HOLD SPACE TO FLY  -  GET IT TO HIM', W / 2, 90);
+    ctx.fillText(p.jet.broken ? 'CLIMB!  -  GET IT TO HIM' : 'HOLD SPACE TO FLY  -  GET IT TO HIM', W / 2, 90);
     ctx.restore();
   }
 
@@ -7248,6 +7439,7 @@
     drawIntroScreen();             // the final boss's way in
     drawJetHUD();
     drawDeathGrey();
+    drawFinale();
   }
 
   /* ============================================================
@@ -7258,7 +7450,11 @@
     var dt = last ? (now - last) / 1000 : 0;
     last = now;
     if (dt > 0.05) dt = 0.05;   // a stutter shouldn't teleport anyone into a pit
-    if (state.running && level) update(dt);
+    if (state.finale && state.running) {    // the end of the final boss: slowed, then stopped
+      advanceFinale(dt);
+      dt *= state.finale ? state.finale.slow : 1;
+    }
+    if (state.running && level && dt > 0) update(dt);
     draw();
     requestAnimationFrame(frame);
   }
