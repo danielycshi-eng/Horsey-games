@@ -2186,7 +2186,6 @@
 
   function placeCheckpoint() {
     if (!p.onGround) return;
-    if (level.chase) return;               // not on the moving board
 
     if (checkpoint && Math.abs(checkpoint.x - p.x) < CP_REACH &&
         Math.abs(checkpoint.y - p.y) < CP_REACH) {
@@ -2199,6 +2198,8 @@
     var s = solidUnderFeet();
     var top = s ? (s.home !== undefined ? s.home : s.y) : p.y + p.h;
     checkpoint = { x: p.x, y: top - SIZE };
+    /* on the final boss's board: where the screen had got to, as well */
+    if (level.chase && level.chase.on) checkpoint.chaseX = level.chase.x;
     state.cpUsed = true;    // and that's it - no way on from this room now
     burst(p.x + p.w / 2, p.y + p.h, '#4ec3ff', 20, 1.1);
   }
@@ -2227,9 +2228,13 @@
     }
     /* died in the chase: back to his arena, him on one hit, so one more
        blue bomb starts it again - checkpoint or not */
-    if (chaseDeath) level.boss.hp = 1;
+    /* a flag down on the board: back on the board, the screen where it
+       was when the flag went down */
+    var onBoard = !!(cp && cp.chaseX !== undefined);
+    if (chaseDeath && !onBoard) level.boss.hp = 1;
     if (!cp) return;
     checkpoint = cp;
+    if (onBoard) resumeChase(cp.chaseX, { x: cp.x, y: cp.y, w: SIZE, h: SIZE });
     if (level.boss && bossHp !== null && !chaseDeath) {
       level.boss.hp = bossHp;
       if (bossHp <= 0) {                     // already beaten: it stays beaten
@@ -3722,9 +3727,6 @@
     level.worldW = BOARD_X + BOARD_LEN + 100;
     var board = { x: BOARD_X, y: GROUND, w: BOARD_LEN, h: 40, wood: true };
     level.solids.push(board);
-    /* the board is spikes, all but the two ends */
-    level.hazards.push({ x: BOARD_X + BOARD_SAFE, y: GROUND - 22,
-                         w: BOARD_LEN - 2 * BOARD_SAFE, h: 22 });
     level.chase = { board: board, x: cam.x, items: [], floats: [], growW: 0,
                     endX: BOARD_X + BOARD_LEN - 140, on: false, done: false };
     buildChase(level.chase);
@@ -3735,17 +3737,23 @@
      wind lets you make, just: 120 is a jump, 200 needs both, 360 needs
      the dash ring, and a high platform needs the yellow one. The same
      every time, so a retry is a retry. */
+  /* `open`: no spikes go down on the board under that one - fall there
+     and you can climb back up and carry on, but it's only ever one
+     section, so it never lets you skip much. A high platform (250 up,
+     past a double jump) has its yellow ring hung in the middle of the
+     gap: jump, take the ring in mid-air, and it throws you up there. */
   var CHASE_SECTIONS = [
     { gap: 120, w: 180, on: [['box', 65]] },                       // jump the crate
-    { gap: 200, w: 160, on: [['spike', 60]] },                     // land either side of it
+    { gap: 200, w: 160, on: [['spike', 60]], open: true },         // land either side of it
     { gap: 360, w: 200, orb: 'dash', on: [['red', 120]] },         // ring, then a red
     { gap: 140, w: 230, on: [['box', 80], ['box', 105]] },         // a step of two
-    { gap: 100, w: 180, y: PLAT_Y - 170, orb: 'up' },              // up off the yellow
-    { gap: 200, w: 180, ball: [110, PLAT_Y - 60] },                // down, past a ball
+    { gap: 200, w: 180, y: PLAT_Y - 250, orb: 'upMid' },           // up, off the ring in the gap
+    { gap: 200, w: 180, ball: [110, PLAT_Y - 60], open: true },    // down, past a ball
     { gap: 140, w: 260, on: [['red', 70], ['red', 190]] },         // two reds
     { gap: 200, w: 150, y: PLAT_Y - 40, on: [['spike', 55]] },
-    { gap: 120, w: 200, on: [['spike', 20], ['spike', 140]] },     // the middle only
+    { gap: 120, w: 200, on: [['spike', 20], ['spike', 140]], open: true },  // the middle only
     { gap: 360, w: 180, orb: 'dash', ball: [250, PLAT_Y - 30] },   // dash over a ball
+    { gap: 200, w: 180, y: PLAT_Y - 250, orb: 'upMid' },
     { gap: 160, w: 220, on: [['box', 90], ['spike', 170]] }
   ];
 
@@ -3761,8 +3769,10 @@
       var s = CHASE_SECTIONS[i % CHASE_SECTIONS.length];
       var px = lip + s.gap, py = s.y || PLAT_Y;
       if (px + s.w > end) break;
+      /* the board's spikes come off the belt as well, ahead of the rest */
+      if (!s.open) add('floor', lip, px + s.w - lip, 22, null);
       if (s.orb === 'dash') add('dash', lip + 140, 0, 0, lipY - 92);
-      if (s.orb === 'up') add('up', lip + 50, 0, 0, lipY - 20);
+      if (s.orb === 'upMid') add('up', lip + s.gap / 2, 0, 0, lipY - 70);
       add('plat', px, s.w, 20, py);
       if (s.ball) add('ball', lip + s.ball[0], 0, 0, s.ball[1]);
       for (var k = 0; s.on && k < s.on.length; k++) {
@@ -3775,11 +3785,57 @@
     }
     /* and plain platforms the rest of the way to the safe end of the board */
     var safe = BOARD_X + BOARD_LEN - BOARD_SAFE;
+    if (safe > lip) add('floor', lip, safe - lip, 22, null);
     while (safe - lip > 200) {
       add('plat', lip + 140, 160, 20, PLAT_Y);
       lip += 300;
     }
     items.sort(function (a, b) { return a.at - b.at; });
+  }
+
+  /* Back onto the board at a checkpoint: the chase already on, the
+     screen at `cx`, and everything that had gone off the belt by then
+     lying where it fell. */
+  function resumeChase(cx, flag) {
+    var b = level.boss;
+    level.intro.done = true;
+    b.asleep = false;
+    b.hp = 0;
+    startFinalScroll(b);
+    var c = level.chase;
+    b.stage = 'chase';
+    b.stageT = 0;
+    b.fanK = 1;
+    c.on = true;
+    c.growW = BOARD_LEN;
+    c.x = cx;
+    cam.x = cx;
+    b.x = c.x + W - 170;
+    b.y = GROUND - b.h;
+    for (var i = 0; i < c.items.length; i++) {
+      var it = c.items[i], k = it.kind, top;
+      if (it.at - BELT_EDGE > cx) break;               // sorted: the rest are still to come
+      it.x = it.at;
+      it.phase = 'done';
+      if (k === 'plat') {
+        level.solids.push({ x: it.x, y: it.stopY, w: it.w, h: it.h, oneWay: true, plank: true });
+      } else if (k === 'dash' || k === 'up') {
+        level.orbs.push({ x: it.x, y: it.stopY, kind: k, r: k === 'dash' ? ORB_R : ORB_R_LAUNCH });
+      } else if (k === 'ball') {
+        c.floats.push({ x: it.x, y: it.stopY, r: 16, rot: 0 });
+      } else if (k === 'red') {
+        top = landingTop(it.x, it.w, -9999);
+        var red = redOn({ y: top === null ? GROUND : top }, it.x);
+        level.enemies.push(red);
+      } else {
+        top = k === 'floor' ? GROUND : landingTop(it.x, it.w, -9999);
+        if (top === null) continue;
+        /* nothing comes back down on top of your flag */
+        if (flag && hits(flag, { x: it.x, y: top - it.h, w: it.w, h: it.h })) continue;
+        if (k === 'box') level.solids.push({ x: it.x, y: top - it.h, w: it.w, h: it.h, block: true });
+        else level.hazards.push({ x: it.x, y: top - 22, w: it.w, h: 22 });
+      }
+    }
   }
 
   /* how hard the fan is pushing you back, px/s (negative: to the left) */
@@ -3857,10 +3913,13 @@
         }
       } else {
         if (hits(p, it)) { die(); return; }
-        top = landingTop(it.x, it.w, wasBottom);
+        var teeth = k === 'spike' || k === 'floor';
+        /* the board's own spikes go down on the board, nothing else */
+        top = k === 'floor' ? (it.y + it.h >= GROUND ? GROUND : null)
+                            : landingTop(it.x, it.w, wasBottom);
         if (top !== null && it.y + it.h >= top) {
-          burst(it.x + it.w / 2, top, k === 'spike' ? '#ff2d55' : '#c08a4e', 18, 1.0);
-          if (k === 'spike') level.hazards.push({ x: it.x, y: top - 22, w: it.w, h: 22 });
+          burst(it.x + it.w / 2, top, teeth ? '#ff2d55' : '#c08a4e', k === 'floor' ? 30 : 18, 1.0);
+          if (teeth) level.hazards.push({ x: it.x, y: top - 22, w: it.w, h: 22 });
           else level.solids.push({ x: it.x, y: top - it.h, w: it.w, h: it.h, block: true });
           it.phase = 'done';
         }
@@ -4855,58 +4914,134 @@
     ctx.shadowBlur = 0;
   }
 
-  /* The chase's wooden board: planks, with their seams, growing out of
-     his floor while it's being built. */
+  /* ---- wood: the chase's board, its planks and its crates ----
+     Built up in layers so it reads as wood: a warm gradient, a lit top
+     edge and a dark underside, grain running along each plank, seams
+     where the planks butt together, and nails either side of a seam. */
+  var WOOD_LIGHT = '#b07a44', WOOD_MID = '#8a5a30', WOOD_DARK = '#5a3618',
+      WOOD_EDGE = '#d9a066', WOOD_GRAIN = 'rgba(60,30,10,0.35)';
+
+  /* a small, cheap number from a position, so the grain sits still */
+  function woodHash(n) {
+    var s = Math.sin(n * 12.9898) * 43758.5453;
+    return s - Math.floor(s);
+  }
+
+  /* one plank lying flat, from x to x+w */
+  function drawPlankBody(x, y, w, h, seed, from, to) {
+    from = from === undefined ? x : Math.max(x, from);
+    to = to === undefined ? x + w : Math.min(x + w, to);
+    if (to <= from) return;
+    var g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, WOOD_LIGHT);
+    g.addColorStop(0.55, WOOD_MID);
+    g.addColorStop(1, WOOD_DARK);
+    ctx.fillStyle = g;
+    ctx.fillRect(from, y, to - from, h);
+
+    /* grain: long, slightly wavy lines, a knot now and then */
+    ctx.strokeStyle = WOOD_GRAIN;
+    ctx.lineWidth = 1;
+    var lines = Math.max(1, Math.floor(h / 6));
+    for (var i = 0; i < lines; i++) {
+      var gy = y + (i + 0.6) * h / (lines + 0.2);
+      var amp = 0.6 + woodHash(seed + i) * 1.2;
+      ctx.beginPath();
+      ctx.moveTo(from, gy);
+      for (var gx = from; gx < to; gx += 24) {
+        var nx = Math.min(to, gx + 24);
+        ctx.quadraticCurveTo(gx + 12, gy + Math.sin((gx + seed * 7) * 0.05) * amp * 2, nx, gy);
+      }
+      ctx.stroke();
+    }
+    for (var kx = x + 30 + woodHash(seed) * 60; kx < to; kx += 140 + woodHash(kx) * 80) {
+      if (kx < from) continue;
+      ctx.fillStyle = 'rgba(60,30,10,0.45)';
+      ctx.beginPath();
+      ctx.ellipse(kx, y + h * (0.35 + woodHash(kx) * 0.3), 5, 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = WOOD_EDGE;                         // the lit top edge
+    ctx.fillRect(from, y, to - from, 2);
+    ctx.fillStyle = 'rgba(30,15,5,0.55)';              // and the shadowed bottom
+    ctx.fillRect(from, y + h - 2, to - from, 2);
+  }
+
+  function drawNail(x, y) {
+    ctx.fillStyle = '#3a3f4a';
+    ctx.beginPath();
+    ctx.arc(x, y, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillRect(x - 1, y - 1, 1, 1);
+  }
+
+  /* where two planks butt together: a dark gap, and a nail each side */
+  function drawSeam(x, y, h) {
+    ctx.fillStyle = 'rgba(30,15,5,0.7)';
+    ctx.fillRect(x - 1, y, 2, h);
+    drawNail(x - 5, y + 5);
+    drawNail(x + 5, y + 5);
+    if (h > 14) { drawNail(x - 5, y + h - 5); drawNail(x + 5, y + h - 5); }
+  }
+
+  /* The chase's wooden board: two courses of planks with staggered
+     seams, growing out of his floor while it's being built. */
   function drawBoard(s) {
     var c = level.chase;
     var w = Math.min(s.w, c ? c.growW : s.w);
     if (w <= 0) return;
     var from = Math.max(s.x, cam.x - 20), to = Math.min(s.x + w, cam.x + W + 20);
     if (to <= from) return;
-    ctx.fillStyle = '#6b4423';
-    ctx.fillRect(from, s.y, to - from, s.h);
-    ctx.fillStyle = '#8a5a30';
-    ctx.fillRect(from, s.y, to - from, 8);
-    ctx.fillStyle = '#c08a4e';
-    ctx.fillRect(from, s.y - 2, to - from, 4);
-    ctx.fillStyle = 'rgba(40,22,10,0.6)';
-    var PLANK = 90;
-    for (var x = s.x + Math.ceil((from - s.x) / PLANK) * PLANK; x < to; x += PLANK) {
-      ctx.fillRect(x, s.y, 2, s.h);
+    var half = s.h / 2, PLANK = 160, x;
+    drawPlankBody(s.x, s.y, w, half, 1, from, to);
+    drawPlankBody(s.x, s.y + half, w, half, 2, from, to);
+    for (x = s.x + Math.ceil((from - s.x) / PLANK) * PLANK; x < to; x += PLANK) {
+      drawSeam(x, s.y, half);
     }
-    ctx.fillRect(from, s.y + 20, to - from, 2);
-
-    /* the conveyor along its top. Its cleats are lined up on the world,
-       not the screen, so you can see it running back under you. */
-    if (s.belt) {
-      var CLEAT = 18;
-      var bx = s.x + Math.floor((from - s.x) / CLEAT) * CLEAT;
-      var bw = Math.min(to, s.x + w) - bx;
-      if (bw > 0) drawBelt({ x: bx, y: s.y - 2, w: bw, h: 14, belt: s.belt });
+    for (x = s.x + PLANK / 2 + Math.ceil((from - s.x - PLANK / 2) / PLANK) * PLANK; x < to; x += PLANK) {
+      drawSeam(x, s.y + half, half);
     }
   }
 
   /* a wooden plank: the platforms the chase's conveyor drops */
   function drawPlank(x, y, w, h) {
-    ctx.fillStyle = '#7a4e28';
-    ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = '#c08a4e';
-    ctx.fillRect(x, y - 2, w, 4);
-    ctx.fillStyle = 'rgba(40,22,10,0.6)';
-    for (var sx = x + 45; sx < x + w - 5; sx += 45) ctx.fillRect(sx, y, 2, h);
+    drawPlankBody(x, y, w, h, Math.floor(x));
+    for (var sx = x + 90; sx < x + w - 20; sx += 90) drawSeam(sx, y, h);
+    drawNail(x + 5, y + h / 2);
+    drawNail(x + w - 5, y + h / 2);
   }
 
-  /* a wooden crate: the chase's walls, floating blocks and falling ones */
+  /* a wooden crate: horizontal slats in a frame, with a brace plank
+     across it corner to corner, and nails where the brace meets the
+     frame */
   function drawCrate(x, y, w, h) {
-    ctx.fillStyle = '#7a4e28';
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = '#c08a4e';
-    ctx.lineWidth = 3;
-    ctx.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3);
-    ctx.beginPath();
-    ctx.moveTo(x + 3, y + 3);
-    ctx.lineTo(x + w - 3, y + h - 3);
-    ctx.stroke();
+    var slats = 3, sh = h / slats;
+    for (var i = 0; i < slats; i++) drawPlankBody(x, y + i * sh, w, sh, Math.floor(x) + i * 5);
+
+    /* the brace */
+    var len = Math.sqrt(w * w + h * h), ang = Math.atan2(h - 12, w - 12);
+    ctx.save();
+    ctx.translate(x + 6, y + 6);
+    ctx.rotate(ang);
+    drawPlankBody(0, -4, len - 17, 8, Math.floor(y));
+    ctx.restore();
+
+    /* the frame */
+    ctx.strokeStyle = WOOD_DARK;
+    ctx.lineWidth = 6;
+    ctx.strokeRect(x + 3, y + 3, w - 6, h - 6);
+    ctx.strokeStyle = WOOD_EDGE;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    ctx.strokeStyle = 'rgba(255,220,170,0.25)';
+    ctx.strokeRect(x + 6.5, y + 6.5, w - 13, h - 13);
+
+    drawNail(x + 6, y + 6);
+    drawNail(x + w - 6, y + 6);
+    drawNail(x + 6, y + h - 6);
+    drawNail(x + w - 6, y + h - 6);
   }
 
   /* Everything else of the chase: the conveyor overhead, his hangers,
@@ -4949,7 +5084,7 @@
         drawPlank(f.x, f.y, f.w, f.h);
       } else if (f.kind === 'box') {
         drawCrate(f.x, f.y, f.w, f.h);
-      } else if (f.kind === 'spike') {
+      } else if (f.kind === 'spike' || f.kind === 'floor') {
         drawHazard(f);                 // the same tooth it'll be once it lands
       } else if (f.kind === 'red') {
         ctx.fillStyle = '#ff5f7e';
