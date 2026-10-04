@@ -2237,6 +2237,7 @@
       setupPhase3();
       if (cp && cp.x >= ARENA3_X) {          // a flag down on it: there
         checkpoint = cp;
+        if (bossHp > 0) level.boss.hp = bossHp;   // and your hits on him kept
         p.x = cp.x;
         p.y = cp.y;
         safeSpot.x = p.x;
@@ -2798,8 +2799,178 @@
       mv.dur = 1.0;
       mv.sent = false;
     }
-    if (b.final) finalMove(b, mv);
+    if (b.stage === 'phase3') phase3Move(b, mv);
+    else if (b.final) finalMove(b, mv);
     b.moves.push(mv);
+  }
+
+  /* The last part of the final fight, on his bare red platform: his
+     attacks again, angrier, and three of his own.
+       crash      six slams, no break between them
+       seekers    the three yellow stars
+       spikeballs and him racing back and forth
+       saws       five walls from alternate sides; the way through is the
+                  ground slot, or the 2nd and 3rd up, or the 3rd and 4th
+       helpers    ten reds
+       screech    two yellow guys up in the corners; a dotted line
+                  follows you, then each fires along it - one, then the other
+       rain       13 to 20 spikes dropped on the floor, which stay for two
+                  more attacks and then sink away
+       fire       fireballs, aimed at you
+       bombs      they go off the moment they land, he races, and the blue
+                  one comes 8 to 13 seconds in */
+  var P3_SLAMS      = 6;
+  var P3_RACE       = 800;       // him back and forth, in the spike balls
+  var P3_BOMB_RACE  = 900;       // and in the bombs
+  var P3_SCREECH_AIM = [1.2, 2.2];   // how long each yellow guy follows you
+  var P3_FIREBALLS  = 6;
+  var P3_FIRE_SPEED = 430;
+  var P3_TOOTH      = 34;        // one dropped spike, one tooth
+
+  function phase3Move(b, mv) {
+    var e = roomEdges(), i;
+    if (mv.kind === 'crash') {
+      mv.speed = 2400;
+      mv.slams = P3_SLAMS;
+      mv.noBreak = true;
+      mv.dur = 10;
+
+    } else if (mv.kind === 'seekers') {
+      mv.count = 3;
+
+    } else if (mv.kind === 'spikeballs') {
+      mv.dur = 0.3 + FINAL_BALLS * 1.0 + 0.3;
+      mv.sent = 0;
+      mv.race = P3_RACE;
+
+    } else if (mv.kind === 'saws') {
+      mv.orbit = 1.7;
+      mv.gather = 0.5;
+      mv.speed = 340;
+      mv.walls = [];
+      /* the slots from the ground up: 412, 354, 296, 238 */
+      var opens = [[412], [354, 296], [296, 238]];
+      var dir = Math.random() < 0.5 ? 1 : -1;
+      for (i = 0; i < FINAL_SAW_WALLS; i++) {
+        mv.walls.push({ dir: dir, from: dir > 0 ? e.L - 90 : e.R + 90,
+                        start: mv.orbit + mv.gather + i * FINAL_SAW_GAP,
+                        open: opens[Math.floor(Math.random() * opens.length)] });
+        dir = -dir;
+      }
+      mv.dur = mv.orbit + mv.gather + (FINAL_SAW_WALLS - 1) * FINAL_SAW_GAP +
+               (e.R - e.L + 180) / mv.speed + 0.2;
+
+    } else if (mv.kind === 'helpers') {
+      mv.dur = 1.6;
+      mv.sent = false;
+
+    } else if (mv.kind === 'screech') {
+      var cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+      mv.birds = [];
+      for (i = 0; i < 2; i++) {
+        mv.birds.push({ fromX: cx, fromY: cy,
+                        toX: i === 0 ? e.L + 70 : e.R - 70, toY: 80,
+                        x: cx, y: cy, aimT: P3_SCREECH_AIM[i],
+                        ang: 0, fired: false });
+      }
+      if (Math.random() < 0.5) mv.birds.reverse();       // either side goes first
+      mv.birds[0].aimT = P3_SCREECH_AIM[0];
+      mv.birds[1].aimT = P3_SCREECH_AIM[1];
+      mv.dur = 0.6 + P3_SCREECH_AIM[1] + 0.3 + 0.6;
+
+    } else if (mv.kind === 'rain') {
+      /* 13..20 of the floor's tooth-wide slots, picked at random */
+      var slots = [];
+      for (var sx = e.L + 4; sx + P3_TOOTH <= e.R - 4; sx += P3_TOOTH) slots.push(sx);
+      for (i = slots.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var tmp = slots[i]; slots[i] = slots[j]; slots[j] = tmp;
+      }
+      var n = 13 + Math.floor(Math.random() * 8);
+      mv.drops = slots.slice(0, n);
+      mv.sweep = 2.4;                    // he crosses the room dropping them
+      mv.dir = (b.x + b.w / 2) < (e.L + e.R) / 2 ? 1 : -1;
+      mv.dur = 0.4 + mv.sweep + 0.6;
+      mv.dropped = [];
+
+    } else if (mv.kind === 'fire') {
+      mv.fired = 0;
+      mv.dur = 0.5 + P3_FIREBALLS * 0.45 + 0.4;
+
+    } else if (mv.kind === 'bombs') {
+      mv.dur = 14;
+      mv.every = 0.3;
+      mv.vx = (Math.random() < 0.5 ? 1 : -1) * P3_BOMB_RACE;
+      mv.blueAt = 8 + Math.random() * 5;
+    }
+  }
+
+  /* The spikes he rains down: each falls, lands as one tooth, and stays
+     for the next two attacks; then it sinks back into the floor. */
+  var RAIN_SINK = 1.4;
+
+  function ageRainSpikes() {
+    var list = level.rainSpikes;
+    if (!list) return;
+    for (var i = 0; i < list.length; i++) {
+      if (!list[i].landed) continue;
+      list[i].left--;
+      if (list[i].left < 0 && !list[i].sinking) list[i].sinking = true;
+    }
+  }
+
+  function rainBox(s) {
+    if (!s.landed) return { x: s.x + 4, y: s.y, w: P3_TOOTH - 8, h: 22 };
+    var out = s.sinking ? Math.max(0, 1 - s.sinkT / RAIN_SINK) : 1;
+    return { x: s.x, y: GROUND - 22 * out, w: P3_TOOTH, h: 22 * out };
+  }
+
+  function updateRainSpikes(dt) {
+    var list = level.rainSpikes;
+    if (!list) return;
+    for (var i = list.length - 1; i >= 0; i--) {
+      var s = list[i];
+      if (!s.landed) {
+        s.vy = Math.min(MAX_FALL * 1.5, s.vy + GRAVITY * dt);
+        s.y += s.vy * dt;
+        if (s.y + 22 >= GROUND) { s.y = GROUND - 22; s.landed = true;
+                                  burst(s.x + P3_TOOTH / 2, GROUND, '#ff2d55', 5, 0.8); }
+      } else if (s.sinking) {
+        s.sinkT += dt;
+        if (s.sinkT >= RAIN_SINK) { list.splice(i, 1); continue; }
+      }
+      var hb = rainBox(s);
+      if (hb.h > 3 && hits(p, hb)) { die(); return; }
+    }
+  }
+
+  /* his fireballs: straight at where you were */
+  function updateFireballs(dt) {
+    var list = level.fireballs;
+    if (!list) return;
+    var e = roomEdges();
+    for (var i = list.length - 1; i >= 0; i--) {
+      var f = list[i];
+      f.x += f.vx * dt;
+      f.y += f.vy * dt;
+      if (circleHitsBox(f.x, f.y, f.r - 3, p)) { die(); return; }
+      if (f.y > GROUND - 4) {
+        burst(f.x, GROUND, '#ff8c42', 14, 1.0);
+        list.splice(i, 1);
+      } else if (f.x < e.L - 200 || f.x > e.R + 200 || f.y < -200) {
+        list.splice(i, 1);
+      }
+    }
+  }
+
+  /* a screecher's dotted line, or its shot, as a line out from it */
+  function screechLineHits(bd) {
+    var dx = Math.cos(bd.ang), dy = Math.sin(bd.ang);
+    var px = p.x + p.w / 2 - bd.x, py = p.y + p.h / 2 - bd.y;
+    var along = px * dx + py * dy;
+    if (along < 0) return false;
+    var off = Math.abs(px * dy - py * dx);
+    return off < 10 + p.w / 2;
   }
 
   /* The final boss's versions of the attacks, and his two of his own. */
@@ -2846,7 +3017,7 @@
       for (i = 0; i < FINAL_SAW_WALLS; i++) {
         mv.walls.push({ dir: dir, from: dir > 0 ? -90 : level.worldW + 90,
                         start: mv.orbit + mv.gather + i * FINAL_SAW_GAP,
-                        gapY: open[Math.floor(Math.random() * open.length)] });
+                        open: [open[Math.floor(Math.random() * open.length)]] });
         dir = -dir;
       }
       mv.dur = mv.orbit + mv.gather + (FINAL_SAW_WALLS - 1) * FINAL_SAW_GAP +
@@ -2869,6 +3040,9 @@
   function smashAimX(b) {
     var x = p.x + p.w / 2 - b.w / 2;
     if (!b.final) return x;
+    if (b.stage === 'phase3') {
+      return Math.max(ARENA3_X, Math.min(ARENA3_X + ARENA3_W - b.w, x));
+    }
     return Math.max(FINAL_PITS[0].x + FINAL_PITS[0].w,
                     Math.min(FINAL_PITS[2].x - b.w, x));
   }
@@ -2880,6 +3054,9 @@
 
   /* Somewhere on the floor, not over a pit: for the blue bomb. */
   function finalSafeX(x, w) {
+    if (level.boss && level.boss.stage === 'phase3') {
+      return Math.max(ARENA3_X + 20, Math.min(ARENA3_X + ARENA3_W - 20 - w, x));
+    }
     x = Math.max(320, Math.min(2080 - w, x));
     for (var i = 0; i < FINAL_PITS.length; i++) {
       var pit = FINAL_PITS[i];
@@ -2901,7 +3078,7 @@
       var live = [], s;
       for (s = 0; s < mv.slots.length; s++) {
         var sy = mv.slots[s];
-        if (sy > wall.gapY - mv.gapH / 2 && sy < wall.gapY + mv.gapH / 2) continue;
+        if (wall.open.indexOf(sy) !== -1) continue;       // the way through
         live.push(sy);
       }
       if (wi === 0 && mv.t < mv.orbit) {
@@ -2927,8 +3104,29 @@
   function sawWallX(mv, wall) {
     if (mv.t < wall.start) return null;
     var x = wall.from + wall.dir * mv.speed * (mv.t - wall.start);
-    if (x < -120 || x > level.worldW + 120) return null;
+    var e = roomEdges();
+    if (x < e.L - 120 || x > e.R + 120) return null;
     return x;
+  }
+
+  /* The room's ends, for the boss: his bare red platform in the last
+     part of the final fight, otherwise the whole room. And how far in
+     from them he keeps himself when he races about. */
+  function roomEdges() {
+    if (level.boss && level.boss.stage === 'phase3') {
+      return { L: ARENA3_X, R: ARENA3_X + ARENA3_W, inset: 40 };
+    }
+    return { L: 0, R: level.worldW, inset: 240 };
+  }
+
+  /* keep him inside the room as he races, turning him round at the ends */
+  function bounceBoss(b, mvOrB) {
+    var e = roomEdges();
+    if (b.x < e.L + e.inset) { b.x = e.L + e.inset; mvOrB.vx = Math.abs(mvOrB.vx); }
+    if (b.x + b.w > e.R - e.inset) {
+      b.x = e.R - e.inset - b.w;
+      mvOrB.vx = -Math.abs(mvOrB.vx);
+    }
   }
 
   /* The spike balls: they drop from him, land, and roll away from his
@@ -3038,6 +3236,18 @@
      a second one on top of it. Crash never doubles up — it moves the
      boss, and stacking it reads as unfair rather than hard. */
   function chooseAttack(b) {
+    /* his bare red platform: a third of the time bombs (the only way to
+       hurt him), otherwise one of the rest. Each new attack ages the
+       spikes he rained down. */
+    if (b.stage === 'phase3') {
+      ageRainSpikes();
+      if (Math.random() < 0.33) { startMove(b, 'bombs'); return; }
+      var p3 = ['crash', 'spikeballs', 'saws', 'helpers', 'screech', 'rain', 'fire'];
+      if (level.seekers.length === 0) p3.push('seekers');
+      startMove(b, p3[Math.floor(Math.random() * p3.length)]);
+      return;
+    }
+
     if (Math.random() < 0.33) { startMove(b, 'bombs'); return; }
 
     /* the final boss has all eight, and only the beam, the seekers and
@@ -3089,7 +3299,8 @@
     level.bombs.push({
       x: x, y: y, w: 24, h: 24,
       vy: 0, grounded: false,
-      fuse: 1.7, blast: 0
+      fuse: 1.7, blast: 0,
+      instant: !!(level.boss && level.boss.stage === 'phase3')
     });
   }
 
@@ -3097,7 +3308,7 @@
     b.hp--;
     b.flash = 0.4;
     burst(b.x + b.w / 2, b.y + b.h / 2, '#4ec3ff', 40, 1.5);
-    if (b.hp <= 0 && b.final) {          // not beaten: the chase starts
+    if (b.hp <= 0 && b.final && b.stage !== 'phase3') {   // not beaten: the chase starts
       if (!b.stage) startFinalScroll(b);
       return;
     }
@@ -3174,7 +3385,7 @@
           burst(b.x + b.w / 2, floorY, '#ff5f7e', 26, 1.1);
           state.flash = 0.3;
           mv.done++;
-          mv.sub = mv.done >= mv.slams ? 'over' : 'recover';
+          mv.sub = mv.done >= mv.slams ? 'over' : (mv.noBreak ? 'move' : 'recover');
           mv.subT = 0;
         }
 
@@ -3279,16 +3490,12 @@
       /* he keeps moving, and drops them one at a time; they roll away
          from whichever side of the room he's on */
       b.y += (b.hover - b.y) * Math.min(1, dt * 3);
-      b.x += (b.vx > 0 ? 1 : -1) * BALL_BOSS_SPEED * dt;     // and quick about it
-      if (b.x < 240) { b.x = 240; b.vx = Math.abs(b.vx); }
-      if (b.x + b.w > level.worldW - 240) {
-        b.x = level.worldW - 240 - b.w;
-        b.vx = -Math.abs(b.vx);
-      }
+      b.x += (b.vx > 0 ? 1 : -1) * (mv.race || BALL_BOSS_SPEED) * dt;     // and quick about it
+      bounceBoss(b, b);
       while (mv.sent < FINAL_BALLS && mv.t >= 0.3 + mv.sent * 1.0) {
         var bcx = b.x + b.w / 2;
         level.spikeballs.push({ x: bcx, y: b.y + b.h + BALL_R, r: BALL_R, rot: 0,
-                                vx: (bcx > level.worldW / 2 ? -1 : 1) * BALL_SPEED,
+                                vx: (bcx > (roomEdges().L + roomEdges().R) / 2 ? -1 : 1) * BALL_SPEED,
                                 vy: 0 });
         burst(bcx, b.y + b.h, '#ff2d55', 14, 1.0);
         mv.sent++;
@@ -3299,13 +3506,76 @@
       if (!mv.sent && mv.t > 0.4) {
         mv.sent = true;
         for (i = 0; i < FINAL_HELPERS; i++) {
-          var hx = finalSafeX(340 + i * (1720 / (FINAL_HELPERS - 1)), 22);
+          var he = roomEdges();
+          var hx = he.inset === 40                       // his bare platform: all along it
+            ? he.L + 30 + i * ((he.R - he.L - 82) / (FINAL_HELPERS - 1))
+            : finalSafeX(340 + i * (1720 / (FINAL_HELPERS - 1)), 22);
           var red = redOn({ y: GROUND }, hx);
           red.y = 40;
           level.enemies.push(red);
           burst(hx + 11, 60, '#ff5f7e', 16, 1.0);
         }
         state.flash = Math.max(state.flash, 0.3);
+      }
+
+    } else if (mv.kind === 'screech') {
+      /* two yellow guys up into the corners; each one's line follows
+         you, holds still a moment, and then it fires along it */
+      b.y += (b.hover - b.y) * Math.min(1, dt * 3);
+      for (i = 0; i < mv.birds.length; i++) {
+        var bd = mv.birds[i];
+        var fk = Math.min(1, mv.t / 0.6);
+        var fe = 1 - (1 - fk) * (1 - fk);
+        bd.x = bd.fromX + (bd.toX - bd.fromX) * fe;
+        bd.y = bd.fromY + (bd.toY - bd.fromY) * fe;
+        var lockAt = 0.6 + bd.aimT, fireAt = lockAt + 0.3;
+        if (mv.t < lockAt) {
+          bd.ang = Math.atan2(p.y + p.h / 2 - bd.y, p.x + p.w / 2 - bd.x);   // following you
+        }
+        bd.firing = mv.t >= fireAt && mv.t < fireAt + 0.25;
+        if (bd.firing && !bd.fired) {
+          bd.fired = true;
+          burst(bd.x, bd.y, '#ffd166', 20, 1.2);
+        }
+        if (bd.firing && screechLineHits(bd)) { die(); return; }
+      }
+
+    } else if (mv.kind === 'rain') {
+      /* he crosses the room, dropping the spikes as he goes over them */
+      var re = roomEdges();
+      var sk = Math.min(1, Math.max(0, (mv.t - 0.4) / mv.sweep));
+      var sx0 = mv.dir > 0 ? re.L + 20 : re.R - 20 - b.w;
+      var sx1 = mv.dir > 0 ? re.R - 20 - b.w : re.L + 20;
+      if (mv.t < 0.4) {
+        b.x += (sx0 - b.x) * Math.min(1, dt * 8);
+      } else {
+        b.x = sx0 + (sx1 - sx0) * sk;
+      }
+      b.y += (b.hover - b.y) * Math.min(1, dt * 4);
+      if (!level.rainSpikes) level.rainSpikes = [];
+      var bcx2 = b.x + b.w / 2;
+      for (i = 0; i < mv.drops.length; i++) {
+        var dx = mv.drops[i];
+        if (mv.dropped.indexOf(dx) !== -1 || mv.t < 0.4) continue;
+        var passed = mv.dir > 0 ? bcx2 >= dx + P3_TOOTH / 2 : bcx2 <= dx + P3_TOOTH / 2;
+        if (!passed) continue;
+        mv.dropped.push(dx);
+        level.rainSpikes.push({ x: dx, y: b.y + b.h, vy: 0, landed: false,
+                                left: 2, sinking: false, sinkT: 0 });
+      }
+
+    } else if (mv.kind === 'fire') {
+      /* fireballs, one after another, each at where you are */
+      b.y += (b.hover - b.y) * Math.min(1, dt * 3);
+      if (!level.fireballs) level.fireballs = [];
+      while (mv.fired < P3_FIREBALLS && mv.t >= 0.5 + mv.fired * 0.45) {
+        var fx0 = b.x + b.w / 2, fy0 = b.y + b.h;
+        var fdx = p.x + p.w / 2 - fx0, fdy = p.y + p.h / 2 - fy0;
+        var fd = Math.sqrt(fdx * fdx + fdy * fdy) || 1;
+        level.fireballs.push({ x: fx0, y: fy0, r: 13,
+                               vx: fdx / fd * P3_FIRE_SPEED, vy: fdy / fd * P3_FIRE_SPEED });
+        burst(fx0, fy0, '#ff8c42', 10, 0.8);
+        mv.fired++;
       }
 
     } else if (mv.kind === 'saws') {
@@ -3331,11 +3601,7 @@
          racing from side to side. Partway through, the blue one. */
       b.y += (b.hover - b.y) * Math.min(1, dt * 4);
       b.x += mv.vx * dt;
-      if (b.x < 240) { b.x = 240; mv.vx = Math.abs(mv.vx); }
-      if (b.x + b.w > level.worldW - 240) {
-        b.x = level.worldW - 240 - b.w;
-        mv.vx = -Math.abs(mv.vx);
-      }
+      bounceBoss(b, mv);
       var due = Math.floor(mv.t / (mv.every || 0.5));
       while (mv.dropped < due) {
         spawnBomb(b.x + b.w / 2 - 12, false, b.y + b.h);
@@ -3361,7 +3627,7 @@
              of the room and one to the middle - and only then come */
           if (mv.count === 3) {
             sd.fly = { fromX: b.x + b.w / 2, fromY: b.y + b.h / 2,
-                       toX: [360, level.worldW / 2, level.worldW - 360][sk],
+                       toX: [roomEdges().L + 120, (roomEdges().L + roomEdges().R) / 2, roomEdges().R - 120][sk],
                        toY: 150, t: 0 };
             sd.x = sd.fly.fromX;
             sd.y = sd.fly.fromY;
@@ -4094,6 +4360,18 @@
     b.stage = 'phase3';
     b.rage = 1;
     b.fanK = 0;
+    /* a fresh fight on it: three blue bombs to beat */
+    b.hp = 3;
+    b.maxHp = 3;
+    b.dead = false;
+    b.deadT = 0;
+    b.idle = 0;
+    b.moves.length = 0;
+    level.seekers.length = 0;
+    level.spikeballs.length = 0;
+    level.fireballs = [];
+    level.rainSpikes = [];
+    level.pickups[0].hidden = true;
   }
 
   function updateAngry(b, dt) {
@@ -4149,7 +4427,6 @@
     var b = level.boss;
     level.intro.done = true;
     b.asleep = false;
-    b.hp = 0;
     b.moves.length = 0;
     swapToArena3(b);
     b.x = ARENA3_X + ARENA3_W / 2 - b.w / 2;
@@ -4165,12 +4442,40 @@
 
   /* For now he only drifts over his bare floor. */
   function updatePhase3(b, dt) {
-    b.y += (b.hover - b.y) * Math.min(1, dt * 3);
-    b.x += b.vx * dt;
-    if (b.x < ARENA3_X + 240) { b.x = ARENA3_X + 240; b.vx = Math.abs(b.vx); }
-    if (b.x + b.w > ARENA3_X + ARENA3_W - 240) {
-      b.x = ARENA3_X + ARENA3_W - 240 - b.w;
-      b.vx = -Math.abs(b.vx);
+    /* three blue bombs and he's down - for now, that's the end */
+    if (b.dead) {
+      b.y += (b.hover - 40 - b.y) * Math.min(1, dt * 2);
+      b.deadT += dt;
+      if (b.deadT > 2.5 && !state.complete) {
+        state.complete = true;
+        saveGame();
+        finishLevel();
+      }
+      return;
+    }
+
+    updateSeekers(dt);      if (p.dead) return;
+    updateSpikeballs(dt);   if (p.dead) return;
+    updateFireballs(dt);    if (p.dead) return;
+    updateRainSpikes(dt);   if (p.dead) return;
+
+    for (var i = b.moves.length - 1; i >= 0; i--) {
+      var mv = b.moves[i];
+      mv.t += dt;
+      runMove(b, mv, dt);
+      if (p.dead) return;
+      if (mv.t >= mv.dur) b.moves.splice(i, 1);
+    }
+
+    /* between attacks he drifts over his floor */
+    if (b.moves.length === 0) {
+      b.y += (b.hover - b.y) * Math.min(1, dt * 3);
+      b.x += b.vx * dt;
+      var e = roomEdges();
+      if (b.x < e.L + 200) { b.x = e.L + 200; b.vx = Math.abs(b.vx); }
+      if (b.x + b.w > e.R - 200) { b.x = e.R - 200 - b.w; b.vx = -Math.abs(b.vx); }
+      b.idle += dt;
+      if (b.idle >= b.rest) { b.idle = 0; chooseAttack(b); }
     }
   }
 
@@ -4311,7 +4616,9 @@
           var s = level.solids[k];
           if (bo.x + bo.w <= s.x || bo.x >= s.x + s.w) continue;
           if (wasB <= s.y && nowB >= s.y) {
-            bo.y = s.y - bo.h; bo.vy = 0; bo.grounded = true; break;
+            bo.y = s.y - bo.h; bo.vy = 0; bo.grounded = true;
+            if (bo.instant) bo.fuse = 0;         // his last bombs go off as they land
+            break;
           }
         }
         if (bo.y > level.fallY) { level.bombs.splice(i, 1); continue; }
@@ -5705,6 +6012,70 @@
           ctx.fill();
           ctx.restore();
         }
+      }
+    }
+
+    /* the yellow screechers: their lines following you, then the shot */
+    for (var si = 0; si < b.moves.length; si++) {
+      var smv = b.moves[si];
+      if (smv.kind !== 'screech') continue;
+      for (var bi2 = 0; bi2 < smv.birds.length; bi2++) {
+        var bd = smv.birds[bi2];
+        var lockAt = 0.6 + bd.aimT, fireAt = lockAt + 0.3;
+        var reach = 1600;
+        var ex = bd.x + Math.cos(bd.ang) * reach, ey = bd.y + Math.sin(bd.ang) * reach;
+        ctx.save();
+        if (smv.t >= 0.6 && smv.t < fireAt) {
+          var locked = smv.t >= lockAt;
+          ctx.strokeStyle = locked ? (Math.sin(state.t * 40) > 0 ? '#ff2d55' : '#ffffff') : '#ffd166';
+          ctx.globalAlpha = locked ? 0.95 : 0.7;
+          ctx.lineWidth = locked ? 3 : 2;
+          ctx.setLineDash([10, 9]);
+          ctx.beginPath();
+          ctx.moveTo(bd.x, bd.y);
+          ctx.lineTo(ex, ey);
+          ctx.stroke();
+        } else if (bd.firing) {
+          ctx.strokeStyle = '#ffd166';
+          ctx.shadowColor = '#ffd166';
+          ctx.shadowBlur = 24;
+          ctx.lineWidth = 14;
+          ctx.beginPath();
+          ctx.moveTo(bd.x, bd.y);
+          ctx.lineTo(ex, ey);
+          ctx.stroke();
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 5;
+          ctx.stroke();
+        }
+        ctx.restore();
+        if (smv.t < fireAt + 0.6) {
+          drawCube(bd.x, bd.y, 26, 26, '#ffd166', bd.x < p.x ? 1 : -1, 0);
+        }
+      }
+    }
+
+    /* his fireballs */
+    if (level.fireballs) {
+      for (var fi = 0; fi < level.fireballs.length; fi++) {
+        var fb = level.fireballs[fi];
+        var fg = ctx.createRadialGradient(fb.x, fb.y, 0, fb.x, fb.y, fb.r + 6);
+        fg.addColorStop(0, '#ffffff');
+        fg.addColorStop(0.35, '#ffd166');
+        fg.addColorStop(0.7, '#ff8c42');
+        fg.addColorStop(1, 'rgba(255,45,85,0)');
+        ctx.fillStyle = fg;
+        ctx.beginPath();
+        ctx.arc(fb.x, fb.y, fb.r + 6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    /* the spikes he rained down: falling, standing, or sinking away */
+    if (level.rainSpikes) {
+      for (var ri2 = 0; ri2 < level.rainSpikes.length; ri2++) {
+        var rb = rainBox(level.rainSpikes[ri2]);
+        if (rb.h > 1) drawHazard({ x: level.rainSpikes[ri2].x, y: rb.y, w: P3_TOOTH, h: rb.h });
       }
     }
 
