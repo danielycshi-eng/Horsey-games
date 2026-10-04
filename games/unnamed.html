@@ -4479,10 +4479,10 @@
      The fuse is 30 seconds; the climb takes about 15. If it runs out
      the bomb goes off on you.
      ============================================================ */
-  var JET_ACCEL  = 1400;         // how hard it lifts, beyond gravity
-  var JET_MAX    = 440;          // fastest it climbs
+  var JET_ACCEL  = 2000;         // how hard it lifts, beyond gravity
+  var JET_MAX    = 580;          // fastest it climbs
   var JET_FUSE   = 30;
-  var JET_ROW    = 260;          // between rows of the course
+  var JET_ROW    = 360;          // between rows of the course: room to see the next one
   var JET_TOP    = GROUND - 9 * JET_ROW - 200;   // where he waits for you
   var JET_SPIKE  = 16;           // the teeth under a platform
 
@@ -5260,7 +5260,8 @@
     /* up and down only on the final boss's jetpack course, and coming
        back down from it; everywhere else the camera stays level */
     var up = level.jet || (level.boss && level.boss.stage === 'phase3' && p.y < GROUND - 300);
-    var ty = up ? Math.min(0, p.y + p.h / 2 - H * 0.55) : 0;
+    /* on the jetpack you sit low on the screen, so you see what is above */
+    var ty = up ? Math.min(0, p.y + p.h / 2 - H * (level.jet ? 0.78 : 0.55)) : 0;
     cam.y += (ty - cam.y) * Math.min(1, dt * 8);
     if (!up && Math.abs(cam.y) < 0.5) cam.y = 0;
 
