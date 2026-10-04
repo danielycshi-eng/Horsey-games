@@ -39,6 +39,8 @@
       z-index: 5;
     }
     .screen.hidden { display: none; }
+    .screen.fadein { animation: screenFadeIn 3s ease-in forwards; }
+    @keyframes screenFadeIn { from { opacity: 0; } to { opacity: 1; } }
 
     .qmark {
       font-size: clamp(2rem, 7vw, 4.5rem);
@@ -4821,15 +4823,12 @@
     var f = state.finale;
     if (!f) return;
     ctx.save();
-    if (f.t < FINALE_BOOM + 0.3) {
-      ctx.textAlign = 'center';
-      ctx.font = 'bold 64px sans-serif';
-      ctx.fillStyle = '#ff2d55';
-      ctx.shadowColor = '#ff2d55';
-      ctx.shadowBlur = 30;
-      var shake = f.t * 3;
-      ctx.fillText('NOOOOOOOOO!', W / 2 + (Math.random() - 0.5) * shake,
-                   H / 2 - 60 + (Math.random() - 0.5) * shake);
+    /* his last words, in a red bubble over him */
+    if (f.t < FINALE_BOOM) {
+      var b = level.boss;
+      var sx = Math.max(175, Math.min(W - 175, b.x + b.w / 2 - cam.x));
+      var sy = Math.max(110, b.y - cam.y);
+      drawSpeech(sx, sy, 'NOOOOOOOOO!', f.t * 14, '#ff2d55', '#ff8fa3');
     }
     if (f.boom) {
       var k = Math.min(1, (f.t - FINALE_BOOM) / FINALE_WHITE);
@@ -6859,13 +6858,13 @@
 
   /* A bubble sitting above `anchorY`, with the line typing itself out.
      `chars` is how much of it has arrived so far. */
-  function drawSpeech(cx, anchorY, text, chars) {
+  function drawSpeech(cx, anchorY, text, chars, edge, ink) {
     var shown = text.substring(0, Math.max(0, Math.floor(chars)));
     var bw = 330, bh = 74;
     var bx = cx - bw / 2, by = anchorY - bh - 22;
 
     ctx.fillStyle = 'rgba(5,7,15,0.88)';
-    ctx.strokeStyle = '#7bffb2';
+    ctx.strokeStyle = edge || '#7bffb2';         // green, unless given another
     ctx.lineWidth = 2;
     rr(bx, by, bw, bh, 10);
     ctx.fill();
@@ -6878,7 +6877,7 @@
     ctx.fillStyle = 'rgba(5,7,15,0.88)';
     ctx.fill();
 
-    ctx.fillStyle = '#bfffe0';
+    ctx.fillStyle = ink || '#bfffe0';
     ctx.font = '13px sans-serif';
     ctx.textAlign = 'center';
     var words = shown.split(' ');
@@ -7641,6 +7640,9 @@
       onNext = function () { loadLevel(finished); enterGame(); };
     }
 
+    /* out of the white at the very end, it comes up slowly */
+    if (state.finale) doneScreen.classList.add('fadein');
+    else doneScreen.classList.remove('fadein');
     doneScreen.classList.remove('hidden');
   }
 
