@@ -2828,6 +2828,38 @@
     return x;
   }
 
+  /* Every blade of the final boss's saws, where it is right now: they
+     circle him, then before each wall its blades fly out from round him
+     to their edge, then the wall comes. Drawn from this, and judged
+     from it, so what you see is what cuts. */
+  function finalSawBlades(b, mv) {
+    var blades = [];
+    for (var wi = 0; wi < mv.walls.length; wi++) {
+      var wall = mv.walls[wi];
+      var live = [], s;
+      for (s = 0; s < mv.slots.length; s++) {
+        var sy = mv.slots[s];
+        if (sy > wall.gapY - mv.gapH / 2 && sy < wall.gapY + mv.gapH / 2) continue;
+        live.push(sy);
+      }
+      if (wi === 0 && mv.t < mv.orbit) {
+        for (s = 0; s < live.length; s++) blades.push(orbitSaw(b, mv, s, live.length));
+      }
+      if (mv.t >= wall.start - mv.gather && mv.t < wall.start) {
+        var g = (mv.t - (wall.start - mv.gather)) / mv.gather;
+        for (s = 0; s < live.length; s++) {
+          var o = orbitSaw(b, mv, s, live.length);
+          blades.push({ x: o.x + (wall.from - o.x) * g,
+                        y: o.y + (live[s] - o.y) * g });
+        }
+      }
+      var wx = sawWallX(mv, wall);
+      if (wx === null) continue;
+      for (s = 0; s < live.length; s++) blades.push({ x: wx, y: live[s] });
+    }
+    return blades;
+  }
+
   /* A wall of the final boss's saws: where it is, or null if it isn't
      out yet or has gone. */
   function sawWallX(mv, wall) {
@@ -3174,16 +3206,11 @@
       }
 
     } else if (mv.kind === 'saws' && mv.walls) {
-      /* the final boss's: wall after wall, from alternate sides */
-      for (var wi = 0; wi < mv.walls.length; wi++) {
-        var wall = mv.walls[wi];
-        var wx = sawWallX(mv, wall);
-        if (wx === null) continue;
-        for (i = 0; i < mv.slots.length; i++) {
-          y = mv.slots[i];
-          if (y > wall.gapY - mv.gapH / 2 && y < wall.gapY + mv.gapH / 2) continue;
-          if (circleHitsBox(wx, y, 24, p)) { die(); return; }
-        }
+      /* the final boss's: every blade cuts - circling him, flying out,
+         and wall after wall from alternate sides */
+      var fb = finalSawBlades(b, mv);
+      for (i = 0; i < fb.length; i++) {
+        if (circleHitsBox(fb[i].x, fb[i].y, 22, p)) { die(); return; }
       }
 
     } else if (mv.kind === 'spikeballs') {
@@ -3633,11 +3660,10 @@
      ============================================================ */
   var BOARD_X      = 2100;       // where the board starts: the end of his floor
   var BOARD_LEN    = 7600;
-  var SCROLL_SPEED = 190;        // you run 275, less the wind
-  var BELT_Y       = 30;         // the conveyor he hangs from
-  var CHASE_HANG_Y = 110;        // his top while he hangs from it
+  var SCROLL_SPEED = 170;        // you run 275, less the belt and the wind: ~190
+  var BOARD_BELT   = 45;         // the conveyor on top of the board, running back at you
   var CHASE_GROW   = 2.0;        // the board, the belt and the fan growing
-  var WIND_BASE    = 60;         // how hard the fan blows you back, anywhere
+  var WIND_BASE    = 30;         // how hard the fan blows you back, anywhere
   var WIND_NEAR    = 420;        // and up to this much more close to it
   var WIND_REACH   = 420;        // how close "close" is
 
@@ -3657,7 +3683,10 @@
     state.flash = Math.max(state.flash, 0.5);
 
     level.worldW = BOARD_X + BOARD_LEN + 100;
-    var board = { x: BOARD_X, y: GROUND, w: BOARD_LEN, h: 40, wood: true, growW: 0 };
+    /* a wooden board with a conveyor running along the top of it, back
+       towards his arena: stand on it and it takes you back */
+    var board = { x: BOARD_X, y: GROUND, w: BOARD_LEN, h: 40, wood: true,
+                  belt: -BOARD_BELT };
     level.solids.push(board);
     level.chase = { board: board, x: cam.x, fallers: [], floats: [], growW: 0,
                     endX: BOARD_X + BOARD_LEN - 140, on: false, done: false };
@@ -3666,27 +3695,30 @@
 
   /* What's on the board. The same every time, so a retry is a retry. */
   function buildChase(c) {
-    var PATTERN = ['wall', 'fallBlock', 'spikes', 'floatSpike', 'fallSpike',
-                   'tall', 'floatBlock', 'spikes', 'fallBlock', 'floatSpike',
-                   'fallSpike', 'wall'];
+    var PATTERN = ['wall', 'fallSpike', 'spikes', 'floatSpike', 'fallBlock',
+                   'tall', 'fallSpike', 'floatBlock', 'longSpikes', 'floatSpike',
+                   'fallBlock', 'wall', 'fallSpike', 'spikes', 'tall', 'floatSpike'];
     var end = BOARD_X + BOARD_LEN - 700;
-    for (var i = 0, x = BOARD_X + 600; x < end; i++, x += 340) {
+    for (var i = 0, x = BOARD_X + 500; x < end; i++, x += 250) {
       var kind = PATTERN[i % PATTERN.length];
       if (kind === 'wall') {
         level.solids.push({ x: x, y: GROUND - 70, w: 50, h: 70, block: true });
       } else if (kind === 'tall') {                       // a double jump
         level.solids.push({ x: x, y: GROUND - 140, w: 50, h: 140, block: true });
-      } else if (kind === 'spikes') {
-        level.hazards.push({ x: x, y: GROUND - 22, w: 110, h: 22 });
+      } else if (kind === 'spikes' || kind === 'longSpikes') {
+        level.hazards.push({ x: x, y: GROUND - 22, w: kind === 'spikes' ? 110 : 170, h: 22 });
       } else if (kind === 'floatBlock') {                 // under it, or over it
         level.solids.push({ x: x, y: GROUND - 96, w: 120, h: 26, block: true });
+        level.hazards.push({ x: x + 20, y: GROUND - 22, w: 80, h: 22 });  // and not under it for long
       } else if (kind === 'floatSpike') {                 // one low, one high
         c.floats.push({ x: x, y: GROUND - 62, r: 18, rot: 0 });
-        c.floats.push({ x: x + 120, y: GROUND - 170, r: 18, rot: 0 });
+        c.floats.push({ x: x + 110, y: GROUND - 165, r: 18, rot: 0 });
       } else {                                            // from the ceiling
+        /* a falling spike is the same tooth you'll find on the board
+           once it's landed, just on its way down */
         var spike = kind === 'fallSpike';
-        c.fallers.push({ x: x, y: -70, w: spike ? 40 : 60, h: spike ? 40 : 60,
-                         spike: spike, vy: 0, at: x - 330, falling: false });
+        c.fallers.push({ x: x, y: -70, w: spike ? 40 : 60, h: spike ? 22 : 60,
+                         spike: spike, vy: 0, at: x - 260, falling: false });
       }
     }
   }
@@ -3709,9 +3741,9 @@
       var k = Math.min(1, b.stageT / CHASE_GROW);
       c.growW = W * 1.5 * k;
       b.fanK = k;
-      var tx = cam.x + W - 170;                         // over to the right, up to the belt
+      var tx = cam.x + W - 170;                         // over to the right, down on the board
       b.x += (tx - b.x) * Math.min(1, dt * 3);
-      b.y += (CHASE_HANG_Y - b.y) * Math.min(1, dt * 3);
+      b.y += ((GROUND - b.h) - b.y) * Math.min(1, dt * 3);
       if (k >= 1) {
         b.stage = 'chase';
         c.x = cam.x;
@@ -3725,7 +3757,7 @@
       var stopAt = BOARD_X + BOARD_LEN - W + 60;
       c.x = Math.min(stopAt, c.x + SCROLL_SPEED * dt);
       b.x = c.x + W - 170;
-      b.y = CHASE_HANG_Y;
+      b.y = GROUND - b.h;                               // on the board, going with it
       if (c.x >= stopAt) {                              // the end: he's off
         b.stage = 'leave';
         b.stageT = 0;
@@ -4677,8 +4709,8 @@
       ctx.shadowBlur = 0;
     }
 
-    if (s.belt) { drawBelt(s); return; }
     if (s.wood) { drawBoard(s); return; }
+    if (s.belt) { drawBelt(s); return; }
     if (s.block) { drawCrate(s.x, s.y, s.w, s.h); return; }
 
     /* `red`: the final boss's floor and platforms */
@@ -4713,6 +4745,15 @@
       ctx.fillRect(x, s.y, 2, s.h);
     }
     ctx.fillRect(from, s.y + 20, to - from, 2);
+
+    /* the conveyor along its top. Its cleats are lined up on the world,
+       not the screen, so you can see it running back under you. */
+    if (s.belt) {
+      var CLEAT = 18;
+      var bx = s.x + Math.floor((from - s.x) / CLEAT) * CLEAT;
+      var bw = Math.min(to, s.x + w) - bx;
+      if (bw > 0) drawBelt({ x: bx, y: s.y - 2, w: bw, h: 14, belt: s.belt });
+    }
   }
 
   /* a wooden crate: the chase's walls, floating blocks and falling ones */
@@ -4735,22 +4776,6 @@
     if (!c) return;
     var i;
 
-    var bw = Math.min(BOARD_LEN, c.growW);
-    var bx0 = Math.max(BOARD_X - 200, cam.x - 20);
-    var bx1 = Math.min(BOARD_X - 200 + bw + 200, cam.x + W + 20);
-    if (bx1 > bx0) drawBelt({ x: bx0, y: BELT_Y, w: bx1 - bx0, h: 14, belt: SCROLL_SPEED });
-
-    if (b.stage === 'chase' || b.stage === 'grow') {
-      ctx.strokeStyle = '#8a93ad';                     // what he hangs by
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(b.x + 20, BELT_Y + 14);
-      ctx.lineTo(b.x + 20, b.y + b.h - 62);
-      ctx.moveTo(b.x + b.w - 20, BELT_Y + 14);
-      ctx.lineTo(b.x + b.w - 20, b.y + b.h - 62);
-      ctx.stroke();
-    }
-
     if (b.stage === 'chase') {                         // the wind, streaming back at you
       ctx.save();
       ctx.strokeStyle = 'rgba(220,235,255,0.35)';
@@ -4759,7 +4784,7 @@
       for (i = 0; i < 18; i++) {
         var run = (state.t * 700 + i * 137) % 700;
         var sx = fanX - run;
-        var sy = b.y + 10 + ((i * 59) % (GROUND - b.y - 20));
+        var sy = GROUND - 200 + ((i * 59) % 190);
         ctx.globalAlpha = 0.35 * (1 - run / 700);
         ctx.beginPath();
         ctx.moveTo(sx, sy);
@@ -4778,16 +4803,7 @@
       ctx.fillRect(f.x, GROUND - 3, f.w, 3);
       ctx.restore();
       if (f.spike) {
-        ctx.fillStyle = '#ff2d55';
-        ctx.shadowColor = '#ff2d55';
-        ctx.shadowBlur = 14;
-        ctx.beginPath();
-        ctx.moveTo(f.x, f.y);
-        ctx.lineTo(f.x + f.w, f.y);
-        ctx.lineTo(f.x + f.w / 2, f.y + f.h);
-        ctx.closePath();
-        ctx.fill();
-        ctx.shadowBlur = 0;
+        drawHazard(f);                 // the same tooth it'll be once it lands
       } else {
         drawCrate(f.x, f.y, f.w, f.h);
       }
@@ -5156,31 +5172,7 @@
       } else if (mv.kind === 'saws') {
         var blades = [];
         if (mv.walls) {
-          /* the final boss's: they circle him, then before each wall its
-             blades fly out from round him to their edge, then it comes */
-          for (var wi = 0; wi < mv.walls.length; wi++) {
-            var wall = mv.walls[wi];
-            var live = [];
-            for (var s = 0; s < mv.slots.length; s++) {
-              var sy = mv.slots[s];
-              if (sy > wall.gapY - mv.gapH / 2 && sy < wall.gapY + mv.gapH / 2) continue;
-              live.push(sy);
-            }
-            if (wi === 0 && mv.t < mv.orbit) {
-              for (var s = 0; s < live.length; s++) blades.push(orbitSaw(b, mv, s, live.length));
-            }
-            if (mv.t >= wall.start - mv.gather && mv.t < wall.start) {
-              var g = (mv.t - (wall.start - mv.gather)) / mv.gather;
-              for (var s = 0; s < live.length; s++) {
-                var o = orbitSaw(b, mv, s, live.length);
-                blades.push({ x: o.x + (wall.from - o.x) * g,
-                              y: o.y + (live[s] - o.y) * g });
-              }
-            }
-            var wx = sawWallX(mv, wall);
-            if (wx === null) continue;
-            for (var s = 0; s < live.length; s++) blades.push({ x: wx, y: live[s] });
-          }
+          blades = finalSawBlades(b, mv);
         } else if (mv.colX === null) {
           /* orbiting, or streaking out to the edge */
           var live = [];
