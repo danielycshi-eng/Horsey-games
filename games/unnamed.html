@@ -5639,6 +5639,67 @@
 
   }
 
+  /* A screecher: a yellow bat. A round body with two pointed ears and
+     mean eyes, and a pair of scalloped wings that flap - folded back
+     into a dart while it charges. `size` is about its body's width. */
+  function drawBat(x, y, size, face, charging) {
+    var col = '#ffd166';
+    var flap = charging ? -0.15 : Math.sin(state.t * 18);   // -1 down .. 1 up
+    var span = size * (charging ? 0.9 : 1.25);
+    var r = size * 0.36;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = col;
+    ctx.shadowColor = col;
+    ctx.shadowBlur = 16;
+
+    /* the wings, one each side: a top edge out to the tip, then three
+       scallops back in along the bottom */
+    for (var s = -1; s <= 1; s += 2) {
+      var tipX = s * span, tipY = -flap * size * 0.45 - size * 0.1;
+      ctx.beginPath();
+      ctx.moveTo(s * r * 0.6, -r * 0.35);
+      ctx.quadraticCurveTo(s * span * 0.55, tipY - size * 0.35, tipX, tipY);
+      var bx0 = tipX, by0 = tipY;
+      for (var k = 1; k <= 3; k++) {
+        var tx = s * (span - k * (span - r * 0.6) / 3);
+        var ty = r * 0.35 + (tipY - r * 0.35) * (1 - k / 3) * 0.6;
+        ctx.quadraticCurveTo((bx0 + tx) / 2, Math.max(by0, ty) - size * 0.08, tx, ty);
+        bx0 = tx; by0 = ty;
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    /* the body and its ears */
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    for (var e = -1; e <= 1; e += 2) {
+      ctx.beginPath();
+      ctx.moveTo(e * r * 0.25, -r * 0.8);
+      ctx.lineTo(e * r * 0.65, -r * 1.55);
+      ctx.lineTo(e * r * 0.85, -r * 0.55);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+
+    /* mean little eyes, looking your way, and a fang */
+    ctx.fillStyle = '#3a2a05';
+    ctx.fillRect(face * r * 0.15 - r * 0.45, -r * 0.25, r * 0.3, r * 0.32);
+    ctx.fillRect(face * r * 0.15 + r * 0.15, -r * 0.25, r * 0.3, r * 0.32);
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(face * r * 0.1 - r * 0.08, r * 0.3);
+    ctx.lineTo(face * r * 0.1, r * 0.6);
+    ctx.lineTo(face * r * 0.1 + r * 0.08, r * 0.3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
   /* the fan on its own, once it has come off the throne */
   function drawFanAt(x, y, r, rot) {
     ctx.save();
@@ -6064,7 +6125,7 @@
           ctx.stroke();
         }
         ctx.restore();
-        if (!bd.gone) drawCube(bd.x, bd.y, SCREECH_SIZE, SCREECH_SIZE, '#ffd166', bd.x < p.x ? 1 : -1, 0);
+        if (!bd.gone) drawBat(bd.x, bd.y, SCREECH_SIZE, bd.x < p.x ? 1 : -1, bd.fired);
       }
     }
 
