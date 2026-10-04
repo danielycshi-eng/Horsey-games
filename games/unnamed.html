@@ -4758,12 +4758,6 @@
     level.orbs.push(jet.orb);
   }
 
-  /* up among the last tracks (above the top step)? There you get one
-     jump and no second one. */
-  function onTracks() {
-    return !!(level.jet && level.jet.broken && p.y + p.h < FOOT_F - FOOT_STEPS_TOP - 5);
-  }
-
   /* the tracks' platforms, sliding back and forth across the room */
   function moveTracks(dt) {
     var jet = level.jet, e = roomEdges(), L = e.L, Wd = e.R - e.L;
@@ -5320,7 +5314,7 @@
           p.airJumps = 1;
           state.coyote = 0;
           state.buffer = 0;
-        } else if (p.airJumps > 0 && !onTracks()) {   // the last tracks: one jump only
+        } else if (p.airJumps > 0) {
           p.airJumps--;
           jump(true);
           state.buffer = 0;
