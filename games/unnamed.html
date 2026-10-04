@@ -127,26 +127,6 @@
       border-color: #4ec3ff;
     }
 
-    /* Admin (test) toggle, tucked into the title screen's bottom-left
-       corner and dark enough to miss. On, checkpoints stop blocking
-       the way on. */
-    #adminBtn {
-      position: absolute;
-      left: 10px;
-      bottom: 10px;
-      padding: 0.25rem 0.6rem;
-      font-family: inherit;
-      font-size: 0.65rem;
-      letter-spacing: 2px;
-      color: #1d2645;
-      background: transparent;
-      border: 1px solid #10162e;
-      border-radius: 6px;
-      cursor: pointer;
-    }
-    #adminBtn:hover { color: #3a4a78; border-color: #1d2b5c; }
-    #adminBtn.on { color: #ff9a9a; border-color: #ff5a5a; }
-
     .keys {
       margin-top: 2rem;
       color: #56658c;
@@ -173,8 +153,6 @@
         <input id="nameInput" type="text" maxlength="12" placeholder="NAME YOUR HERO" autocomplete="off" spellcheck="false">
         <button id="beginBtn" class="tbtn" type="button">Begin</button>
       </div>
-
-      <button id="adminBtn" type="button">ADMIN: OFF</button>
     </div>
 
     <div class="screen hidden" id="doneScreen">
@@ -2345,8 +2323,8 @@
   window.addEventListener('keydown', function (e) {
     if (BLOCK.indexOf(e.code) !== -1) e.preventDefault();
     if (!state.running) return;
-    /* nothing works while he talks - except Y, the skip */
-    if (!keys[e.code] && (!cutsceneRunning() || e.code === 'KeyY')) press(e.code);
+    /* nothing works while he talks, or while he gets angry */
+    if (!keys[e.code] && !cutsceneRunning()) press(e.code);
     keys[e.code] = true;
   });
   window.addEventListener('keyup', function (e) { keys[e.code] = false; });
@@ -2401,64 +2379,6 @@
     if (code === 'KeyB') toggleCarry();
     if (code === 'KeyP') placeCheckpoint();
     if (code === 'KeyR') respawn();
-    if (code === 'KeyY') skipToChase();
-  }
-
-  /* Y: straight to the final boss's conveyor chase, from anywhere -
-     past the scene and the fight, stood at the end of his floor. */
-  function skipToChase() {
-    var last = BUILDERS.length - 1;
-    var st = levelIndex === last && level.boss ? level.boss.stage : null;
-    /* on the chase already: Y goes on to his bare red platform */
-    if (st === 'grow' || st === 'chase' || st === 'toArena') {
-      camFx.zoom = 1;
-      camFx.shake = 0;
-      checkpoint = null;
-      setupPhase3();
-      saveGame();
-      return;
-    }
-    /* on his last red platform: Y puts a blue bomb down next to you */
-    if (st === 'phase3') {
-      if (p.jet || p.holding || level.boss.dead) return;
-      var bb = level.pickups[0];
-      /* pressed again with the bomb still lying there: on to the next
-         bomb - Y twice is the second climb, three times the third */
-      if (!bb.hidden && !bb.held && level.boss.hp > 1) {
-        level.boss.hp--;
-        burst(bb.x + bb.w / 2, bb.y + bb.h / 2, '#4ec3ff', 16, 1.0);
-        return;
-      }
-      bb.hidden = false;
-      bb.held = false;
-      bb.flying = false;
-      bb.grounded = false;
-      bb.vy = 0;
-      bb.x = finalSafeX(p.x + p.w / 2 + p.face * 40 - bb.w / 2, bb.w);
-      bb.y = p.y;
-      bb.home = { x: bb.x, y: GROUND - bb.h };
-      burst(bb.x + bb.w / 2, bb.y + bb.h / 2, '#4ec3ff', 16, 1.0);
-      return;
-    }
-    if (st) return;                    // getting angry
-    if (levelIndex !== last) loadLevel(last);
-    level.intro.done = true;
-    finalIntroSeen = true;
-    state.titleT = 0;
-    var b = level.boss;
-    b.asleep = false;
-    b.hp = 0;
-    p.x = BOARD_X - 200;
-    p.y = GROUND - SIZE;
-    p.vx = 0; p.vy = 0;
-    p.onGround = true;
-    safeSpot.x = p.x;
-    safeSpot.y = p.y;
-    cam.x = p.x + p.w / 2 - W / 2;
-    b.x = cam.x + W - 170;
-    b.y = GROUND - b.h;
-    startFinalScroll(b);
-    saveGame();
   }
 
   function attack() {
@@ -7519,23 +7439,10 @@
   var nextBtn     = document.getElementById('nextBtn');
   var againBtn    = document.getElementById('againBtn');
 
-  var adminBtn    = document.getElementById('adminBtn');
-
   var onNext = null, onAgain = null;
 
-  /* Admin (test) mode, switched on from the title screen: checkpoints
-     no longer stop you going on. Not saved - off every time you load. */
-  var admin = false;
-
-  function toggleAdmin() {
-    admin = !admin;
-    adminBtn.textContent = 'ADMIN: ' + (admin ? 'ON' : 'OFF');
-    if (admin) adminBtn.classList.add('on');
-    else adminBtn.classList.remove('on');
-  }
-
-  /* Placed a flag in this room, and not an admin: no way on. */
-  function blocked() { return state.cpUsed && !admin; }
+  /* Placed a flag in this room: no way on. */
+  function blocked() { return state.cpUsed; }
 
   function enterGame() {
     titleScreen.classList.add('hidden');
@@ -7666,11 +7573,6 @@
   });
   nextBtn.addEventListener('click', function () { if (onNext) onNext(); });
   againBtn.addEventListener('click', function () { if (onAgain) onAgain(); });
-
-  adminBtn.addEventListener('click', function () {
-    toggleAdmin();
-    adminBtn.blur();        // so Space in the first room doesn't flip it back
-  });
 
   /* Don't lose progress on the way out — leaving via the Games link,
      closing the tab, or the browser backgrounding us all count. */

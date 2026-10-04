@@ -3457,7 +3457,6 @@ function doorAndNext() {
   return { from: from, to: levelIndex };
 }
 
-admin = false;
 loadLevel(5); state.running = true;
 ok('a fresh room is not marked', state.cpUsed === false);
 placeOn(150, GROUND);
@@ -3528,21 +3527,6 @@ continueGame();
 ok('the mark survives a save and Continue',
    levelIndex === 5 && state.cpUsed === true);
 
-WScript.Echo('');
-WScript.Echo('[admin]');
-ok('admin starts off', admin === false);
-toggleAdmin();
-ok('the title-screen toggle turns it on', admin === true &&
-   adminBtn.textContent === 'ADMIN: ON', adminBtn.textContent);
-loadLevel(5); state.running = true;
-placeOn(150, GROUND);
-tap('KeyP');
-r = doorAndNext();
-ok('with admin on, a flag does not stop you', r.to === 6,
-   'went to ' + r.to);
-toggleAdmin();
-ok('and it turns back off', admin === false &&
-   adminBtn.textContent === 'ADMIN: OFF');
 clearSave();
 letGo();
 
