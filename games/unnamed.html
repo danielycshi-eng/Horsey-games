@@ -2221,7 +2221,7 @@
      had landed on the boss when you died are still landed when you
      come back - every boss, the final one too. */
   function respawn() {
-    state.taunt = null;
+    state.grey = false;
     var cp = checkpoint;
     var used = state.cpUsed;
     var bossHp = level.boss ? level.boss.hp : null;
@@ -2656,14 +2656,12 @@
     p.deadT = 0;
     state.flash = 1;
     burst(p.x + p.w / 2, p.y + p.h / 2, '#ff5f7e', 34, 1.4);
-    /* against the final boss: everything goes grey, and he has
-       something to say about it */
-    state.taunt = (level.boss && level.boss.final && !introRunning())
-      ? TAUNTS[Math.floor(Math.random() * TAUNTS.length)] : null;
+    /* against the final boss: everything goes grey for a moment
+       before you are back */
+    state.grey = !!(level.boss && level.boss.final && !introRunning());
   }
 
-  var TAUNTS = ['Maybe next time!', 'No refunds, haha', 'Come again!', 'byebye!'];
-  var TAUNT_TIME = 2.4;          // how long the grey lasts before you're back
+  var GREY_TIME = 1.2;           // how long the grey lasts before you're back
 
   /* ============================================================
      SINKING PLATFORMS
@@ -4934,7 +4932,7 @@
 
     if (p.dead) {
       p.deadT += dt;
-      if (p.deadT > (state.taunt ? TAUNT_TIME : 0.7)) respawn();
+      if (p.deadT > (state.grey ? GREY_TIME : 0.7)) respawn();
       return;
     }
 
@@ -5930,21 +5928,16 @@
     ctx.restore();
   }
 
-  /* Dead, against the final boss: everything goes grey, and he says
-     something, in a bubble over him. */
-  function drawDeathTaunt() {
-    if (!p.dead || !state.taunt) return;
+  /* Dead, against the final boss: everything goes grey, and then
+     you're back. */
+  function drawDeathGrey() {
+    if (!p.dead || !state.grey) return;
     ctx.save();
     ctx.globalCompositeOperation = 'saturation';
     ctx.fillStyle = '#808080';
     ctx.globalAlpha = Math.min(1, p.deadT / 0.3);
     ctx.fillRect(0, 0, W, H);
     ctx.restore();
-    var b = level.boss;
-    var sx = b.x + b.w / 2 - cam.x, sy = b.y - cam.y;
-    sx = Math.max(175, Math.min(W - 175, sx));
-    sy = Math.max(110, Math.min(H - 20, sy));
-    drawSpeech(sx, sy, state.taunt, Math.max(0, p.deadT - 0.25) * 34);
   }
 
   /* the fan on its own, once it has come off the throne */
@@ -7162,7 +7155,7 @@
     drawHUD();
     drawIntroScreen();             // the final boss's way in
     drawJetHUD();
-    drawDeathTaunt();
+    drawDeathGrey();
   }
 
   /* ============================================================
