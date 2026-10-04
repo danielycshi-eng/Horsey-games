@@ -2186,6 +2186,7 @@
 
   function placeCheckpoint() {
     if (!p.onGround) return;
+    if (level.chase) return;               // not on the moving board
 
     if (checkpoint && Math.abs(checkpoint.x - p.x) < CP_REACH &&
         Math.abs(checkpoint.y - p.y) < CP_REACH) {
@@ -2217,15 +2218,19 @@
     var cp = checkpoint;
     var used = state.cpUsed;
     var bossHp = level.boss ? level.boss.hp : null;
+    var chaseDeath = !!(level.boss && level.boss.stage);
     loadLevel(levelIndex);
     state.cpUsed = used;
     if (level.intro && finalIntroSeen) {     // you've seen him; straight back to the fight
       level.intro.done = true;
       level.boss.asleep = false;
     }
+    /* died in the chase: back to his arena, him on one hit, so one more
+       blue bomb starts it again - checkpoint or not */
+    if (chaseDeath) level.boss.hp = 1;
     if (!cp) return;
     checkpoint = cp;
-    if (level.boss && bossHp !== null) {
+    if (level.boss && bossHp !== null && !chaseDeath) {
       level.boss.hp = bossHp;
       if (bossHp <= 0) {                     // already beaten: it stays beaten
         level.boss.dead = true;
@@ -2489,6 +2494,7 @@
       var under = solidUnderFeet();
       if (under && under.belt) carry = under.belt;
     }
+    carry += windPush();                       // the final boss's fan, in the chase
     var dx = (p.vx + carry) * dt;
 
     p.x += dx;
@@ -2997,6 +3003,10 @@
     b.hp--;
     b.flash = 0.4;
     burst(b.x + b.w / 2, b.y + b.h / 2, '#4ec3ff', 40, 1.5);
+    if (b.hp <= 0 && b.final) {          // not beaten: the chase starts
+      if (!b.stage) startFinalScroll(b);
+      return;
+    }
     if (b.hp <= 0) {
       b.dead = true;
       b.moves.length = 0;
@@ -3492,6 +3502,36 @@
       ctx.restore();
     }
 
+    /* the fan the throne grows for the chase, facing back at you */
+    if (b.fanK > 0) {
+      var fr = 26 * b.fanK;
+      var fxc = cx - 30 - fr * 0.6, fyc = base - 26;
+      ctx.save();
+      ctx.fillStyle = '#4a5068';
+      ctx.fillRect(fxc, fyc - 4, cx - 30 - fxc, 8);           // the arm out to it
+      ctx.fillStyle = '#2b2f36';
+      ctx.strokeStyle = '#8a93ad';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(fxc, fyc, fr, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.translate(fxc, fyc);
+      ctx.rotate(state.t * 25);
+      ctx.fillStyle = '#c9d2e6';
+      for (var bl = 0; bl < 4; bl++) {
+        ctx.rotate(Math.PI / 2);
+        ctx.beginPath();
+        ctx.ellipse(fr * 0.45, 0, fr * 0.45, fr * 0.16, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#ff2d55';
+      ctx.beginPath();
+      ctx.arc(0, 0, fr * 0.18, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
     /* him, sat in it */
     var cy = base - 12 - SIZE / 2;
     var col = b.flash > 0 ? '#ffffff' : (b.dead ? '#2e5a45' : '#7bffb2');
@@ -3580,10 +3620,162 @@
     }
   }
 
+  /* ============================================================
+     THE CHASE
+     Three hits doesn't finish him. A wooden board grows out of the
+     right-hand end of his floor, over the pit, with a conveyor above
+     it; a fan grows on the throne, and he hangs from the conveyor at
+     the right of the screen blowing you back while the screen scrolls
+     on. Things fall from the ceiling and float in the way. Drop off
+     the left of the screen - or die any other way - and you are back
+     in his arena with him on one hit. Reach the end of the board and
+     that's it...for now.
+     ============================================================ */
+  var BOARD_X      = 2100;       // where the board starts: the end of his floor
+  var BOARD_LEN    = 7600;
+  var SCROLL_SPEED = 190;        // you run 275, less the wind
+  var BELT_Y       = 30;         // the conveyor he hangs from
+  var CHASE_HANG_Y = 110;        // his top while he hangs from it
+  var CHASE_GROW   = 2.0;        // the board, the belt and the fan growing
+  var WIND_BASE    = 60;         // how hard the fan blows you back, anywhere
+  var WIND_NEAR    = 420;        // and up to this much more close to it
+  var WIND_REACH   = 420;        // how close "close" is
+
+  function startFinalScroll(b) {
+    b.stage = 'grow';
+    b.stageT = 0;
+    b.fanK = 0;
+    b.moves.length = 0;
+    level.seekers.length = 0;
+    level.spikeballs.length = 0;
+    level.bombs.length = 0;
+    level.enemies.length = 0;
+    level.pickups[0].hidden = true;
+    level.pickups[0].held = false;
+    level.pickups[0].flying = false;
+    if (p.holding) p.holding = null;
+    state.flash = Math.max(state.flash, 0.5);
+
+    level.worldW = BOARD_X + BOARD_LEN + 100;
+    var board = { x: BOARD_X, y: GROUND, w: BOARD_LEN, h: 40, wood: true, growW: 0 };
+    level.solids.push(board);
+    level.chase = { board: board, x: cam.x, fallers: [], floats: [], growW: 0,
+                    endX: BOARD_X + BOARD_LEN - 140, on: false, done: false };
+    buildChase(level.chase);
+  }
+
+  /* What's on the board. The same every time, so a retry is a retry. */
+  function buildChase(c) {
+    var PATTERN = ['wall', 'fallBlock', 'spikes', 'floatSpike', 'fallSpike',
+                   'tall', 'floatBlock', 'spikes', 'fallBlock', 'floatSpike',
+                   'fallSpike', 'wall'];
+    var end = BOARD_X + BOARD_LEN - 700;
+    for (var i = 0, x = BOARD_X + 600; x < end; i++, x += 340) {
+      var kind = PATTERN[i % PATTERN.length];
+      if (kind === 'wall') {
+        level.solids.push({ x: x, y: GROUND - 70, w: 50, h: 70, block: true });
+      } else if (kind === 'tall') {                       // a double jump
+        level.solids.push({ x: x, y: GROUND - 140, w: 50, h: 140, block: true });
+      } else if (kind === 'spikes') {
+        level.hazards.push({ x: x, y: GROUND - 22, w: 110, h: 22 });
+      } else if (kind === 'floatBlock') {                 // under it, or over it
+        level.solids.push({ x: x, y: GROUND - 96, w: 120, h: 26, block: true });
+      } else if (kind === 'floatSpike') {                 // one low, one high
+        c.floats.push({ x: x, y: GROUND - 62, r: 18, rot: 0 });
+        c.floats.push({ x: x + 120, y: GROUND - 170, r: 18, rot: 0 });
+      } else {                                            // from the ceiling
+        var spike = kind === 'fallSpike';
+        c.fallers.push({ x: x, y: -70, w: spike ? 40 : 60, h: spike ? 40 : 60,
+                         spike: spike, vy: 0, at: x - 330, falling: false });
+      }
+    }
+  }
+
+  /* how hard the fan is pushing you back, px/s (negative: to the left) */
+  function windPush() {
+    var b = level.boss;
+    if (!b || b.stage !== 'chase') return 0;
+    var d = Math.max(0, (b.x - 10) - (p.x + p.w));
+    var near = d < WIND_REACH ? WIND_NEAR * (1 - d / WIND_REACH) : 0;
+    return -(WIND_BASE + near);
+  }
+
+  function updateChase(b, dt) {
+    var c = level.chase;
+    b.stageT += dt;
+    var i;
+
+    if (b.stage === 'grow') {
+      var k = Math.min(1, b.stageT / CHASE_GROW);
+      c.growW = W * 1.5 * k;
+      b.fanK = k;
+      var tx = cam.x + W - 170;                         // over to the right, up to the belt
+      b.x += (tx - b.x) * Math.min(1, dt * 3);
+      b.y += (CHASE_HANG_Y - b.y) * Math.min(1, dt * 3);
+      if (k >= 1) {
+        b.stage = 'chase';
+        c.x = cam.x;
+        c.on = true;
+      }
+      return;
+    }
+
+    if (b.stage === 'chase') {
+      c.growW = BOARD_LEN;
+      var stopAt = BOARD_X + BOARD_LEN - W + 60;
+      c.x = Math.min(stopAt, c.x + SCROLL_SPEED * dt);
+      b.x = c.x + W - 170;
+      b.y = CHASE_HANG_Y;
+      if (c.x >= stopAt) {                              // the end: he's off
+        b.stage = 'leave';
+        b.stageT = 0;
+        c.on = false;
+      }
+    } else if (b.stage === 'leave') {
+      b.y -= 400 * dt;
+      b.x += 200 * dt;
+    }
+
+    /* off the left of the screen is off the board */
+    if (c.on && p.x + p.w < c.x) { die(); return; }
+    /* and there is no getting past the right of it */
+    if (c.on && p.x > c.x + W - p.w) p.x = c.x + W - p.w;
+
+    /* things off the ceiling: they drop when you get near, kill you if
+       they land on you, and stay where they land */
+    for (i = c.fallers.length - 1; i >= 0; i--) {
+      var f = c.fallers[i];
+      if (!f.falling) { if (p.x + p.w > f.at) f.falling = true; else continue; }
+      f.vy = Math.min(MAX_FALL * 1.5, f.vy + GRAVITY * dt);
+      f.y += f.vy * dt;
+      if (hits(p, f)) { die(); return; }
+      if (f.y + f.h >= GROUND) {
+        burst(f.x + f.w / 2, GROUND, f.spike ? '#ff2d55' : '#c08a4e', 18, 1.0);
+        if (f.spike) level.hazards.push({ x: f.x, y: GROUND - 22, w: f.w, h: 22 });
+        else level.solids.push({ x: f.x, y: GROUND - f.h, w: f.w, h: f.h, block: true });
+        c.fallers.splice(i, 1);
+      }
+    }
+    for (i = 0; i < c.floats.length; i++) {
+      var fl = c.floats[i];
+      fl.rot += dt * 2;
+      if (circleHitsBox(fl.x, fl.y, fl.r - 3, p)) { die(); return; }
+    }
+
+    /* the end of the board */
+    if (!c.done && p.onGround && p.x > c.endX) {
+      c.done = true;
+      state.complete = true;
+      saveGame();
+      finishLevel();
+    }
+  }
+
   function updateBoss(dt) {
     var b = level.boss;
     if (!b || b.asleep) return;
     if (b.flash > 0) b.flash -= dt;
+    if (b.stage) { updateChase(b, dt); return; }
     if (!b.dead) {
       updateSeekers(dt);
       if (p.dead) return;
@@ -4179,6 +4371,7 @@
   }
 
   function updateCamera(dt) {
+    if (level.chase && level.chase.on) { cam.x = level.chase.x; return; }   // autoscroll
     var target = p.x + p.w / 2 - W / 2;
     if (target < 0) target = 0;
     if (target > level.worldW - W) target = level.worldW - W;
@@ -4485,6 +4678,8 @@
     }
 
     if (s.belt) { drawBelt(s); return; }
+    if (s.wood) { drawBoard(s); return; }
+    if (s.block) { drawCrate(s.x, s.y, s.w, s.h); return; }
 
     /* `red`: the final boss's floor and platforms */
     ctx.fillStyle = s.red ? '#4d1622' : '#16224d';
@@ -4496,6 +4691,143 @@
     ctx.shadowBlur = 14;
     ctx.fillRect(s.x, s.y - 3, s.w, 5);
     ctx.shadowBlur = 0;
+  }
+
+  /* The chase's wooden board: planks, with their seams, growing out of
+     his floor while it's being built. */
+  function drawBoard(s) {
+    var c = level.chase;
+    var w = Math.min(s.w, c ? c.growW : s.w);
+    if (w <= 0) return;
+    var from = Math.max(s.x, cam.x - 20), to = Math.min(s.x + w, cam.x + W + 20);
+    if (to <= from) return;
+    ctx.fillStyle = '#6b4423';
+    ctx.fillRect(from, s.y, to - from, s.h);
+    ctx.fillStyle = '#8a5a30';
+    ctx.fillRect(from, s.y, to - from, 8);
+    ctx.fillStyle = '#c08a4e';
+    ctx.fillRect(from, s.y - 2, to - from, 4);
+    ctx.fillStyle = 'rgba(40,22,10,0.6)';
+    var PLANK = 90;
+    for (var x = s.x + Math.ceil((from - s.x) / PLANK) * PLANK; x < to; x += PLANK) {
+      ctx.fillRect(x, s.y, 2, s.h);
+    }
+    ctx.fillRect(from, s.y + 20, to - from, 2);
+  }
+
+  /* a wooden crate: the chase's walls, floating blocks and falling ones */
+  function drawCrate(x, y, w, h) {
+    ctx.fillStyle = '#7a4e28';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#c08a4e';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x + 1.5, y + 1.5, w - 3, h - 3);
+    ctx.beginPath();
+    ctx.moveTo(x + 3, y + 3);
+    ctx.lineTo(x + w - 3, y + h - 3);
+    ctx.stroke();
+  }
+
+  /* Everything else of the chase: the conveyor overhead, his hangers,
+     the wind, what's falling, what's floating, and the finish. */
+  function drawChase() {
+    var c = level.chase, b = level.boss;
+    if (!c) return;
+    var i;
+
+    var bw = Math.min(BOARD_LEN, c.growW);
+    var bx0 = Math.max(BOARD_X - 200, cam.x - 20);
+    var bx1 = Math.min(BOARD_X - 200 + bw + 200, cam.x + W + 20);
+    if (bx1 > bx0) drawBelt({ x: bx0, y: BELT_Y, w: bx1 - bx0, h: 14, belt: SCROLL_SPEED });
+
+    if (b.stage === 'chase' || b.stage === 'grow') {
+      ctx.strokeStyle = '#8a93ad';                     // what he hangs by
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(b.x + 20, BELT_Y + 14);
+      ctx.lineTo(b.x + 20, b.y + b.h - 62);
+      ctx.moveTo(b.x + b.w - 20, BELT_Y + 14);
+      ctx.lineTo(b.x + b.w - 20, b.y + b.h - 62);
+      ctx.stroke();
+    }
+
+    if (b.stage === 'chase') {                         // the wind, streaming back at you
+      ctx.save();
+      ctx.strokeStyle = 'rgba(220,235,255,0.35)';
+      ctx.lineWidth = 2;
+      var fanX = b.x - 10;
+      for (i = 0; i < 18; i++) {
+        var run = (state.t * 700 + i * 137) % 700;
+        var sx = fanX - run;
+        var sy = b.y + 10 + ((i * 59) % (GROUND - b.y - 20));
+        ctx.globalAlpha = 0.35 * (1 - run / 700);
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx - 46, sy);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    for (i = 0; i < c.fallers.length; i++) {
+      var f = c.fallers[i];
+      if (!f.falling) continue;
+      ctx.save();                                      // its shadow on the board
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(f.x, GROUND - 3, f.w, 3);
+      ctx.restore();
+      if (f.spike) {
+        ctx.fillStyle = '#ff2d55';
+        ctx.shadowColor = '#ff2d55';
+        ctx.shadowBlur = 14;
+        ctx.beginPath();
+        ctx.moveTo(f.x, f.y);
+        ctx.lineTo(f.x + f.w, f.y);
+        ctx.lineTo(f.x + f.w / 2, f.y + f.h);
+        ctx.closePath();
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      } else {
+        drawCrate(f.x, f.y, f.w, f.h);
+      }
+    }
+
+    for (i = 0; i < c.floats.length; i++) {
+      var o = c.floats[i];
+      ctx.save();
+      ctx.translate(o.x, o.y);
+      ctx.rotate(o.rot);
+      ctx.fillStyle = '#ff2d55';
+      ctx.shadowColor = '#ff2d55';
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      for (var k = 0; k < 12; k++) {
+        var a0 = (k / 12) * Math.PI * 2, a1 = ((k + 0.5) / 12) * Math.PI * 2;
+        ctx.lineTo(Math.cos(a0) * (o.r + 7), Math.sin(a0) * (o.r + 7));
+        ctx.lineTo(Math.cos(a1) * o.r * 0.8, Math.sin(a1) * o.r * 0.8);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    /* the finish: a gold flag at the end of the board */
+    var fx = c.endX + 40;
+    if (fx > cam.x - 40 && fx < cam.x + W + 40) {
+      ctx.fillStyle = '#c08a4e';
+      ctx.fillRect(fx, GROUND - 130, 5, 130);
+      ctx.fillStyle = '#ffd166';
+      ctx.shadowColor = '#ffd166';
+      ctx.shadowBlur = 16;
+      ctx.beginPath();
+      ctx.moveTo(fx + 5, GROUND - 130);
+      ctx.lineTo(fx + 55, GROUND - 112);
+      ctx.lineTo(fx + 5, GROUND - 94);
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
   }
 
   /* A factory conveyor: a grey rubber belt looped round a roller at
@@ -5606,6 +5938,7 @@
     drawArrows();
     drawDoor();
     drawScarecrow();
+    drawChase();
     drawBoss();
     drawArena();
     drawBombs();
