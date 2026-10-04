@@ -2405,6 +2405,13 @@
     if (st === 'phase3') {
       if (p.jet || p.holding || level.boss.dead) return;
       var bb = level.pickups[0];
+      /* pressed again with the bomb still lying there: on to the next
+         bomb - Y twice is the second climb, three times the third */
+      if (!bb.hidden && !bb.held && level.boss.hp > 1) {
+        level.boss.hp--;
+        burst(bb.x + bb.w / 2, bb.y + bb.h / 2, '#4ec3ff', 16, 1.0);
+        return;
+      }
       bb.hidden = false;
       bb.held = false;
       bb.flying = false;
