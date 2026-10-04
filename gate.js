@@ -25,7 +25,7 @@
     'delivery-master':     'UBERR',
     'protect-the-crystal': 'RODE',
     shapes:                'TRIANGLE',
-    unnamed:               'NONAME'
+    unnamed:               'UNDEFINED'
   };
 
   var LABELS = {
