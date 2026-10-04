@@ -2189,7 +2189,6 @@
 
   function placeCheckpoint() {
     if (!p.onGround) return;
-    if (level.jet) return;                 // not up the jetpack climbs
 
     if (checkpoint && Math.abs(checkpoint.x - p.x) < CP_REACH &&
         Math.abs(checkpoint.y - p.y) < CP_REACH) {
@@ -2202,6 +2201,9 @@
     var s = solidUnderFeet();
     var top = s ? (s.home !== undefined ? s.home : s.y) : p.y + p.h;
     checkpoint = { x: p.x, y: top - SIZE };
+    /* up a jetpack climb: the fuse as it stands, and whether the
+       jetpack is still going - and it shows as a diamond, not a flag */
+    if (p.jet) checkpoint.jet = { fuse: p.jet.fuse, broken: !!p.jet.broken };
     /* on the final boss's board: where the screen had got to, as well */
     if (level.chase && level.chase.on) {
       checkpoint.chaseX = level.chase.x;
@@ -2243,6 +2245,19 @@
       if (cp && cp.x >= ARENA3_X) {          // a flag down on it: there
         checkpoint = cp;
         if (bossHp > 0) level.boss.hp = bossHp;   // and your hits on him kept
+        /* a diamond up a jetpack climb: back on that climb, bomb and
+           jetpack on, the fuse where it was (and on foot, if it was) */
+        if (cp.jet) {
+          var jb = level.pickups[0];
+          jb.hidden = false;
+          jb.held = true;
+          jb.flying = false;
+          p.holding = jb;
+          startJet();
+          p.jet.fuse = cp.jet.fuse;
+          if (cp.jet.broken) breakJet();
+          level.boss.y = Math.max(level.jet.bossTop, cp.y - 380);
+        }
         p.x = cp.x;
         p.y = cp.y;
         safeSpot.x = p.x;
@@ -4675,10 +4690,11 @@
      goes white, and you've won.
      ============================================================ */
   var FOOT_F        = GROUND - 8 * JET_ROW - 160;   // the floor that appears
-  var FOOT_STEP     = 100;       // the steps, one above the next
+  var FOOT_STEP     = 150;       // the steps, one above the next: a double jump each, never two
+  var FOOT_STEPS_TOP = 6 * FOOT_STEP;   // the top step, above the floor
   var FOOT_TRACK    = 90;        // the tracks, one above the next
   var FOOT_TRACKS   = 5;
-  var FOOT_ORB_UP   = 600 + FOOT_TRACKS * FOOT_TRACK + 80;   // the orb, above the floor
+  var FOOT_ORB_UP   = FOOT_STEPS_TOP + FOOT_TRACKS * FOOT_TRACK + 80;   // the orb, above the floor
   var FOOT_BOSS_UP  = 330;       // and him, above the orb
   var JET_SHOT_SPEED = 900;
   /* each track's plain platform and spiked platform: seconds for a
@@ -4717,16 +4733,16 @@
       add({ x: L + steps[i][0] * Wd, y: FOOT_F - steps[i][1] * FOOT_STEP, w: 0.2 * Wd, h: 14,
             oneWay: true, red: true });
     }
-    addSaw({ x0: L + 0.37 * Wd, x1: L + 0.37 * Wd, y0: FOOT_F - 40, y1: FOOT_F - 240,
+    addSaw({ x0: L + 0.37 * Wd, x1: L + 0.37 * Wd, y0: FOOT_F - 80, y1: FOOT_F - 340,
              period: 1.6, phase: 0 });
-    addSaw({ x0: L + 0.45 * Wd, x1: L + 0.88 * Wd, y0: FOOT_F - 360, y1: FOOT_F - 360,
+    addSaw({ x0: L + 0.45 * Wd, x1: L + 0.88 * Wd, y0: FOOT_F - 540, y1: FOOT_F - 540,
              period: 2.0, phase: 0.3 });
-    addSaw({ x0: L + 0.37 * Wd, x1: L + 0.37 * Wd, y0: FOOT_F - 440, y1: FOOT_F - 600,
+    addSaw({ x0: L + 0.37 * Wd, x1: L + 0.37 * Wd, y0: FOOT_F - 680, y1: FOOT_F - 940,
              period: 1.4, phase: 0.6 });
 
     /* the five tracks: thin, small, and you come up through them */
     for (var k = 0; k < FOOT_TRACKS; k++) {
-      var ty = FOOT_F - 600 - (k + 1) * FOOT_TRACK;
+      var ty = FOOT_F - FOOT_STEPS_TOP - (k + 1) * FOOT_TRACK;
       var plain = { x: L, y: ty, w: 90, h: 8, oneWay: true, red: true };
       var spiky = { x: L, y: ty, w: 90, h: 8, oneWay: true, red: true };
       var teeth = { x: L, y: ty - 14, w: 90, h: 14 };
@@ -4745,7 +4761,7 @@
   /* up among the last tracks (above the top step)? There you get one
      jump and no second one. */
   function onTracks() {
-    return !!(level.jet && level.jet.broken && p.y + p.h < FOOT_F - 600 - 5);
+    return !!(level.jet && level.jet.broken && p.y + p.h < FOOT_F - FOOT_STEPS_TOP - 5);
   }
 
   /* the tracks' platforms, sliding back and forth across the room */
@@ -7218,6 +7234,25 @@
     var x = checkpoint.x + SIZE / 2;
     var y = checkpoint.y + SIZE;
     var wave = Math.sin(state.t * 4) * 2;
+
+    /* up a jetpack climb it's a diamond, turning slowly, over the spot */
+    if (checkpoint.jet) {
+      var dy = y - 24 + Math.sin(state.t * 3) * 3;
+      var sq = Math.abs(Math.cos(state.t * 1.6));
+      ctx.save();
+      ctx.fillStyle = '#4ec3ff';
+      ctx.shadowColor = '#4ec3ff';
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.moveTo(x, dy - 13);
+      ctx.lineTo(x + 9 * sq + 1, dy);
+      ctx.lineTo(x, dy + 13);
+      ctx.lineTo(x - 9 * sq - 1, dy);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
 
     ctx.save();
     ctx.globalAlpha = 0.18;                  // a patch of light on the floor
