@@ -2824,9 +2824,10 @@
   var P3_BOMB_RACE  = 900;       // and in the bombs
   var P3_SCREECH_AIM = [1.2, 2.2];   // how long each yellow guy follows you
   var P3_CHARGE     = 1100;      // and how fast it then charges down its line
+  var SCREECH_SIZE  = 46;        // a big yellow guy
   var P3_FIREBALLS  = 10;
   var P3_FIRE_GAP   = 0.28;      // seconds between them
-  var P3_FIRE_SPEED = 620;
+  var P3_FIRE_SPEED = 500;
   var P3_TOOTH      = 34;        // one dropped spike, one tooth
 
   function phase3Move(b, mv) {
@@ -3546,7 +3547,7 @@
           bd.x = bd.toX + Math.cos(bd.ang) * run;
           bd.y = bd.toY + Math.sin(bd.ang) * run;
           bd.gone = run > 1700;
-          if (!bd.gone && circleHitsBox(bd.x, bd.y, 14, p)) { die(); return; }
+          if (!bd.gone && circleHitsBox(bd.x, bd.y, SCREECH_SIZE / 2 - 2, p)) { die(); return; }
         }
       }
 
@@ -3669,6 +3670,7 @@
      so the two don't merge into one. */
   var SEEKER_SPEED = 85;
   var SEEKER_LIFE  = 15;
+  var SEEKER_SLOW_LIFE = 25;     // the final boss's last two: slow, but they last
   var SEEKER_SLOW  = 55;         // the final boss's last two: slower
   var SEEKER_FLY   = 0.9;        // the final boss's: seconds flying out to their spots
 
@@ -3699,7 +3701,7 @@
 
       if (circleHitsBox(s.x, s.y, s.big ? 18 : 12, p)) { die(); return; }
 
-      if (s.t >= SEEKER_LIFE) {
+      if (s.t >= (s.slow ? SEEKER_SLOW_LIFE : SEEKER_LIFE)) {
         /* it becomes a bomb with no fuse left, and goes off next tick */
         level.bombs.push({ x: s.x - 12, y: s.y - 12, w: 24, h: 24,
                            vy: 0, grounded: true, fuse: 0, blast: 0 });
@@ -4631,7 +4633,7 @@
           if (bo.x + bo.w <= s.x || bo.x >= s.x + s.w) continue;
           if (wasB <= s.y && nowB >= s.y) {
             bo.y = s.y - bo.h; bo.vy = 0; bo.grounded = true;
-            if (bo.instant) bo.fuse = 0;         // his last bombs go off as they land
+            if (bo.instant) bo.fuse = 0.5;       // his last bombs go off half a second after they land
             break;
           }
         }
@@ -6062,7 +6064,7 @@
           ctx.stroke();
         }
         ctx.restore();
-        if (!bd.gone) drawCube(bd.x, bd.y, 26, 26, '#ffd166', bd.x < p.x ? 1 : -1, 0);
+        if (!bd.gone) drawCube(bd.x, bd.y, SCREECH_SIZE, SCREECH_SIZE, '#ffd166', bd.x < p.x ? 1 : -1, 0);
       }
     }
 
@@ -6162,7 +6164,7 @@
   function drawSeekers() {
     for (var i = 0; i < level.seekers.length; i++) {
       var s = level.seekers[i];
-      var soon = SEEKER_LIFE - s.t < 2;
+      var soon = (s.slow ? SEEKER_SLOW_LIFE : SEEKER_LIFE) - s.t < 2;
       ctx.save();
       ctx.translate(s.x, s.y);
       ctx.rotate(state.t * 2.4 * (s.side || 1));     // the middle one spins too
