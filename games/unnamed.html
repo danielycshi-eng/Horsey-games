@@ -4742,12 +4742,20 @@
     level.orbs.push(jet.orb);
   }
 
-  /* the tracks' platforms, swinging back and forth across the room */
+  /* up among the last tracks (above the top step)? There you get one
+     jump and no second one. */
+  function onTracks() {
+    return !!(level.jet && level.jet.broken && p.y + p.h < FOOT_F - 600 - 5);
+  }
+
+  /* the tracks' platforms, sliding back and forth across the room */
   function moveTracks(dt) {
     var jet = level.jet, e = roomEdges(), L = e.L, Wd = e.R - e.L;
     for (var i = 0; i < jet.tracks.length; i++) {
       var tr = jet.tracks[i], s = tr.s, was = s.x;
-      var u = 0.5 - 0.5 * Math.cos((state.t / tr.period + tr.phase) * Math.PI * 2);
+      /* at one steady speed, straight across and straight back */
+      var ph = ((state.t / tr.period + tr.phase) % 1 + 1) % 1;
+      var u = ph < 0.5 ? ph * 2 : 2 - ph * 2;
       s.x = L + 20 + (Wd - 40 - s.w) * u;
       if (tr.hz) tr.hz.x = s.x;
       if (dt > 0 && standingOn({ x: was, y: s.y, w: s.w, h: s.h })) p.x += s.x - was;   // it carries you
@@ -5296,7 +5304,7 @@
           p.airJumps = 1;
           state.coyote = 0;
           state.buffer = 0;
-        } else if (p.airJumps > 0) {
+        } else if (p.airJumps > 0 && !onTracks()) {   // the last tracks: one jump only
           p.airJumps--;
           jump(true);
           state.buffer = 0;
