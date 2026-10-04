@@ -4515,9 +4515,30 @@
     { plats: [[0, 0.42], [0.63, 1]] }
   ];
 
+  /* The second climb: the same course with the gaps cut down (about
+     146 wide, were about 218) and the sliders quicker, on a 25 second
+     fuse. */
+  var JET_ROWS_2 = [
+    { plats: [[0, 0.405], [0.545, 1]] },
+    { plats: [[0, 0.155], [0.295, 1]] },
+    { slide: { w: 0.72, amp: 0.16, period: 1.9, phase: 0 } },
+    { plats: [[0, 0.66], [0.80, 1]] },
+    { slide: { w: 0.76, amp: 0.12, period: 1.6, phase: 1.6 } },
+    { plats: [[0, 0.225], [0.365, 0.635], [0.775, 1]] },
+    { slide: { w: 0.68, amp: 0.16, period: 1.8, phase: 0.8 } },
+    { plats: [[0, 0.455], [0.595, 1]] }
+  ];
+
+  /* one climb per hit: the first, then the second (and the second again
+     for the third, until that one has its own) */
+  var JET_COURSES = [ { rows: JET_ROWS,   fuse: JET_FUSE },
+                      { rows: JET_ROWS_2, fuse: 25 } ];
+
   function startJet() {
     var b = level.boss, e = roomEdges(), L = e.L, Wd = e.R - e.L;
-    p.jet = { fuse: JET_FUSE, thrust: false };
+    var course = JET_COURSES[Math.min(JET_COURSES.length - 1, Math.max(0, b.maxHp - b.hp))];
+    var ROWS = course.rows;
+    p.jet = { fuse: course.fuse, full: course.fuse, thrust: false };
     b.moves.length = 0;
     b.idle = 0;
     level.bombs.length = 0;
@@ -4536,8 +4557,8 @@
       jet.hazards.push(hz);
       return { s: s, hz: hz };
     }
-    for (var i = 0; i < JET_ROWS.length; i++) {
-      var row = JET_ROWS[i], y = GROUND - (i + 1) * JET_ROW;
+    for (var i = 0; i < ROWS.length; i++) {
+      var row = ROWS[i], y = GROUND - (i + 1) * JET_ROW;
       if (row.plats) {
         for (var k = 0; k < row.plats.length; k++) {
           plat(L + row.plats[k][0] * Wd, y, (row.plats[k][1] - row.plats[k][0]) * Wd);
@@ -5921,7 +5942,7 @@
     ctx.fillStyle = '#8a93ad';                       // the nozzle
     ctx.fillRect(bx - 5, by + 6, 10, 6);
     /* the fuse, burning down: shorter as time runs out */
-    var left = p.jet.fuse / JET_FUSE;
+    var left = p.jet.fuse / p.jet.full;
     ctx.strokeStyle = '#ffd166';
     ctx.lineWidth = 2;
     ctx.beginPath();
