@@ -2199,7 +2199,10 @@
     var top = s ? (s.home !== undefined ? s.home : s.y) : p.y + p.h;
     checkpoint = { x: p.x, y: top - SIZE };
     /* on the final boss's board: where the screen had got to, as well */
-    if (level.chase && level.chase.on) checkpoint.chaseX = level.chase.x;
+    if (level.chase && level.chase.on) {
+      checkpoint.chaseX = level.chase.x;
+      checkpoint.courseStart = level.chase.courseStart;
+    }
     state.cpUsed = true;    // and that's it - no way on from this room now
     burst(p.x + p.w / 2, p.y + p.h, '#4ec3ff', 20, 1.1);
   }
@@ -2234,7 +2237,7 @@
     if (chaseDeath && !onBoard) level.boss.hp = 1;
     if (!cp) return;
     checkpoint = cp;
-    if (onBoard) resumeChase(cp.chaseX, { x: cp.x, y: cp.y, w: SIZE, h: SIZE });
+    if (onBoard) resumeChase(cp.chaseX, { x: cp.x, y: cp.y, w: SIZE, h: SIZE }, cp.courseStart);
     if (level.boss && bossHp !== null && !chaseDeath) {
       level.boss.hp = bossHp;
       if (bossHp <= 0) {                     // already beaten: it stays beaten
@@ -3698,7 +3701,8 @@
   var BOARD_X      = 2100;       // where the board starts: the end of his floor
   var BOARD_LEN    = 7600;
   var BOARD_SAFE   = 400;        // no spikes on the first and last of the board
-  var SCROLL_SPEED = 200;        // you run 275, less the wind: 235
+  var SCROLL_SPEED = 207;        // you run 275, less the wind: 235
+  var FLOOR_TOOTH  = 34;         // the board's spikes fall one tooth at a time
   var CHASE_GROW   = 2.0;        // the board, the belt and the fan growing
   var WIND_BASE    = 40;         // how hard the fan blows you back, anywhere
   var WIND_NEAR    = 420;        // and up to this much more close to it
@@ -3706,7 +3710,8 @@
   var BELT_Y       = 46;         // the top of the conveyor, along the top of the screen
   var BELT_EDGE    = 600;        // its left end, where things fall off (screen x)
   var BELT_REL     = 220;        // how fast its top runs toward that edge
-  var BELT_RIDE_T  = (W + 40 - BELT_EDGE) / BELT_REL;   // seconds a thing is seen riding
+  var BELT_START   = W - 70;     // its right end: things come out of the hopper there
+  var BELT_RIDE_T  = (BELT_START - BELT_EDGE) / BELT_REL;   // seconds a thing is seen riding
   var PLAT_Y       = GROUND - 60;                       // where the platforms hang
 
   function startFinalScroll(b) {
@@ -3729,7 +3734,8 @@
     level.solids.push(board);
     level.chase = { board: board, x: cam.x, items: [], floats: [], growW: 0,
                     endX: BOARD_X + BOARD_LEN - 140, on: false, done: false };
-    buildChase(level.chase);
+    /* the course itself is laid out when the chase starts, so the first
+       of it comes out of the hopper rather than appearing on the belt */
   }
 
   /* The course, a section at a time: the gap before a platform, the
@@ -3757,20 +3763,27 @@
     { gap: 160, w: 220, on: [['box', 90], ['spike', 170]] }
   ];
 
-  function buildChase(c) {
+  function buildChase(c, start) {
+    c.courseStart = start;
     var items = c.items;
     function add(kind, x, w, h, stopY) {
       items.push({ kind: kind, at: x, w: w, h: h, stopY: stopY,
                    phase: 'wait', x: 0, y: 0, vy: 0 });
     }
+    /* the board's spikes, one tooth at a time: each rides the belt and
+       goes off the edge on its own, so they rain down in a row */
+    function addFloor(x, w) {
+      var n = Math.max(1, Math.round(w / FLOOR_TOOTH));
+      for (var t = 0; t < n; t++) add('floor', x + t * w / n, w / n, 22, null);
+    }
     var end = BOARD_X + BOARD_LEN - BOARD_SAFE - 200;
-    var lip = BOARD_X + BOARD_SAFE - 20, lipY = GROUND;   // off the safe start
+    var lip = start, lipY = GROUND;                       // off the board, where it starts
     for (var i = 0; ; i++) {
       var s = CHASE_SECTIONS[i % CHASE_SECTIONS.length];
       var px = lip + s.gap, py = s.y || PLAT_Y;
       if (px + s.w > end) break;
       /* the board's spikes come off the belt as well, ahead of the rest */
-      if (!s.open) add('floor', lip, px + s.w - lip, 22, null);
+      if (!s.open) addFloor(lip, px + s.w - lip);
       if (s.orb === 'dash') add('dash', lip + 140, 0, 0, lipY - 92);
       if (s.orb === 'upMid') add('up', lip + s.gap / 2, 0, 0, lipY - 70);
       add('plat', px, s.w, 20, py);
@@ -3785,7 +3798,7 @@
     }
     /* and plain platforms the rest of the way to the safe end of the board */
     var safe = BOARD_X + BOARD_LEN - BOARD_SAFE;
-    if (safe > lip) add('floor', lip, safe - lip, 22, null);
+    if (safe > lip) addFloor(lip, safe - lip);
     while (safe - lip > 200) {
       add('plat', lip + 140, 160, 20, PLAT_Y);
       lip += 300;
@@ -3796,13 +3809,14 @@
   /* Back onto the board at a checkpoint: the chase already on, the
      screen at `cx`, and everything that had gone off the belt by then
      lying where it fell. */
-  function resumeChase(cx, flag) {
+  function resumeChase(cx, flag, start) {
     var b = level.boss;
     level.intro.done = true;
     b.asleep = false;
     b.hp = 0;
     startFinalScroll(b);
     var c = level.chase;
+    buildChase(c, start);                              // the same course as before
     b.stage = 'chase';
     b.stageT = 0;
     b.fanK = 1;
@@ -3918,7 +3932,7 @@
         top = k === 'floor' ? (it.y + it.h >= GROUND ? GROUND : null)
                             : landingTop(it.x, it.w, wasBottom);
         if (top !== null && it.y + it.h >= top) {
-          burst(it.x + it.w / 2, top, teeth ? '#ff2d55' : '#c08a4e', k === 'floor' ? 30 : 18, 1.0);
+          burst(it.x + it.w / 2, top, teeth ? '#ff2d55' : '#c08a4e', k === 'floor' ? 5 : 18, 1.0);
           if (teeth) level.hazards.push({ x: it.x, y: top - 22, w: it.w, h: 22 });
           else level.solids.push({ x: it.x, y: top - it.h, w: it.w, h: it.h, block: true });
           it.phase = 'done';
@@ -3946,6 +3960,9 @@
         b.stage = 'chase';
         c.x = cam.x;
         c.on = true;
+        /* lay the course out from just past where the hopper is now */
+        buildChase(c, Math.max(BOARD_X + BOARD_SAFE - 20,
+                               c.x + BELT_EDGE + SCROLL_SPEED * BELT_RIDE_T + 20));
       }
       return;
     }
@@ -5013,35 +5030,29 @@
     drawNail(x + w - 5, y + h / 2);
   }
 
-  /* a wooden crate: horizontal slats in a frame, with a brace plank
-     across it corner to corner, and nails where the brace meets the
-     frame */
+  /* A crate, drawn the way the rest of the game is: a glowing block
+     with a dark square sunk into it (like the cubes), and a soft brace
+     across that so it still reads as a crate. */
   function drawCrate(x, y, w, h) {
-    var slats = 3, sh = h / slats;
-    for (var i = 0; i < slats; i++) drawPlankBody(x, y + i * sh, w, sh, Math.floor(x) + i * 5);
-
-    /* the brace */
-    var len = Math.sqrt(w * w + h * h), ang = Math.atan2(h - 12, w - 12);
+    var col = '#ff9f43';
     ctx.save();
-    ctx.translate(x + 6, y + 6);
-    ctx.rotate(ang);
-    drawPlankBody(0, -4, len - 17, 8, Math.floor(y));
+    ctx.fillStyle = col;
+    ctx.shadowColor = col;
+    ctx.shadowBlur = 16;
+    rr(x, y, w, h, 6);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#1f1206';
+    rr(x + 6, y + 6, w - 12, h - 12, 4);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,159,67,0.55)';
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x + 12, y + h - 12);
+    ctx.lineTo(x + w - 12, y + 12);
+    ctx.stroke();
     ctx.restore();
-
-    /* the frame */
-    ctx.strokeStyle = WOOD_DARK;
-    ctx.lineWidth = 6;
-    ctx.strokeRect(x + 3, y + 3, w - 6, h - 6);
-    ctx.strokeStyle = WOOD_EDGE;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
-    ctx.strokeStyle = 'rgba(255,220,170,0.25)';
-    ctx.strokeRect(x + 6.5, y + 6.5, w - 13, h - 13);
-
-    drawNail(x + 6, y + 6);
-    drawNail(x + w - 6, y + 6);
-    drawNail(x + 6, y + h - 6);
-    drawNail(x + w - 6, y + h - 6);
   }
 
   /* Everything else of the chase: the conveyor overhead, his hangers,
@@ -5073,7 +5084,7 @@
        runs toward its left end, and that end is the edge things go off.
        It slides in from the right while the board grows. */
     var slide = b.stage === 'grow' ? (1 - Math.min(1, b.stageT / CHASE_GROW)) * (W - BELT_EDGE + 60) : 0;
-    drawBelt({ x: cam.x + BELT_EDGE + slide, y: BELT_Y, w: W + 40 - BELT_EDGE, h: 18,
+    drawBelt({ x: cam.x + BELT_EDGE + slide, y: BELT_Y, w: BELT_START + 40 - BELT_EDGE, h: 18,
                belt: -BELT_REL });
 
     /* what it is carrying, and what it has let go of */
@@ -5122,6 +5133,23 @@
       ctx.fill();
       ctx.restore();
     }
+
+    /* the hopper at the conveyor's start: everything comes out of it
+       onto the belt, so nothing just appears there */
+    var hx = cam.x + BELT_START + slide;
+    ctx.save();
+    ctx.fillStyle = '#ff9f43';
+    ctx.shadowColor = '#ff9f43';
+    ctx.shadowBlur = 16;
+    rr(hx - 6, BELT_Y - 76, W + 20 - BELT_START, 96, 8);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#1f1206';
+    rr(hx, BELT_Y - 70, W + 8 - BELT_START, 84, 5);
+    ctx.fill();
+    ctx.fillStyle = '#000';                            // the mouth things come out of
+    ctx.fillRect(hx - 6, BELT_Y - 60, 8, 60);
+    ctx.restore();
 
     /* the finish: a gold flag at the end of the board */
     var fx = c.endX + 40;
