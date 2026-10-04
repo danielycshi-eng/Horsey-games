@@ -4550,11 +4550,12 @@
                            phase: row.slide.phase });
       }
     }
-    /* walls up the sides, so the way up is up - stopping short of his
-       floor, so its ends are still open over the pits */
+    /* walls up the sides, so the way up is up - all the way down past
+       his floor, with no gap at the bottom to slip out through (they go
+       when the jetpack does) */
     var top = JET_TOP - 400;
-    jet.solids.push({ x: L - 40, y: top, w: 40, h: GROUND - 140 - top, red: true });
-    jet.solids.push({ x: e.R, y: top, w: 40, h: GROUND - 140 - top, red: true });
+    jet.solids.push({ x: L - 40, y: top, w: 40, h: GROUND + 160 - top, red: true });
+    jet.solids.push({ x: e.R, y: top, w: 40, h: GROUND + 160 - top, red: true });
 
     for (i = 0; i < jet.solids.length; i++) level.solids.push(jet.solids[i]);
     for (i = 0; i < jet.hazards.length; i++) level.hazards.push(jet.hazards[i]);
