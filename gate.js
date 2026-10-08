@@ -25,7 +25,8 @@
     'delivery-master':     'UBERR',
     'protect-the-crystal': 'RODE',
     shapes:                'TRIANGLE',
-    unnamed:               'UNDEFINED'
+    unnamed:               'UNDEFINED',
+    risk:                  'BANG'
   };
 
   var LABELS = {
@@ -39,7 +40,8 @@
     'delivery-master':     'Delivery Master',
     'protect-the-crystal': 'Protect the Crystal',
     shapes:                'Shapes',
-    unnamed:               'A Platformer Game'
+    unnamed:               'A Platformer Game',
+    risk:                  'Risk'
   };
 
   var script = document.currentScript;

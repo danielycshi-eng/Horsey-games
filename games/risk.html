@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Risk - Horsey Games</title>
+  <link rel="stylesheet" href="../style.css">
+  <script src="../gate.js" data-gate="risk"></script>
+  <style>
+    body { background: #05070f; }
+
+    .stage {
+      position: relative;
+      width: min(960px, 96vw);
+      aspect-ratio: 16 / 9;
+      margin: 0 auto;
+    }
+
+    #game {
+      width: 100%;
+      height: 100%;
+      display: block;
+      border-radius: 14px;
+      background: #070a18;
+      box-shadow: 0 0 40px rgba(78, 195, 255, 0.12);
+      cursor: pointer;
+    }
+
+    /* the setup screen, over the canvas */
+    #setup {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1.1rem;
+      border-radius: 14px;
+      background: radial-gradient(ellipse at center, #1a1030 0%, #05070f 75%);
+    }
+    #setup.hidden { display: none; }
+
+    #setup h1 {
+      font-size: clamp(2.2rem, 7vw, 4rem);
+      letter-spacing: 10px;
+      color: #ff5f7e;
+      text-shadow: 0 0 24px rgba(255, 95, 126, 0.7);
+      margin: 0;
+    }
+    #setup p { color: #8ea7d6; margin: 0; }
+
+    .pick { display: flex; gap: 0.6rem; align-items: center; }
+    .pick span { width: 5.5rem; text-align: right; color: #a0c4ff; letter-spacing: 2px; }
+    .pick button, #startBtn {
+      font: inherit;
+      font-weight: 700;
+      color: #a0c4ff;
+      background: #101830;
+      border: 2px solid #1d2b5c;
+      border-radius: 10px;
+      padding: 0.45rem 0.95rem;
+      cursor: pointer;
+    }
+    .pick button.on { color: #05070f; background: #ff5f7e; border-color: #ff5f7e; }
+    #startBtn {
+      margin-top: 0.6rem;
+      padding: 0.7rem 2.6rem;
+      color: #05070f;
+      background: #ff5f7e;
+      border-color: #ff5f7e;
+      letter-spacing: 4px;
+    }
+  </style>
+</head>
+<body>
+  <a href="../games.html" class="back-link">&larr; All Games</a>
+
+  <div class="stage">
+    <canvas id="game" width="960" height="540"></canvas>
+
+    <div id="setup">
+      <h1>RISK</h1>
+      <p>Pass and play. One gun. Last one sitting wins.</p>
+      <div class="pick" id="pickPlayers"><span>PLAYERS</span>
+        <button type="button" data-v="2" class="on">2</button>
+        <button type="button" data-v="3">3</button>
+        <button type="button" data-v="4">4</button>
+      </div>
+      <div class="pick" id="pickLives"><span>LIVES</span>
+        <button type="button" data-v="3" class="on">3</button>
+        <button type="button" data-v="4">4</button>
+        <button type="button" data-v="5">5</button>
+      </div>
+      <button type="button" id="startBtn">START</button>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    var canvas = document.getElementById('game');
+    var ctx = canvas.getContext('2d');
+    var W = 960, H = 540;
+
+    var COLORS = ['#4ec3ff', '#ff5f7e', '#7bffb2', '#ffd166'];
+
+    /* ============================================================
+       THE RULES
+       Kept apart from the drawing, so they can be checked on their own.
+       ============================================================ */
+    var G = { players: [], holder: 0, shells: [], round: 0, live: 0, blank: 0, lives: 3 };
+
+    function rand(n) { return Math.floor(Math.random() * n); }
+
+    function shuffle(a) {
+      for (var i = a.length - 1; i > 0; i--) {
+        var j = rand(i + 1), t = a[i];
+        a[i] = a[j];
+        a[j] = t;
+      }
+      return a;
+    }
+
+    function setupGame(n, lives) {
+      G.players = [];
+      for (var i = 0; i < n; i++) {
+        G.players.push({ name: 'PLAYER ' + (i + 1), color: COLORS[i],
+                         lives: lives, alive: true, knock: 0, fall: 0 });
+      }
+      G.lives = lives;
+      G.round = 0;
+      G.holder = 0;
+      G.shells = [];
+    }
+
+    /* up to four live and up to four blank, at least one of each,
+       shuffled into the gun */
+    function newRound() {
+      G.round++;
+      G.live = 1 + rand(4);
+      G.blank = 1 + rand(4);
+      var s = [], i;
+      for (i = 0; i < G.live; i++) s.push(true);
+      for (i = 0; i < G.blank; i++) s.push(false);
+      G.shells = shuffle(s);
+    }
+
+    function aliveList() {
+      var a = [];
+      for (var i = 0; i < G.players.length; i++) if (G.players[i].alive) a.push(i);
+      return a;
+    }
+
+    function spinPick() {
+      var a = aliveList();
+      return a[rand(a.length)];
+    }
+
+    function winner() {
+      var a = aliveList();
+      return a.length === 1 ? a[0] : -1;
+    }
+
+    /* The holder fires the next shell at `target` (themselves or someone
+       else). Returns what happened and who goes next:
+         a number - that player has the gun
+         'spin'   - it spins to a random player
+         'round'  - the gun is empty: new shells, then a spin
+         'win'    - one player is left */
+    function fire(target) {
+      var shooter = G.holder;
+      var live = G.shells.shift();
+      var res = { shooter: shooter, target: target, live: live, died: false, next: null };
+      if (live) {
+        var t = G.players[target];
+        t.lives--;
+        if (t.lives <= 0) { t.lives = 0; t.alive = false; res.died = true; }
+      }
+      if (winner() !== -1) res.next = 'win';
+      else if (!G.shells.length) res.next = 'round';
+      else if (target === shooter) res.next = live ? 'spin' : shooter;   // a blank at yourself: again
+      else res.next = res.died ? 'spin' : target;                        // they get it
+      return res;
+    }
+
+    /* ============================================================
+       THE SCREENS
+       setup -> announce -> spin -> pass -> aim -> shot -> ... -> win
+       ============================================================ */
+    var ANNOUNCE_T = 3.2;          // the shells shown, then shuffled in
+    var SPIN_T     = 2.6;          // the gun spinning
+    var SPIN_HOLD  = 1.3;          // and who it landed on
+    var SHOT_AIM   = 0.5;          // turning the gun on them
+    var SHOT_T     = 2.0;          // the whole shot
+
+    var S = { phase: 'setup', t: 0, data: {}, hover: -1, hoverSelf: false, shake: 0, flash: 0 };
+    var setupN = 2, setupLives = 3;
+
+    function go(phase, data) {
+      S.phase = phase;
+      S.t = 0;
+      S.data = data || {};
+    }
+
+    function startGame() {
+      setupGame(setupN, setupLives);
+      newRound();
+      go('announce');
+    }
+
+    /* the angle round the table of each seat, seen from above: seat 0 at
+       the bottom, the rest going round */
+    function seatAngle(i) {
+      return Math.PI / 2 + i * Math.PI * 2 / G.players.length;
+    }
+
+    function startSpin() {
+      var target = spinPick();
+      var from = S.data.gunAng !== undefined ? S.data.gunAng : -Math.PI / 2;
+      var to = seatAngle(target);
+      while (to < from) to += Math.PI * 2;
+      to += Math.PI * 2 * (4 + rand(2));           // a few good turns first
+      go('spin', { target: target, from: from, to: to, gunAng: from });
+    }
+
+    function afterShot(res) {
+      if (res.next === 'win') { go('win', { who: winner() }); return; }
+      if (res.next === 'round') { newRound(); go('announce'); return; }
+      if (res.next === 'spin') { startSpin(); return; }
+      if (res.next === G.holder) { go('aim'); return; }      // same hands: on you go
+      G.holder = res.next;
+      go('pass');
+    }
+
+    function update(dt) {
+      S.t += dt;
+      if (S.shake > 0) S.shake = Math.max(0, S.shake - dt * 2.2);
+      if (S.flash > 0) S.flash = Math.max(0, S.flash - dt * 1.6);
+      for (var i = 0; i < G.players.length; i++) {
+        var pl = G.players[i];
+        if (pl.knock > 0) pl.knock = Math.max(0, pl.knock - dt);
+        if (!pl.alive && pl.fall < 1) pl.fall = Math.min(1, pl.fall + dt * 0.9);
+      }
+
+      if (S.phase === 'announce' && S.t >= ANNOUNCE_T) {
+        startSpin();
+      } else if (S.phase === 'spin') {
+        var k = Math.min(1, S.t / SPIN_T);
+        var e = 1 - Math.pow(1 - k, 3);
+        S.data.gunAng = S.data.from + (S.data.to - S.data.from) * e;
+        if (S.t >= SPIN_T + SPIN_HOLD) {
+          G.holder = S.data.target;
+          go('pass');
+        }
+      } else if (S.phase === 'shot') {
+        var r = S.data.res;
+        if (!S.data.fired && S.t >= SHOT_AIM) {
+          S.data.fired = true;
+          if (r.live) {
+            var tp = G.players[r.target];
+            tp.knock = 0.9;
+            if (r.target === r.shooter) { S.shake = 1; S.flash = 1; }
+            else S.flash = 0.35;
+          }
+        }
+        if (S.t >= SHOT_T) afterShot(r);
+      }
+    }
+
+    /* ============================================================
+       WHERE EVERYONE SITS, SEEN FROM THE HOLDER'S CHAIR
+       The others round the table: straight across, or out to the sides.
+       ============================================================ */
+    function viewSpot(i) {
+      var n = G.players.length;
+      var k = (i - G.holder + n) % n;
+      var a = k * Math.PI * 2 / n;                  // 0 is you, PI across from you
+      var d = (1 - Math.cos(a)) / 2;                // 0 near .. 1 far
+      return { x: W / 2 + Math.sin(a) * 340, y: 300 - d * 95, s: 1.25 - 0.45 * d };
+    }
+
+    function targetAt(mx, my) {
+      for (var i = 0; i < G.players.length; i++) {
+        if (i === G.holder || !G.players[i].alive) continue;
+        var v = viewSpot(i);
+        var r = 62 * v.s;
+        if (Math.abs(mx - v.x) < r && my > v.y - 80 * v.s && my < v.y + 50 * v.s) return i;
+      }
+      return -1;
+    }
+
+    var SELF_BTN = { x: W - 270, y: H - 74, w: 250, h: 54 };
+    var WIN_BTNS = [ { x: W / 2 - 230, y: 330, w: 210, h: 56, label: 'PLAY AGAIN' },
+                     { x: W / 2 + 20,  y: 330, w: 210, h: 56, label: 'NEW GAME' } ];
+
+    function inRect(mx, my, r) {
+      return mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h;
+    }
+
+    function shoot(target) {
+      var res = fire(target);
+      go('shot', { res: res, fired: false });
+    }
+
+    function onClick(mx, my) {
+      if (S.phase === 'pass') { go('aim'); return; }
+      if (S.phase === 'aim') {
+        if (inRect(mx, my, SELF_BTN)) { shoot(G.holder); return; }
+        var t = targetAt(mx, my);
+        if (t !== -1) shoot(t);
+        return;
+      }
+      if (S.phase === 'win') {
+        if (inRect(mx, my, WIN_BTNS[0])) { startGame(); return; }
+        if (inRect(mx, my, WIN_BTNS[1])) { go('setup'); setupEl.classList.remove('hidden'); }
+      }
+    }
+
+    function toCanvas(e) {
+      var r = canvas.getBoundingClientRect();
+      return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height };
+    }
+
+    canvas.addEventListener('click', function (e) { var c = toCanvas(e); onClick(c.x, c.y); });
+    canvas.addEventListener('mousemove', function (e) {
+      var c = toCanvas(e);
+      S.hover = S.phase === 'aim' ? targetAt(c.x, c.y) : -1;
+      S.hoverSelf = S.phase === 'aim' && inRect(c.x, c.y, SELF_BTN);
+    });
+
+    /* ============================================================
+       DRAWING
+       ============================================================ */
+    function rr(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    function text(str, x, y, size, color, glow) {
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.font = 'bold ' + size + 'px sans-serif';
+      ctx.fillStyle = color;
+      if (glow) { ctx.shadowColor = color; ctx.shadowBlur = glow; }
+      ctx.fillText(str, x, y);
+      ctx.restore();
+    }
+
+    function heart(x, y, s, full) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(s, s);
+      ctx.fillStyle = full ? '#ff5f7e' : 'rgba(255,95,126,0.18)';
+      if (full) { ctx.shadowColor = '#ff5f7e'; ctx.shadowBlur = 8; }
+      ctx.beginPath();
+      ctx.moveTo(0, 4);
+      ctx.bezierCurveTo(-8, -3, -4, -10, 0, -5);
+      ctx.bezierCurveTo(4, -10, 8, -3, 0, 4);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function hearts(pl, x, y, s) {
+      var gap = 16 * s;
+      var x0 = x - (G.lives - 1) * gap / 2;
+      for (var i = 0; i < G.lives; i++) heart(x0 + i * gap, y, s, i < pl.lives);
+    }
+
+    /* a player in their floating chair, seen from across the table */
+    function drawSeated(i, v, highlight) {
+      var pl = G.players[i];
+      var s = v.s;
+      var bob = Math.sin(performanceNow() * 2 + i) * 4 * s;
+      var cx = v.x, cy = v.y + bob;
+
+      /* the glow the chair hovers on, and the chair */
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = '#c7a0ff';
+      ctx.beginPath();
+      ctx.ellipse(cx, v.y + 70 * s, 50 * s, 10 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = '#1d2245';
+      rr(cx - 46 * s, cy - 70 * s, 92 * s, 80 * s, 10 * s);     // its back
+      ctx.fill();
+      ctx.fillStyle = '#2b3166';
+      rr(cx - 52 * s, cy + 8 * s, 104 * s, 18 * s, 6 * s);      // its seat
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(199,160,255,0.5)';
+      ctx.lineWidth = 2;
+      rr(cx - 52 * s, cy + 8 * s, 104 * s, 18 * s, 6 * s);
+      ctx.stroke();
+
+      /* them: knocked back by a live one, and falling off if it was
+         their last */
+      if (pl.fall < 1) {
+        var kb = pl.knock > 0 ? Math.sin((pl.knock / 0.9) * Math.PI) : 0;
+        ctx.save();
+        ctx.translate(cx, cy - 22 * s);
+        ctx.globalAlpha = 1 - pl.fall;
+        ctx.translate(pl.fall * 60 * s, pl.fall * pl.fall * 260 * s);
+        ctx.rotate(-kb * 0.45 + pl.fall * 1.6);
+        ctx.translate(0, -kb * 12 * s);
+        var sz = 58 * s;
+        ctx.fillStyle = pl.knock > 0.6 ? '#ffffff' : pl.color;
+        ctx.shadowColor = pl.color;
+        ctx.shadowBlur = highlight ? 34 : 16;
+        rr(-sz / 2, -sz / 2, sz, sz, 9 * s);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#05070f';
+        rr(-sz / 2 + 8 * s, -sz / 2 + 8 * s, sz - 16 * s, sz - 16 * s, 6 * s);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';                          // looking at you
+        ctx.fillRect(-11 * s, -7 * s, 7 * s, 10 * s);
+        ctx.fillRect(4 * s, -7 * s, 7 * s, 10 * s);
+        ctx.restore();
+      }
+
+      if (highlight) {
+        ctx.save();
+        ctx.strokeStyle = '#ff5f7e';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([8, 6]);
+        ctx.beginPath();
+        ctx.arc(cx, cy - 22 * s, 52 * s, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+      text(pl.name, cx, v.y - 92 * s, Math.round(15 * s), pl.alive ? pl.color : '#56658c');
+      if (pl.alive) hearts(pl, cx, v.y - 112 * s, s);
+    }
+
+    /* the gun in your hand, pointing at `ang` (0 = straight ahead), or
+       turned round on yourself */
+    function drawGun(ang, self, fired) {
+      var gx = W / 2, gy = H - 30;
+      ctx.save();
+      ctx.translate(gx, gy);
+      if (self) {
+        ctx.translate(0, -60);
+        ctx.scale(1.6, 1.6);                         // coming at you
+        ctx.rotate(Math.PI);
+      } else {
+        ctx.rotate(ang);
+      }
+      /* grip, cylinder, barrel - pointing up the screen */
+      ctx.fillStyle = '#3a3f4a';
+      rr(-16, -20, 32, 46, 8);
+      ctx.fill();
+      ctx.fillStyle = '#8a93ad';
+      rr(-20, -64, 40, 46, 10);
+      ctx.fill();
+      ctx.fillStyle = '#5c6274';
+      for (var c = -1; c <= 1; c++) {
+        ctx.beginPath();
+        ctx.arc(c * 11, -41, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#c9d2e6';
+      rr(-8, -150, 16, 92, 5);
+      ctx.fill();
+      if (fired) {                                   // the muzzle flash
+        ctx.fillStyle = '#ffd166';
+        ctx.shadowColor = '#ff8c42';
+        ctx.shadowBlur = 40;
+        ctx.beginPath();
+        for (var k = 0; k < 10; k++) {
+          var a = k / 10 * Math.PI * 2, rad = k % 2 ? 14 : 38;
+          ctx.lineTo(Math.cos(a) * rad, -160 + Math.sin(a) * rad);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    function drawTable() {
+      var g = ctx.createRadialGradient(W / 2, 330, 40, W / 2, 330, 430);
+      g.addColorStop(0, '#2a1638');
+      g.addColorStop(1, '#120a20');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.ellipse(W / 2, 330, 420, 120, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,95,126,0.45)';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+
+    function drawRoom() {
+      var g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, '#0b0820');
+      g.addColorStop(1, '#05070f');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = 'rgba(255,209,102,0.08)';         // a lamp over the table
+      ctx.beginPath();
+      ctx.moveTo(W / 2 - 40, 0);
+      ctx.lineTo(W / 2 + 40, 0);
+      ctx.lineTo(W / 2 + 330, 330);
+      ctx.lineTo(W / 2 - 330, 330);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    /* first person, from the chair of whoever has the gun */
+    function drawView() {
+      drawRoom();
+      drawTable();
+      var order = [], i;
+      for (i = 0; i < G.players.length; i++) if (i !== G.holder) order.push(i);
+      order.sort(function (a, b) { return viewSpot(a).s - viewSpot(b).s; });   // far ones first
+      for (i = 0; i < order.length; i++) {
+        drawSeated(order[i], viewSpot(order[i]),
+                   S.phase === 'aim' && S.hover === order[i]);
+      }
+
+      var me = G.players[G.holder];
+      /* the gun: on whoever you point at, or turned on yourself */
+      var ang = 0, self = false, fired = false;
+      if (S.phase === 'aim' && S.hover !== -1) ang = aimAt(S.hover);
+      if (S.phase === 'aim' && S.hoverSelf) self = true;
+      if (S.phase === 'shot') {
+        var r = S.data.res;
+        self = r.target === r.shooter;
+        var k = Math.min(1, S.t / SHOT_AIM);
+        ang = self ? 0 : aimAt(r.target) * k;
+        fired = r.live && S.t >= SHOT_AIM && S.t < SHOT_AIM + 0.12;
+      }
+      drawGun(ang, self, fired);
+
+      /* you: your colour, your name, your lives, and the other choice */
+      ctx.fillStyle = me.color;
+      ctx.fillRect(0, H - 6, W, 6);
+      text('YOU: ' + me.name, 120, H - 46, 18, me.color, 10);
+      hearts(me, 120, H - 22, 1.3);
+      if (S.phase === 'aim') {
+        ctx.fillStyle = S.hoverSelf ? '#ff5f7e' : '#2a0f1c';
+        rr(SELF_BTN.x, SELF_BTN.y, SELF_BTN.w, SELF_BTN.h, 12);
+        ctx.fill();
+        ctx.strokeStyle = '#ff5f7e';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        text('SHOOT YOURSELF', SELF_BTN.x + SELF_BTN.w / 2, SELF_BTN.y + 35, 20,
+             S.hoverSelf ? '#05070f' : '#ff5f7e');
+        text('Click a player to shoot them - or yourself', W / 2, 40, 16, '#8ea7d6');
+        text('ROUND ' + G.round + '  -  ' + G.shells.length + ' SHELLS LEFT', W / 2, 64, 13, '#56658c');
+      }
+
+      /* what it was */
+      if (S.phase === 'shot' && S.t >= SHOT_AIM) {
+        var res = S.data.res;
+        if (res.live) {
+          text('LIVE!', W / 2, 130, 64, '#ff2d55', 30);
+          if (res.died) text(G.players[res.target].name + ' IS OUT', W / 2, 172, 22, '#ff8fa3');
+        } else {
+          text('*click*', W / 2, 130, 44, '#c9d2e6', 14);
+          text('BLANK', W / 2, 168, 24, '#8a93ad');
+        }
+      }
+    }
+
+    function aimAt(i) {
+      var v = viewSpot(i);
+      return Math.atan2(v.x - W / 2, (H - 30) - (v.y - 22 * v.s));
+    }
+
+    /* the table from above, with the gun spinning in the middle */
+    function drawSpin() {
+      drawRoom();
+      var cx = W / 2, cy = 280, R = 150;
+      ctx.fillStyle = '#1e1030';
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,95,126,0.5)';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      for (var i = 0; i < G.players.length; i++) {
+        var a = seatAngle(i), pl = G.players[i];
+        var sx = cx + Math.cos(a) * (R + 62), sy = cy + Math.sin(a) * (R + 62);
+        ctx.fillStyle = '#2b3166';
+        rr(sx - 34, sy - 34, 68, 68, 10);
+        ctx.fill();
+        if (pl.alive) {
+          ctx.fillStyle = pl.color;
+          ctx.shadowColor = pl.color;
+          ctx.shadowBlur = 14;
+          rr(sx - 22, sy - 22, 44, 44, 7);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = '#05070f';
+          rr(sx - 15, sy - 15, 30, 30, 5);
+          ctx.fill();
+        }
+        text(pl.name, sx, sy + (Math.sin(a) > 0.5 ? 56 : -44), 13, pl.alive ? pl.color : '#56658c');
+      }
+      /* the gun, lying on the table, spinning */
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(S.data.gunAng);
+      ctx.fillStyle = '#8a93ad';
+      rr(-22, -20, 44, 40, 10);
+      ctx.fill();
+      ctx.fillStyle = '#c9d2e6';
+      rr(18, -7, 110, 14, 5);
+      ctx.fill();
+      ctx.fillStyle = '#3a3f4a';
+      rr(-60, -12, 44, 24, 8);
+      ctx.fill();
+      ctx.restore();
+      if (S.t >= SPIN_T) {
+        var w = G.players[S.data.target];
+        text(w.name + ' HAS THE GUN', W / 2, 500, 30, w.color, 18);
+      } else {
+        text('WHO GETS THE GUN?', W / 2, 500, 24, '#8ea7d6');
+      }
+    }
+
+    /* the shells for this round, then into the gun */
+    function drawAnnounce() {
+      drawRoom();
+      text('ROUND ' + G.round, W / 2, 110, 28, '#8ea7d6');
+      text(G.live + ' LIVE  -  ' + G.blank + ' BLANK', W / 2, 180, 46, '#ffffff', 16);
+      var n = G.live + G.blank, gap = 70, x0 = W / 2 - (n - 1) * gap / 2;
+      var into = Math.max(0, Math.min(1, (S.t - 2.0) / 1.0));   // flying into the gun
+      for (var i = 0; i < n; i++) {
+        var live = i < G.live;                 // shown in order; the gun gets them shuffled
+        var mix = S.t > 1.3 && S.t < 2.0 ? Math.sin(S.t * 30 + i * 2) * 26 : 0;
+        var sx = x0 + i * gap + mix, sy = 290;
+        sx += (W / 2 - sx) * into;
+        sy += (430 - sy) * into;
+        ctx.save();
+        ctx.globalAlpha = 1 - into * 0.9;
+        ctx.translate(sx, sy);
+        ctx.fillStyle = live ? '#ff2d55' : '#8a93ad';
+        if (live) { ctx.shadowColor = '#ff2d55'; ctx.shadowBlur = 16; }
+        rr(-16, -38, 32, 64, 8);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#ffd166';
+        rr(-16, 18, 32, 14, 4);                // the brass end
+        ctx.fill();
+        ctx.restore();
+      }
+      if (S.t > 1.3) text('SHUFFLING...', W / 2, 400, 20, '#56658c');
+    }
+
+    function drawPass() {
+      ctx.fillStyle = '#05070f';
+      ctx.fillRect(0, 0, W, H);
+      var pl = G.players[G.holder];
+      text('PASS TO', W / 2, 210, 24, '#8ea7d6');
+      text(pl.name, W / 2, 280, 64, pl.color, 26);
+      text('click when ready', W / 2, 340, 16, '#56658c');
+    }
+
+    function drawWin() {
+      drawRoom();
+      var pl = G.players[S.data.who];
+      text(pl.name + ' WINS', W / 2, 220, 64, pl.color, 28);
+      text('the last one sitting', W / 2, 262, 18, '#8ea7d6');
+      for (var i = 0; i < WIN_BTNS.length; i++) {
+        var b = WIN_BTNS[i];
+        ctx.fillStyle = i === 0 ? '#ff5f7e' : '#101830';
+        rr(b.x, b.y, b.w, b.h, 12);
+        ctx.fill();
+        ctx.strokeStyle = '#ff5f7e';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        text(b.label, b.x + b.w / 2, b.y + 36, 20, i === 0 ? '#05070f' : '#ff5f7e');
+      }
+    }
+
+    function draw() {
+      ctx.save();
+      if (S.shake > 0) ctx.translate((Math.random() - 0.5) * 18 * S.shake,
+                                     (Math.random() - 0.5) * 18 * S.shake);
+      if (S.phase === 'announce') drawAnnounce();
+      else if (S.phase === 'spin') drawSpin();
+      else if (S.phase === 'pass') drawPass();
+      else if (S.phase === 'aim' || S.phase === 'shot') drawView();
+      else if (S.phase === 'win') drawWin();
+      else drawRoom();
+      ctx.restore();
+      if (S.flash > 0) {                               // a live one, red across everything
+        ctx.fillStyle = 'rgba(255,45,85,' + (S.flash * 0.45) + ')';
+        ctx.fillRect(0, 0, W, H);
+      }
+    }
+
+    /* ============================================================
+       SETUP AND THE LOOP
+       ============================================================ */
+    var setupEl = document.getElementById('setup');
+
+    function wirePick(id, set) {
+      var box = document.getElementById(id);
+      if (!box.querySelectorAll) return;
+      var btns = box.querySelectorAll('button');
+      for (var i = 0; i < btns.length; i++) {
+        btns[i].addEventListener('click', function () {
+          for (var j = 0; j < btns.length; j++) btns[j].classList.remove('on');
+          this.classList.add('on');
+          set(+this.getAttribute('data-v'));
+        });
+      }
+    }
+    wirePick('pickPlayers', function (v) { setupN = v; });
+    wirePick('pickLives', function (v) { setupLives = v; });
+    document.getElementById('startBtn').addEventListener('click', function () {
+      setupEl.classList.add('hidden');
+      startGame();
+    });
+
+    var clock = 0;
+    function performanceNow() { return clock; }
+
+    var last = 0;
+    function frame(now) {
+      var dt = last ? Math.min(0.05, (now - last) / 1000) : 0;
+      last = now;
+      clock += dt;
+      if (S.phase !== 'setup') update(dt);
+      draw();
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  })();
+  </script>
+</body>
+</html>
