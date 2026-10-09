@@ -143,8 +143,9 @@
       return a;
     }
 
-    /* `shown` is the lives the hearts show: it only catches up with
-       `lives` once a hit's animation has played out */
+    /* `shown` is the lives the hearts show: the heart goes the moment
+       a live one hits */
+
     function setupGame(n, lives, names) {
       G.players = [];
       for (var i = 0; i < n; i++) {
@@ -292,14 +293,14 @@
           S.data.fired = true;
           if (r.live) {
             tp.knockT = 0;
+            tp.shown = tp.lives;           // the heart goes as it hits
             if (r.target === r.shooter) { S.shake = 1; S.flash = 1; }
             else S.flash = 0.35;
           }
         }
         var hitEnd = SHOT_AIM + (r.live ? KNOCK_BACK + KNOCK_RISE : BLANK_HOLD);
-        if (!S.data.applied && S.t >= hitEnd) {
+        if (!S.data.applied && S.t >= hitEnd) {      // knocked back and up again: off the chair
           S.data.applied = true;
-          tp.shown = tp.lives;
           if (r.died) tp.fallT = 0;
         }
         if (S.t >= hitEnd + (r.died ? FALL_T : 0)) afterShot(r);
@@ -315,7 +316,8 @@
       var k = (i - G.holder + n) % n;
       var a = k * Math.PI * 2 / n;                  // 0 is you, PI across from you
       var d = (1 - Math.cos(a)) / 2;                // 0 near .. 1 far
-      return { x: W / 2 + Math.sin(a) * 340, y: 300 - d * 95, s: 1.25 - 0.45 * d };
+      /* round the far side and the ends of the table, sat at its edge */
+      return { x: W / 2 + Math.sin(a) * 330, y: 345 - d * d * 110, s: 1.2 - 0.4 * d };
     }
 
     function targetAt(mx, my) {
@@ -419,135 +421,116 @@
       return 1 - k * k * (3 - 2 * k);
     }
 
-    function shade(hex, f) {               // a colour, darker (f < 1) or lighter
-      var n = parseInt(hex.slice(1), 16);
-      var r = Math.min(255, Math.round((n >> 16 & 255) * f));
-      var g = Math.min(255, Math.round((n >> 8 & 255) * f));
-      var b = Math.min(255, Math.round((n & 255) * f));
-      return 'rgb(' + r + ',' + g + ',' + b + ')';
-    }
-
-    /* A block, the way Minecraft draws one: a flat front, the top seen
-       from a little above, and one side seen from the side you're on
-       (`side` -1..1: which way, and how much). */
+    /* A block, drawn in outline the way the rest of the site draws
+       things: dark inside, edged in the player's colour - a front, the
+       top seen from a little above, and the side you're nearer to
+       (`side` -1..1: which side, and how much of it). */
     function block(x, y, w, h, d, color, side) {
       var ox = d * side * 0.5, oy = d * 0.42;
-      ctx.fillStyle = shade(color, 1.18);                        // top
-      ctx.beginPath();
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = color;
+      ctx.fillStyle = '#0b0f24';
+      ctx.beginPath();                                            // top
       ctx.moveTo(x, y);
       ctx.lineTo(x + w, y);
       ctx.lineTo(x + w + ox, y - oy);
       ctx.lineTo(x + ox, y - oy);
       ctx.closePath();
       ctx.fill();
+      ctx.stroke();
       if (Math.abs(side) > 0.05) {                                // the side
         var sx = side > 0 ? x + w : x;
-        ctx.fillStyle = shade(color, 0.7);
         ctx.beginPath();
         ctx.moveTo(sx, y);
         ctx.lineTo(sx + ox, y - oy);
         ctx.lineTo(sx + ox, y + h - oy);
         ctx.lineTo(sx, y + h);
         ctx.closePath();
+        ctx.fillStyle = '#080b1a';
         ctx.fill();
+        ctx.stroke();
       }
-      ctx.fillStyle = color;                                      // front
+      ctx.fillStyle = '#0b0f24';                                  // front
       ctx.fillRect(x, y, w, h);
+      ctx.strokeRect(x, y, w, h);
     }
 
-    var SKIN = '#d9a77a', HAIR = '#4a2f1d', PANTS = '#2b3a78', SHOES = '#3a3f4a';
-
-    /* A blocky person sitting in their floating chair, facing you.
-       A hit throws their top half back and they sit slowly back up; the
-       last one takes them over backwards, off the chair and gone. */
+    /* A blocky person in their chair at the table, facing you: blocks
+       outlined in their colour, and two white eyes. A hit blasts them
+       straight back from the table and they slowly come back to it; the
+       last one knocks them off the chair onto the floor, where they
+       stay. */
     function drawSeated(i, v, highlight) {
       var pl = G.players[i];
       var s = v.s;
       var side = -(v.x - W / 2) / 340;            // which of their sides you can see
-      var bob = Math.sin(performanceNow() * 2 + i) * 4 * s;
-      var cx = v.x, seat = v.y + bob;             // the top of the seat
+      var bob = Math.sin(performanceNow() * 2 + i) * 3 * s;
       var lean = leanOf(pl);
       var fall = pl.fallT < 0 ? 0 : Math.min(1, pl.fallT / FALL_T);
       if (fall > 0) lean = 1;
-      var gone = !pl.alive && pl.fallT >= FALL_T;
 
-      /* the glow it hovers on */
+      /* "back" is away from you: from your seat out through theirs */
+      var dx = v.x - W / 2, dy = v.y - H;
+      var dl = Math.sqrt(dx * dx + dy * dy);
+      var bx = dx / dl * 70 * s * lean, by = dy / dl * 70 * s * lean;
+      var away = 1 - 0.18 * lean;                 // further off, a little smaller
+      var cx = v.x + bx, seat = v.y + bob + by;
+      var col = pl.color;
+
       ctx.save();
-      ctx.globalAlpha = 0.35;
+      /* the chair goes with them; the glow it floats on stays put */
+      ctx.save();
+      ctx.globalAlpha = 0.3;
       ctx.fillStyle = '#c7a0ff';
       ctx.beginPath();
-      ctx.ellipse(cx, v.y + 78 * s, 54 * s, 11 * s, 0, 0, Math.PI * 2);
+      ctx.ellipse(v.x, v.y + 70 * s, 46 * s, 9 * s, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
 
-      /* falling over backwards they go behind the chair's back */
-      function person() {
-        if (gone) return;
-        ctx.save();
-        ctx.globalAlpha = 1 - Math.max(0, fall - 0.6) / 0.4;
-        ctx.translate(cx, seat);
-        if (fall > 0) {                           // up and over, then down behind it
-          ctx.translate(0, -Math.sin(fall * Math.PI) * 40 * s + fall * fall * 90 * s);
-        }
-        /* legs: thighs on the seat, shins hanging off the front */
-        block(-20 * s, -6 * s, 40 * s, 12 * s, 22 * s, PANTS, side);
-        block(-19 * s, 6 * s, 16 * s, 34 * s, 14 * s, PANTS, side);
-        block(3 * s, 6 * s, 16 * s, 34 * s, 14 * s, PANTS, side);
-        block(-19 * s, 36 * s, 16 * s, 8 * s, 16 * s, SHOES, side);
-        block(3 * s, 36 * s, 16 * s, 8 * s, 16 * s, SHOES, side);
+      ctx.translate(cx, seat);
+      ctx.scale(away, away);
+      ctx.strokeStyle = 'rgba(199,160,255,0.55)';                 // the chair
+      ctx.lineWidth = 2;
+      ctx.fillStyle = '#141838';
+      rr(-44 * s, -118 * s, 88 * s, 112 * s, 9 * s);
+      ctx.fill();
+      ctx.stroke();
+      rr(-48 * s, -4 * s, 96 * s, 14 * s, 6 * s);
+      ctx.fill();
+      ctx.stroke();
 
-        /* the top half, thrown back from the hips by a hit: seen from the
-           front, leaning back makes it shorter and higher */
-        ctx.translate(0, -6 * s);
-        ctx.scale(1, 1 - 0.42 * lean);
-        ctx.translate(0, -lean * 14 * s);
-        var shirt = pl.color;
-        block(-20 * s, -50 * s, 40 * s, 50 * s, 22 * s, shirt, side);           // body
-        block(-31 * s, -48 * s, 11 * s, 38 * s, 12 * s, shade(shirt, 0.85), side);
-        block(20 * s, -48 * s, 11 * s, 38 * s, 12 * s, shade(shirt, 0.85), side);
-        block(-31 * s, -12 * s, 11 * s, 9 * s, 12 * s, SKIN, side);            // hands
-        block(20 * s, -12 * s, 11 * s, 9 * s, 12 * s, SKIN, side);
-        /* the head: a cube, hair on top, a face looking at you */
-        var hw = 36 * s;
-        block(-hw / 2, -50 * s - hw - 2 * s, hw, hw, hw, SKIN, side);
-        ctx.fillStyle = HAIR;
-        ctx.fillRect(-hw / 2, -50 * s - hw - 2 * s, hw, 9 * s);
-        ctx.fillStyle = '#ffffff';
-        var ey = -50 * s - hw + 14 * s;
-        ctx.fillRect(-12 * s, ey, 8 * s, 6 * s);
-        ctx.fillRect(4 * s, ey, 8 * s, 6 * s);
-        ctx.fillStyle = '#2a1a5e';
-        ctx.fillRect(-8 * s, ey, 4 * s, 6 * s);
-        ctx.fillRect(8 * s, ey, 4 * s, 6 * s);
-        ctx.fillStyle = lean > 0.2 ? '#7a2a2a' : '#8a5a3a';
-        ctx.fillRect(-6 * s, ey + 13 * s, 12 * s, (lean > 0.2 ? 5 : 3) * s);   // the mouth
-        if (pl.knockT >= 0 && pl.knockT < 0.25) {                               // the hit
-          ctx.fillStyle = 'rgba(255,255,255,0.7)';
-          ctx.fillRect(-20 * s, -50 * s, 40 * s, 50 * s);
-        }
-        ctx.restore();
+      /* off the chair: tipped over to their outside and down onto the
+         floor beside it, and there they lie */
+      var out = side > 0 ? -1 : 1;
+      if (Math.abs(side) < 0.1) out = (i % 2) ? 1 : -1;
+      if (fall > 0) {
+        var e = fall * fall * (3 - 2 * fall);
+        ctx.translate(out * e * 70 * s, -Math.sin(fall * Math.PI) * 30 * s + e * 70 * s);
+        ctx.rotate(out * e * Math.PI / 2);
       }
 
-      function chairBack() {
-        ctx.fillStyle = '#1d2245';
-        rr(cx - 46 * s, seat - 116 * s, 92 * s, 112 * s, 10 * s);
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(199,160,255,0.35)';
-        ctx.lineWidth = 2;
-        ctx.stroke();
+      /* legs on the seat, body, arms, head */
+      block(-20 * s, -6 * s, 40 * s, 12 * s, 20 * s, col, side);
+      block(-19 * s, 6 * s, 16 * s, 34 * s, 12 * s, col, side);
+      block(3 * s, 6 * s, 16 * s, 34 * s, 12 * s, col, side);
+      block(-20 * s, -56 * s, 40 * s, 50 * s, 20 * s, col, side);
+      block(-31 * s, -54 * s, 11 * s, 40 * s, 11 * s, col, side);
+      block(20 * s, -54 * s, 11 * s, 40 * s, 11 * s, col, side);
+      var hw = 36 * s, hy = -56 * s - hw - 3 * s;
+      block(-hw / 2, hy, hw, hw, hw, col, side);
+      ctx.fillStyle = '#ffffff';                                   // the eyes
+      ctx.shadowColor = '#ffffff';
+      ctx.shadowBlur = 6;
+      var ey = hy + 13 * s, shut = !pl.alive && fall >= 1;
+      ctx.fillRect(-12 * s, ey + (shut ? 4 * s : 0), 8 * s, shut ? 2 * s : 9 * s);
+      ctx.fillRect(4 * s, ey + (shut ? 4 * s : 0), 8 * s, shut ? 2 * s : 9 * s);
+      ctx.shadowBlur = 0;
+      if (pl.knockT >= 0 && pl.knockT < 0.2) {                      // the hit
+        ctx.fillStyle = 'rgba(255,255,255,0.55)';
+        ctx.fillRect(-20 * s, -56 * s, 40 * s, 50 * s);
       }
-      function chairSeat() {
-        ctx.fillStyle = '#2b3166';
-        rr(cx - 50 * s, seat - 4 * s, 100 * s, 16 * s, 6 * s);
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(199,160,255,0.5)';
-        ctx.lineWidth = 2;
-        rr(cx - 50 * s, seat - 4 * s, 100 * s, 16 * s, 6 * s);
-        ctx.stroke();
-      }
-
-      if (fall > 0.35) { person(); chairBack(); chairSeat(); }
-      else { chairBack(); chairSeat(); person(); }
+      ctx.restore();
 
       if (highlight) {
         ctx.save();
@@ -559,8 +542,12 @@
         ctx.stroke();
         ctx.restore();
       }
-      text(pl.name, cx, seat - 136 * s, Math.round(15 * s), gone ? '#56658c' : pl.color);
-      if (!gone) hearts(pl, cx, seat - 156 * s, s);
+      if (pl.alive || fall < 1) {
+        text(pl.name, v.x, v.y - 136 * s, Math.round(15 * s), col);
+        hearts(pl, v.x, v.y - 156 * s, s);
+      } else {
+        text(pl.name, v.x, v.y - 136 * s, Math.round(15 * s), '#56658c');
+      }
     }
 
     /* the gun in your hand, pointing at `ang` (0 = straight ahead), or
@@ -608,12 +595,14 @@
     }
 
     function drawTable() {
-      var g = ctx.createRadialGradient(W / 2, 330, 40, W / 2, 330, 430);
+      /* an ordinary table, and you sat at it: its near edge is right
+         in front of you, at the bottom of the view */
+      var g = ctx.createRadialGradient(W / 2, 400, 40, W / 2, 400, 420);
       g.addColorStop(0, '#2a1638');
       g.addColorStop(1, '#120a20');
       ctx.fillStyle = g;
       ctx.beginPath();
-      ctx.ellipse(W / 2, 330, 420, 120, 0, 0, Math.PI * 2);
+      ctx.ellipse(W / 2, 400, 400, 165, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = 'rgba(255,95,126,0.45)';
       ctx.lineWidth = 3;
@@ -645,24 +634,26 @@
       var myLean = leanOf(me);
       var myFall = me.fallT < 0 ? 0 : Math.min(1, me.fallT / FALL_T);
       ctx.save();
-      ctx.translate(0, myLean * 150 + myFall * myFall * 420);
+      /* blasted back from the table: everything goes further off, then
+         slowly comes back; off the chair, over backwards */
+      var back = 1 - 0.3 * myLean;
+      ctx.translate(W / 2, H / 2);
+      ctx.scale(back, back);
+      ctx.translate(-W / 2, -H / 2);
+      ctx.translate(0, myLean * 40 + myFall * myFall * 420);
       ctx.translate(W / 2, H);
-      ctx.rotate(-myLean * 0.06 - myFall * 0.5);
+      ctx.rotate(-myFall * 0.5);
       ctx.translate(-W / 2, -H);
 
       drawRoom();
       var order = [], i;
       for (i = 0; i < G.players.length; i++) if (i !== G.holder) order.push(i);
       order.sort(function (a, b) { return viewSpot(a).s - viewSpot(b).s; });   // far ones first
-      /* whoever's straight across sits behind the table; the ones out at
-         the sides sit in front of its ends */
-      var tableDrawn = false;
+      /* everyone sits at the table: it goes over their laps */
       for (i = 0; i < order.length; i++) {
-        var v = viewSpot(order[i]);
-        if (!tableDrawn && v.s >= 0.85) { drawTable(); tableDrawn = true; }
-        drawSeated(order[i], v, S.phase === 'aim' && S.hover === order[i]);
+        drawSeated(order[i], viewSpot(order[i]), S.phase === 'aim' && S.hover === order[i]);
       }
-      if (!tableDrawn) drawTable();
+      drawTable();
 
       /* the gun: on whoever you point at, or turned on yourself */
       var ang = 0, self = false, fired = false;
@@ -685,19 +676,14 @@
       /* this round's shells, as they were announced, top left */
       ctx.save();
       ctx.fillStyle = 'rgba(5,7,15,0.7)';
-      rr(14, 14, 214, 62, 10);
+      rr(14, 14, 200, 40, 10);
       ctx.fill();
-      ctx.restore();
-      ctx.save();
       ctx.textAlign = 'left';
-      ctx.font = 'bold 13px sans-serif';
-      ctx.fillStyle = '#8ea7d6';
-      ctx.fillText('ROUND ' + G.round + ' STARTED WITH', 26, 34);
       ctx.font = 'bold 20px sans-serif';
       ctx.fillStyle = '#ff2d55';
-      ctx.fillText(G.live + ' LIVE', 26, 62);
+      ctx.fillText(G.live + ' LIVE', 26, 42);
       ctx.fillStyle = '#c9d2e6';
-      ctx.fillText(G.blank + ' BLANK', 116, 62);
+      ctx.fillText(G.blank + ' BLANK', 108, 42);
       ctx.restore();
 
       /* you: your colour, your name, your lives, and the other choice */
@@ -770,6 +756,7 @@
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(S.data.gunAng);
+      ctx.translate(-34, 0);                         // spun round its own middle
       ctx.fillStyle = '#8a93ad';
       rr(-22, -20, 44, 40, 10);
       ctx.fill();
@@ -797,12 +784,16 @@
       var into = Math.max(0, Math.min(1, (S.t - 2.0) / 1.0));   // flying into the gun
       for (var i = 0; i < n; i++) {
         var live = G.show[i];                  // scrambled - not the order they are in the gun
-        var mix = S.t > 1.3 && S.t < 2.0 ? Math.sin(S.t * 30 + i * 2) * 26 : 0;
-        var sx = x0 + i * gap + mix, sy = 290;
+        /* shuffling - and they keep shuffling all the way into the gun */
+        var mix = S.t > 1.3 ? Math.sin(S.t * 30 + i * 2) * 26 : 0;
+        var mixY = S.t > 1.3 ? Math.cos(S.t * 23 + i * 3) * 14 : 0;
+        var sx = x0 + i * gap, sy = 290;
         sx += (W / 2 - sx) * into;
         sy += (430 - sy) * into;
+        sx += mix;
+        sy += mixY;
         ctx.save();
-        ctx.globalAlpha = 1 - into * 0.9;
+        ctx.globalAlpha = 1 - into;
         ctx.translate(sx, sy);
         ctx.fillStyle = live ? '#ff2d55' : '#8a93ad';
         if (live) { ctx.shadowColor = '#ff2d55'; ctx.shadowBlur = 16; }
