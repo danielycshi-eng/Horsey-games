@@ -26,7 +26,8 @@
     'protect-the-crystal': 'RODE',
     shapes:                'TRIANGLE',
     unnamed:               'UNDEFINED',
-    risk:                  'BANG'
+    risk:                  'BANG',
+    password:              'THXNEIL'
   };
 
   var LABELS = {
@@ -41,7 +42,8 @@
     'protect-the-crystal': 'Protect the Crystal',
     shapes:                'Shapes',
     unnamed:               'A Platformer Game',
-    risk:                  'Risk'
+    risk:                  'Risk',
+    password:              'Choose a Password'
   };
 
   var script = document.currentScript;
