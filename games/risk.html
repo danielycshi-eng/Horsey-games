@@ -62,6 +62,70 @@
       cursor: pointer;
     }
     .pick button.on { color: #05070f; background: #ff5f7e; border-color: #ff5f7e; }
+    .pick button.gear { margin-left: 0.6rem; color: #ffd166; border-color: #6b5a2a; }
+
+    #settings {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+      border-radius: 14px;
+      background: radial-gradient(ellipse at center, #10162e 0%, #05070f 80%);
+      z-index: 3;
+    }
+    #settings.hidden { display: none; }
+    #settings h2 { margin: 0; color: #ffd166; letter-spacing: 6px; }
+    #settings p { margin: 0 0 0.4rem; color: #8ea7d6; }
+    #itemList {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.5rem;
+      width: min(880px, 92%);
+    }
+    .itemRow {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.45rem 0.6rem;
+      background: #0f1530;
+      border: 2px solid #3a4a78;
+      border-radius: 10px;
+      cursor: pointer;
+      text-align: left;
+      font: inherit;
+      color: #c9d2e6;
+    }
+    .itemRow canvas { flex: none; width: 40px; height: 40px; }
+    .itemRow b { display: block; color: #4ec3ff; font-size: 0.85rem; letter-spacing: 1px; }
+    .itemRow small { display: block; color: #8ea7d6; font-size: 0.7rem; line-height: 1.25; }
+    .itemRow .sw {
+      margin-left: auto;
+      flex: none;
+      font-weight: 700;
+      font-size: 0.75rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 6px;
+      color: #05070f;
+      background: #7bffb2;
+    }
+    .itemRow.off { opacity: 0.5; border-color: #2a2f45; }
+    .itemRow.off .sw { background: #ff5f7e; }
+    #settingsDone {
+      margin-top: 0.4rem;
+      font: inherit;
+      font-weight: 700;
+      letter-spacing: 4px;
+      color: #05070f;
+      background: #ffd166;
+      border: 2px solid #ffd166;
+      border-radius: 10px;
+      padding: 0.6rem 2.4rem;
+      cursor: pointer;
+    }
+
     .names { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center; }
     .names input {
       width: 8.5rem;
@@ -109,6 +173,7 @@
       <div class="pick" id="pickShow"><span>ITEMS</span>
         <button type="button" data-v="1" class="on">EVERYONE SEES ALL</button>
         <button type="button" data-v="0">ONLY YOUR OWN</button>
+        <button type="button" id="settingsBtn" class="gear">&#9881; SETTINGS</button>
       </div>
       <div class="names" id="names">
         <input type="text" maxlength="10" placeholder="PLAYER 1" spellcheck="false" style="border-color:#4ec3ff">
@@ -117,6 +182,14 @@
         <input type="text" maxlength="10" placeholder="PLAYER 4" spellcheck="false" style="border-color:#ffd166" class="off">
       </div>
       <button type="button" id="startBtn">START</button>
+    </div>
+
+    <!-- settings: switch off any item you think is too strong -->
+    <div id="settings" class="hidden">
+      <h2>ITEMS IN THE GAME</h2>
+      <p>Switch off any you think are too strong. Off ones are never dealt.</p>
+      <div id="itemList"></div>
+      <button type="button" id="settingsDone">DONE</button>
     </div>
   </div>
 
@@ -178,10 +251,13 @@
       G.shells = shuffle(s);
       G.show = shuffle(s.slice());       // shown scrambled - but not the gun's own order
       G.powder = false;
-      /* two new items each, every round - whatever you didn't use is gone */
+      /* two new items each, every round - whatever you didn't use is gone -
+         out of the ones switched on in the settings */
+      var pool = [];
+      for (i = 0; i < ITEM_KINDS.length; i++) if (ITEM_ON[ITEM_KINDS[i]]) pool.push(ITEM_KINDS[i]);
       for (i = 0; i < G.players.length; i++) {
         var pl = G.players[i];
-        pl.items = pl.alive ? [ITEM_KINDS[rand(ITEM_KINDS.length)], ITEM_KINDS[rand(ITEM_KINDS.length)]] : [];
+        pl.items = pl.alive && pool.length ? [pool[rand(pool.length)], pool[rand(pool.length)]] : [];
       }
     }
 
@@ -246,6 +322,9 @@
       drink:   { name: 'ENERGY DRINK',   desc: 'Get one life back. You still shoot.' }
     };
     var ITEM_KINDS = ['radio', 'glass', 'crowbar', 'powder', 'grab', 'remote', 'jammer', 'invert', 'drink'];
+    /* which are in the game: all of them, unless switched off in settings */
+    var ITEM_ON = {};
+    for (var ik = 0; ik < ITEM_KINDS.length; ik++) ITEM_ON[ITEM_KINDS[ik]] = true;
 
     /* The holder uses their item at `slot`. `arg` is the player for a
        jammer or grabbers, and `argItem` the slot of theirs to take.
@@ -1400,7 +1479,7 @@
     function wirePick(id, set) {
       var box = document.getElementById(id);
       if (!box.querySelectorAll) return;
-      var btns = box.querySelectorAll('button');
+      var btns = box.querySelectorAll('button[data-v]');      // not the settings one
       for (var i = 0; i < btns.length; i++) {
         btns[i].addEventListener('click', function () {
           for (var j = 0; j < btns.length; j++) btns[j].classList.remove('on');
@@ -1409,6 +1488,50 @@
         });
       }
     }
+
+    /* the settings screen: every item, with its icon, what it does, and
+       a switch */
+    var settingsEl = document.getElementById('settings');
+    var itemList = document.getElementById('itemList');
+    function buildSettings() {
+      if (!itemList.appendChild) return;
+      for (var i = 0; i < ITEM_KINDS.length; i++) {
+        (function (kind) {
+          var row = document.createElement('button');
+          row.type = 'button';
+          row.className = 'itemRow';
+          var c = document.createElement('canvas');
+          c.width = 40;
+          c.height = 40;
+          var mainCtx = ctx;                        // draw the icon into its own little canvas
+          ctx = c.getContext('2d');
+          drawItemIcon(kind, 20, 20, 34);
+          ctx = mainCtx;
+          var words = document.createElement('div');
+          words.innerHTML = '<b>' + ITEMS[kind].name + '</b><small>' + ITEMS[kind].desc + '</small>';
+          var sw = document.createElement('span');
+          sw.className = 'sw';
+          sw.textContent = 'ON';
+          row.appendChild(c);
+          row.appendChild(words);
+          row.appendChild(sw);
+          row.addEventListener('click', function () {
+            ITEM_ON[kind] = !ITEM_ON[kind];
+            sw.textContent = ITEM_ON[kind] ? 'ON' : 'OFF';
+            if (ITEM_ON[kind]) row.classList.remove('off');
+            else row.classList.add('off');
+          });
+          itemList.appendChild(row);
+        })(ITEM_KINDS[i]);
+      }
+    }
+    buildSettings();
+    document.getElementById('settingsBtn').addEventListener('click', function () {
+      settingsEl.classList.remove('hidden');
+    });
+    document.getElementById('settingsDone').addEventListener('click', function () {
+      settingsEl.classList.add('hidden');
+    });
     /* a name box for each player there is */
     var nameBox = document.getElementById('names');
     var nameInputs = nameBox.querySelectorAll ? nameBox.querySelectorAll('input') : [];
