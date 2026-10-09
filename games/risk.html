@@ -144,7 +144,8 @@
     }
 
     /* `shown` is the lives the hearts show: the heart goes the moment
-       a live one hits */
+       a live one hits - and how they are drawn goes by it, so nobody
+       looks out before the shot has actually landed */
 
     function setupGame(n, lives, names) {
       G.players = [];
@@ -277,8 +278,8 @@
           pl.knockT += dt;
           /* up again and done - unless they are out: then it keeps
              counting, for the fall off the chair */
-          if (pl.alive && pl.knockT > KNOCK_BACK + KNOCK_HOLD + KNOCK_RISE) pl.knockT = -1;
-          if (!pl.alive && pl.knockT > 10) pl.knockT = 10;
+          if (pl.shown > 0 && pl.knockT > KNOCK_BACK + KNOCK_HOLD + KNOCK_RISE) pl.knockT = -1;
+          if (pl.shown === 0 && pl.knockT > 10) pl.knockT = 10;
         }
       }
 
@@ -427,12 +428,12 @@
     /* how far back a hit has thrown them, 0..1: snapped back fast, held
        there a moment, then a slow climb back up */
     function leanOf(pl) {
-      if (pl.knockT < 0) return pl.alive ? 0 : 1;          // out: and they stay down
+      if (pl.knockT < 0) return pl.shown > 0 ? 0 : 1;          // out: and they stay down
       if (pl.knockT < KNOCK_BACK) {
         var q = pl.knockT / KNOCK_BACK;
         return 1 - (1 - q) * (1 - q);
       }
-      if (!pl.alive || pl.knockT < KNOCK_BACK + KNOCK_HOLD) return 1;
+      if (pl.shown === 0 || pl.knockT < KNOCK_BACK + KNOCK_HOLD) return 1;
       var k = Math.min(1, (pl.knockT - KNOCK_BACK - KNOCK_HOLD) / KNOCK_RISE);
       return 1 - k * k * (3 - 2 * k);
     }
@@ -440,7 +441,7 @@
     /* out: how far off the chair they've gone, 0..1, after the hit has
        thrown them back */
     function fallOf(pl) {
-      if (pl.alive) return 0;
+      if (pl.shown > 0) return 0;
       if (pl.knockT < 0) return 1;                         // out from before: lying there
       var k = (pl.knockT - KNOCK_BACK - KNOCK_HOLD) / OUT_FALL;
       return Math.max(0, Math.min(1, k));
@@ -541,7 +542,7 @@
       var k = hw / 30;
       ctx.fillStyle = '#ffffff';
       var ecy = hy + hw / 2 - 6 * k;
-      var out = !pl.alive && lean >= 0.99;
+      var out = pl.shown === 0 && lean >= 0.99;
       var eh = out ? 2 * k : 7 * k, eo = out ? 3 * k : 0;
       ctx.fillRect((face > 0 ? 1 : -6) * k, ecy + eo, 5 * k, eh);
       ctx.fillRect((face > 0 ? -7 : 2) * k, ecy + eo, 5 * k, eh);
@@ -561,8 +562,8 @@
         ctx.stroke();
         ctx.restore();
       }
-      text(pl.name, cx, seat - 172 * s, Math.round(15 * s), pl.alive ? col : '#56658c');
-      if (pl.alive) hearts(pl, cx, seat - 192 * s, s);
+      text(pl.name, cx, seat - 172 * s, Math.round(15 * s), pl.shown > 0 ? col : '#56658c');
+      if (pl.shown > 0) hearts(pl, cx, seat - 192 * s, s);
     }
 
     /* A revolver, seen from above, barrel pointing up (-y), the middle
@@ -793,8 +794,8 @@
           text('LIVE!', W / 2, 130, 64, '#ff2d55', 30);
           if (res.died && S.data.applied) text(G.players[res.target].name + ' IS OUT', W / 2, 172, 22, '#ff8fa3');
         } else {
-          text('*click*', W / 2, 130, 44, '#c9d2e6', 14);
-          text('BLANK', W / 2, 168, 24, '#8a93ad');
+          text('*click*', W / 2, 130, 58, '#e6ecff', 18);
+          text('BLANK', W / 2, 192, 52, '#c9d2e6', 12);
         }
       }
     }
