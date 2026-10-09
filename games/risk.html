@@ -106,6 +106,10 @@
         <button type="button" data-v="4">4</button>
         <button type="button" data-v="5">5</button>
       </div>
+      <div class="pick" id="pickShow"><span>ITEMS</span>
+        <button type="button" data-v="1" class="on">EVERYONE SEES ALL</button>
+        <button type="button" data-v="0">ONLY YOUR OWN</button>
+      </div>
       <div class="names" id="names">
         <input type="text" maxlength="10" placeholder="PLAYER 1" spellcheck="false" style="border-color:#4ec3ff">
         <input type="text" maxlength="10" placeholder="PLAYER 2" spellcheck="false" style="border-color:#ff5f7e">
@@ -152,12 +156,14 @@
       for (var i = 0; i < n; i++) {
         var nm = names && names[i] ? names[i] : 'PLAYER ' + (i + 1);
         G.players.push({ name: nm.toUpperCase(), color: COLORS[i],
-                         lives: lives, shown: lives, alive: true, knockT: -1 });
+                         lives: lives, shown: lives, alive: true, knockT: -1,
+                         items: [], jammed: false });
       }
       G.lives = lives;
       G.round = 0;
       G.holder = 0;
       G.shells = [];
+      G.powder = false;
     }
 
     /* up to four live and up to four blank, at least one of each,
@@ -171,6 +177,12 @@
       for (i = 0; i < G.blank; i++) s.push(false);
       G.shells = shuffle(s);
       G.show = shuffle(s.slice());       // shown scrambled - but not the gun's own order
+      G.powder = false;
+      /* two new items each, every round - whatever you didn't use is gone */
+      for (i = 0; i < G.players.length; i++) {
+        var pl = G.players[i];
+        pl.items = pl.alive ? [ITEM_KINDS[rand(ITEM_KINDS.length)], ITEM_KINDS[rand(ITEM_KINDS.length)]] : [];
+      }
     }
 
     function aliveList() {
@@ -199,10 +211,12 @@
     function fire(target) {
       var shooter = G.holder;
       var live = G.shells.shift();
-      var res = { shooter: shooter, target: target, live: live, died: false, next: null };
+      var res = { shooter: shooter, target: target, live: live, died: false, next: null,
+                  dmg: live ? (G.powder ? 2 : 1) : 0 };
+      G.powder = false;                  // used up on this shot, live or blank
       if (live) {
         var t = G.players[target];
-        t.lives--;
+        t.lives -= res.dmg;
         if (t.lives <= 0) { t.lives = 0; t.alive = false; res.died = true; }
       }
       var who;
@@ -215,8 +229,80 @@
     }
 
     /* ============================================================
+       ITEMS
+       Two each round, used on your own turn, whenever you like before
+       you shoot. What each one does to the game is here; how it looks
+       is with the drawing.
+       ============================================================ */
+    var ITEMS = {
+      radio:   { name: 'RADIO',          desc: 'Tells you what one of the shells after this one is. You still shoot.' },
+      glass:   { name: 'MAGNIFYING GLASS', desc: 'See whether the shell in the chamber is live or blank. You still shoot.' },
+      crowbar: { name: 'CROWBAR',        desc: 'Pry the shell in the chamber out - you see what it was. You still shoot.' },
+      powder:  { name: 'GUNPOWDER',      desc: 'The next shell does double damage. Your turn ends - the gun spins.' },
+      grab:    { name: 'GRABBERS',       desc: 'Take one item from another player - you see theirs. You still shoot.' },
+      remote:  { name: 'REMOTE',         desc: 'Spin the gun right now - it goes to someone random.' },
+      jammer:  { name: 'JAMMER',         desc: 'Pick a player: the next time the gun comes to them, it comes straight back.' },
+      invert:  { name: 'INVERTER',       desc: 'Flip the shell in the chamber: live to blank, blank to live. You still shoot.' },
+      drink:   { name: 'ENERGY DRINK',   desc: 'Get one life back. You still shoot.' }
+    };
+    var ITEM_KINDS = ['radio', 'glass', 'crowbar', 'powder', 'grab', 'remote', 'jammer', 'invert', 'drink'];
+
+    /* The holder uses their item at `slot`. `arg` is the player for a
+       jammer or grabbers, and `argItem` the slot of theirs to take.
+       Returns what happened, and `next` if it changes who has the gun:
+       'spin', or 'round' if it emptied the gun. */
+    function useItem(slot, arg, argItem) {
+      var me = G.players[G.holder];
+      var kind = me.items[slot];
+      var res = { kind: kind, next: null };
+      me.items.splice(slot, 1);
+      if (kind === 'radio') {
+        if (G.shells.length > 1) {
+          res.pos = 1 + rand(G.shells.length - 1);          // one of the ones after this
+          res.live = G.shells[res.pos];
+        } else res.pos = -1;                                // nothing after this one
+      } else if (kind === 'glass') {
+        res.live = G.shells[0];
+      } else if (kind === 'crowbar') {
+        res.live = G.shells.shift();
+        if (!G.shells.length) { res.next = 'round'; res.then = G.holder; }
+      } else if (kind === 'powder') {
+        G.powder = true;
+        res.next = 'spin';
+      } else if (kind === 'grab') {
+        res.from = arg;
+        res.took = G.players[arg].items.splice(argItem, 1)[0];
+        me.items.push(res.took);
+      } else if (kind === 'remote') {
+        res.next = 'spin';
+      } else if (kind === 'jammer') {
+        res.on = arg;
+        G.players[arg].jammed = true;
+      } else if (kind === 'invert') {
+        G.shells[0] = !G.shells[0];
+      } else if (kind === 'drink') {
+        res.was = me.lives;
+        me.lives = Math.min(G.lives, me.lives + 1);
+        me.shown = me.lives;
+      }
+      return res;
+    }
+
+    /* The gun is going from `from` to `to`. If `to` is jammed, the jam
+       is used up and it goes straight back to `from` (if they are still
+       in). Returns who actually gets it. */
+    function handOff(from, to) {
+      if (to !== from && G.players[to].jammed && from >= 0 && G.players[from].alive) {
+        G.players[to].jammed = false;
+        return from;
+      }
+      return to;
+    }
+
+    /* ============================================================
        THE SCREENS
        setup -> announce -> spin -> pass -> aim -> shot -> ... -> win
+       (and from aim: item -> aim, or on to a spin)
        ============================================================ */
     var ANNOUNCE_T = 3.2;          // the shells shown, then shuffled in
     var SPIN_T     = 2.6;          // the gun spinning
@@ -230,16 +316,30 @@
     var OUT_HOLD   = 0.6;          // and lying there a moment before the game goes on
 
     var S = { phase: 'setup', t: 0, data: {}, hover: -1, hoverSelf: false, shake: 0, flash: 0 };
-    var setupN = 2, setupLives = 3, setupNames = [];
+    var setupN = 2, setupLives = 3, setupNames = [], setupShow = 1;
 
     function go(phase, data) {
       S.phase = phase;
       S.t = 0;
       S.data = data || {};
+      S.pick = null;                     // picking a player for an item
+      S.grabFrom = -1;
+      /* what your radio or glass told you lasts for your turn, no longer */
+      if (phase !== 'aim' && phase !== 'item' && phase !== 'shot') S.note = null;
     }
+
+    function ordinal(n) {
+      var s = n % 100 >= 11 && n % 100 <= 13 ? 'TH' :
+              n % 10 === 1 ? 'ST' : n % 10 === 2 ? 'ND' : n % 10 === 3 ? 'RD' : 'TH';
+      return n + s;
+    }
+
+    var ITEM_T = 1.6;                    // an item being used
+    var RADIO_T = 2.3;                   // the radio takes its time
 
     function startGame() {
       setupGame(setupN, setupLives, setupNames);
+      G.showItems = !!setupShow;
       newRound();
       go('announce');
     }
@@ -256,16 +356,40 @@
       var to = seatAngle(target);
       while (to < from) to += Math.PI * 2;
       to += Math.PI * 2 * (4 + rand(2));           // a few good turns first
-      go('spin', { target: target, from: from, to: to, gunAng: from });
+      go('spin', { target: target, from: from, to: to, gunAng: from, prev: G.holder });
+    }
+
+    /* the gun goes to `to` from whoever has it - unless `to` is jammed */
+    function passTo(to) {
+      var from = G.holder;
+      var got = handOff(from, to);
+      if (got === from) {
+        go('aim');
+        if (to !== from) S.note = G.players[to].name + ' WAS JAMMED - IT CAME BACK';
+        return;
+      }
+      G.holder = got;
+      go('pass');
     }
 
     function afterShot(res) {
       if (res.next === 'win') { go('win', { who: winner() }); return; }
       if (res.next === 'round') { newRound(); go('announce', { then: res.then, gunAng: S.data.gunAng }); return; }
       if (res.next === 'spin') { startSpin(); return; }
-      if (res.next === G.holder) { go('aim'); return; }      // same hands: on you go
-      G.holder = res.next;
-      go('pass');
+      passTo(res.next);
+    }
+
+    function useAndShow(slot, arg, argItem) {
+      var res = useItem(slot, arg, argItem);
+      go('item', { res: res });
+    }
+
+    function afterItem(res) {
+      if (res.next === 'spin') { startSpin(); return; }
+      if (res.next === 'round') { newRound(); go('announce', { then: res.then }); return; }
+      var note = S.note;
+      go('aim');
+      S.note = note;
     }
 
     function update(dt) {
@@ -288,16 +412,32 @@
            it was going to spin anyway */
         var then = S.data.then;
         if (typeof then === 'number' && G.players[then].alive) {
-          G.holder = then;
+          G.holder = handOff(G.holder, then);    // jammed: it stays where it was
           go('pass');
         } else startSpin();
       } else if (S.phase === 'spin') {
         var k = Math.min(1, S.t / SPIN_T);
         var e = 1 - Math.pow(1 - k, 3);
         S.data.gunAng = S.data.from + (S.data.to - S.data.from) * e;
-        if (S.t >= SPIN_T + SPIN_HOLD) {
-          G.holder = S.data.target;
+        /* landed on someone jammed: straight back to whoever spun it */
+        if (S.data.bounce === undefined && S.t >= SPIN_T) {
+          S.data.got = handOff(S.data.prev, S.data.target);
+          S.data.bounce = S.data.got !== S.data.target;
+        }
+        if (S.t >= SPIN_T + SPIN_HOLD + (S.data.bounce ? 1.0 : 0)) {
+          G.holder = S.data.got;
           go('pass');
+        }
+      } else if (S.phase === 'item') {
+        var ir = S.data.res;
+        if (S.t >= (ir.kind === 'radio' ? RADIO_T : ITEM_T)) {
+          if (ir.kind === 'radio') S.note = ir.pos < 0 ? 'NOTHING AFTER THIS SHELL' :
+            'THE ' + ordinal(ir.pos + 1) + ' SHELL IS ' + (ir.live ? 'LIVE' : 'BLANK');
+          if (ir.kind === 'glass') S.note = 'THIS SHELL IS ' + (ir.live ? 'LIVE' : 'BLANK');
+          if (ir.kind === 'crowbar') S.note = 'THE ONE YOU PRIED OUT WAS ' + (ir.live ? 'LIVE' : 'BLANK');
+          if (ir.kind === 'invert') S.note = S.note && S.note.indexOf('THIS SHELL') === 0 ?
+            'THIS SHELL IS ' + (G.shells[0] ? 'LIVE' : 'BLANK') : S.note;
+          afterItem(ir);
         }
       } else if (S.phase === 'shot') {
         /* aim, fire, the hit plays out - knocked back, slowly up - and
@@ -356,11 +496,47 @@
       go('shot', { res: res, fired: false });
     }
 
+    /* your items, along the bottom between your lives and the gun */
+    function itemSlot(i) { return { x: 236 + i * 76, y: H - 84, w: 64, h: 64 }; }
+    /* grabbers: their items, big, to pick from */
+    function grabSlot(i, n) { return { x: W / 2 - n * 50 + i * 100 + 10, y: 200, w: 80, h: 80 }; }
+
+    function itemAt(mx, my) {
+      var me = G.players[G.holder];
+      for (var i = 0; i < me.items.length; i++) if (inRect(mx, my, itemSlot(i))) return i;
+      return -1;
+    }
+
     function onClick(mx, my) {
       if (S.phase === 'pass') { go('aim'); return; }
       if (S.phase === 'aim') {
-        if (inRect(mx, my, SELF_BTN)) { shoot(G.holder); return; }
+        var me = G.players[G.holder];
+        /* grabbers, second step: which of theirs */
+        if (S.pick === 'grab' && S.grabFrom >= 0) {
+          var their = G.players[S.grabFrom].items;
+          for (var g = 0; g < their.length; g++) {
+            if (inRect(mx, my, grabSlot(g, their.length))) { useAndShow(S.pickSlot, S.grabFrom, g); return; }
+          }
+          S.pick = null; S.grabFrom = -1;              // clicked off: never mind
+          return;
+        }
+        var it = itemAt(mx, my);
+        if (it !== -1) {
+          if (S.pick && S.pickSlot === it) { S.pick = null; return; }   // again: never mind
+          var kind = me.items[it];
+          if (kind === 'jammer' || kind === 'grab') { S.pick = kind; S.pickSlot = it; return; }
+          useAndShow(it);
+          return;
+        }
         var t = targetAt(mx, my);
+        if (S.pick) {                                  // picking a player for the item
+          if (t === -1) { S.pick = null; return; }
+          if (S.pick === 'jammer') { useAndShow(S.pickSlot, t); return; }
+          if (!G.players[t].items.length) { S.note = G.players[t].name + ' HAS NOTHING TO TAKE'; S.pick = null; return; }
+          S.grabFrom = t;
+          return;
+        }
+        if (inRect(mx, my, SELF_BTN)) { shoot(G.holder); return; }
         if (t !== -1) shoot(t);
         return;
       }
@@ -378,8 +554,11 @@
     canvas.addEventListener('click', function (e) { var c = toCanvas(e); onClick(c.x, c.y); });
     canvas.addEventListener('mousemove', function (e) {
       var c = toCanvas(e);
-      S.hover = S.phase === 'aim' ? targetAt(c.x, c.y) : -1;
-      S.hoverSelf = S.phase === 'aim' && inRect(c.x, c.y, SELF_BTN);
+      var aiming = S.phase === 'aim' && S.grabFrom < 0;
+      S.hover = aiming ? targetAt(c.x, c.y) : -1;
+      S.hoverSelf = aiming && !S.pick && inRect(c.x, c.y, SELF_BTN);
+      S.hoverItem = S.phase === 'aim' ? itemAt(c.x, c.y) : -1;
+      S.mouse = c;
     });
 
     /* ============================================================
@@ -563,7 +742,16 @@
         ctx.restore();
       }
       text(pl.name, cx, seat - 172 * s, Math.round(15 * s), pl.shown > 0 ? col : '#56658c');
-      if (pl.shown > 0) hearts(pl, cx, seat - 192 * s, s);
+      if (pl.shown > 0) {
+        hearts(pl, cx, seat - 192 * s, s);
+        /* their items, if everyone's are on show - and grabbers always see */
+        if (G.showItems || (S.pick === 'grab' && S.grabFrom < 0)) {
+          for (var j = 0; j < pl.items.length; j++) {
+            drawItemIcon(pl.items[j], cx + (j - (pl.items.length - 1) / 2) * 30 * s, seat - 216 * s, 24 * s);
+          }
+        }
+        if (pl.jammed) text('JAMMED', cx, seat - 240 * s, Math.round(14 * s), '#c7a0ff', 8);
+      }
     }
 
     /* A revolver, seen from above, barrel pointing up (-y), the middle
@@ -678,6 +866,124 @@
       ctx.restore();
     }
 
+    /* ---- the items, drawn small and simple, centred on cx,cy ---- */
+    function drawItemIcon(kind, cx, cy, size) {
+      var k = size / 40;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(k, k);
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      if (kind === 'radio') {
+        ctx.fillStyle = '#4ec3ff';
+        rr(-16, -6, 32, 20, 4); ctx.fill();
+        ctx.fillStyle = '#05070f';
+        ctx.beginPath(); ctx.arc(-6, 4, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillRect(4, -1, 8, 2); ctx.fillRect(4, 4, 8, 2); ctx.fillRect(4, 9, 8, 2);
+        ctx.strokeStyle = '#4ec3ff';
+        ctx.beginPath(); ctx.moveTo(10, -6); ctx.lineTo(16, -18); ctx.stroke();
+      } else if (kind === 'glass') {
+        ctx.strokeStyle = '#c9d2e6';
+        ctx.beginPath(); ctx.arc(-4, -4, 11, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = 'rgba(160,196,255,0.25)';
+        ctx.fill();
+        ctx.strokeStyle = '#8a5a30';
+        ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.moveTo(4, 4); ctx.lineTo(15, 15); ctx.stroke();
+      } else if (kind === 'crowbar') {
+        ctx.strokeStyle = '#ff5f7e';
+        ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.moveTo(-12, 16); ctx.lineTo(8, -12); ctx.quadraticCurveTo(12, -18, 17, -13); ctx.stroke();
+      } else if (kind === 'powder') {
+        ctx.fillStyle = '#8a5a30';
+        rr(-12, -10, 24, 26, 6); ctx.fill();
+        ctx.fillStyle = '#ffd166';
+        ctx.fillRect(-12, -2, 24, 4);
+        ctx.fillStyle = '#3a3f4a';
+        ctx.beginPath(); ctx.arc(0, -14, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#ff8c42';
+        for (var g = 0; g < 4; g++) ctx.fillRect(-6 + g * 4, 6 + (g % 2) * 3, 2, 2);
+      } else if (kind === 'grab') {
+        ctx.strokeStyle = '#7bffb2';
+        ctx.beginPath(); ctx.moveTo(0, 18); ctx.lineTo(0, -2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, -2); ctx.lineTo(-10, -10); ctx.lineTo(-8, -18); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, -2); ctx.lineTo(10, -10); ctx.lineTo(8, -18); ctx.stroke();
+      } else if (kind === 'remote') {
+        ctx.fillStyle = '#3a3f4a';
+        rr(-9, -18, 18, 36, 5); ctx.fill();
+        ctx.fillStyle = '#ff2d55';
+        ctx.beginPath(); ctx.arc(0, -9, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#c9d2e6';
+        ctx.fillRect(-5, 0, 4, 4); ctx.fillRect(1, 0, 4, 4); ctx.fillRect(-5, 7, 4, 4); ctx.fillRect(1, 7, 4, 4);
+      } else if (kind === 'jammer') {
+        ctx.strokeStyle = '#c7a0ff';
+        ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-10, 10); ctx.lineTo(10, -10); ctx.stroke();
+        ctx.fillStyle = '#c7a0ff';
+        ctx.beginPath(); ctx.moveTo(-2, -8); ctx.lineTo(-7, 1); ctx.lineTo(-1, 1); ctx.lineTo(-4, 9);
+        ctx.lineTo(3, -2); ctx.lineTo(-3, -2); ctx.closePath(); ctx.fill();
+      } else if (kind === 'invert') {
+        ctx.strokeStyle = '#ffd166';
+        ctx.beginPath(); ctx.arc(0, 0, 12, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(9, -12); ctx.lineTo(12, -4); ctx.lineTo(4, -5); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0, 0, 12, Math.PI * 0.1, Math.PI * 0.9); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-9, 12); ctx.lineTo(-12, 4); ctx.lineTo(-4, 5); ctx.stroke();
+      } else if (kind === 'drink') {
+        ctx.fillStyle = '#7bffb2';
+        rr(-9, -16, 18, 32, 4); ctx.fill();
+        ctx.fillStyle = '#05070f';
+        ctx.fillRect(-9, -6, 18, 10);
+        ctx.fillStyle = '#7bffb2';
+        ctx.beginPath(); ctx.moveTo(2, -5); ctx.lineTo(-3, 0); ctx.lineTo(1, 0); ctx.lineTo(-2, 4);
+        ctx.lineTo(4, -1); ctx.lineTo(0, -1); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#c9d2e6';
+        ctx.fillRect(-6, -19, 12, 3);
+      }
+      ctx.restore();
+    }
+
+    /* a tile with an item on it: your tray, the grab popup */
+    function itemTile(kind, r, lit) {
+      ctx.fillStyle = lit ? '#1d2b5c' : '#0f1530';
+      rr(r.x, r.y, r.w, r.h, 10);
+      ctx.fill();
+      ctx.strokeStyle = lit ? '#ffffff' : '#3a4a78';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      drawItemIcon(kind, r.x + r.w / 2, r.y + r.h / 2, r.w * 0.62);
+    }
+
+    /* hover an item: what it is and what it does */
+    function tooltip(kind, x, y) {
+      var it = ITEMS[kind];
+      ctx.save();
+      ctx.font = '13px sans-serif';
+      var words = it.desc.split(' '), lines = [], line = '';
+      for (var i = 0; i < words.length; i++) {
+        var test = line ? line + ' ' + words[i] : words[i];
+        if (ctx.measureText(test).width > 230 && line) { lines.push(line); line = words[i]; }
+        else line = test;
+      }
+      lines.push(line);
+      var h = 34 + lines.length * 17, w = 254;
+      var bx = Math.max(10, Math.min(W - w - 10, x - w / 2)), by = y - h - 10;
+      ctx.fillStyle = 'rgba(5,7,15,0.94)';
+      rr(bx, by, w, h, 10);
+      ctx.fill();
+      ctx.strokeStyle = '#4ec3ff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.textAlign = 'left';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillStyle = '#4ec3ff';
+      ctx.fillText(it.name, bx + 12, by + 22);
+      ctx.font = '13px sans-serif';
+      ctx.fillStyle = '#c9d2e6';
+      for (i = 0; i < lines.length; i++) ctx.fillText(lines[i], bx + 12, by + 42 + i * 17);
+      ctx.restore();
+    }
+
     function drawTable() {
       /* an ordinary table, and you sat at it: its near edge is right
          in front of you, at the bottom of the view */
@@ -769,34 +1075,193 @@
       ctx.fillText(G.blank + ' BLANK', 108, 42);
       ctx.restore();
 
-      /* you: your colour, your name, your lives, and the other choice */
+      /* you: your colour, your name, your lives, your items, and the
+         other choice */
       ctx.fillStyle = me.color;
       ctx.fillRect(0, H - 6, W, 6);
       text('YOU: ' + me.name, 120, H - 46, 18, me.color, 10);
       hearts(me, 120, H - 22, 1.3);
-      if (S.phase === 'aim') {
-        ctx.fillStyle = S.hoverSelf ? '#ff5f7e' : '#2a0f1c';
-        rr(SELF_BTN.x, SELF_BTN.y, SELF_BTN.w, SELF_BTN.h, 12);
-        ctx.fill();
-        ctx.strokeStyle = '#ff5f7e';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        text('SHOOT YOURSELF', SELF_BTN.x + SELF_BTN.w / 2, SELF_BTN.y + 35, 20,
-             S.hoverSelf ? '#05070f' : '#ff5f7e');
-        text('Click a player to shoot them - or yourself', W / 2, 40, 16, '#8ea7d6');
-        text(G.shells.length + ' SHELLS LEFT IN THE GUN', W / 2, 64, 13, '#56658c');
+      for (var it = 0; it < me.items.length; it++) {
+        itemTile(me.items[it], itemSlot(it),
+                 S.phase === 'aim' && (S.hoverItem === it || (S.pick && S.pickSlot === it)));
       }
+      if (G.powder) {                                     // gunpowder's in
+        text('x2', W / 2 + 70, H - 150, 30, '#ff8c42', 16);
+      }
+
+      if (S.phase === 'aim') {
+        if (!S.pick) {
+          ctx.fillStyle = S.hoverSelf ? '#ff5f7e' : '#2a0f1c';
+          rr(SELF_BTN.x, SELF_BTN.y, SELF_BTN.w, SELF_BTN.h, 12);
+          ctx.fill();
+          ctx.strokeStyle = '#ff5f7e';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          text('SHOOT YOURSELF', SELF_BTN.x + SELF_BTN.w / 2, SELF_BTN.y + 35, 20,
+               S.hoverSelf ? '#05070f' : '#ff5f7e');
+        }
+        /* what to do, top right */
+        ctx.save();
+        ctx.textAlign = 'right';
+        ctx.font = 'bold 14px sans-serif';
+        ctx.fillStyle = '#8ea7d6';
+        var hint = S.pick === 'jammer' ? 'Click the player to jam' :
+                   S.pick === 'grab' ? (S.grabFrom < 0 ? 'Click who to grab from' : 'Click the item to take') :
+                   'Shoot a player, or yourself - or use an item';
+        ctx.fillText(hint, W - 20, 34);
+        ctx.font = '13px sans-serif';
+        ctx.fillStyle = '#56658c';
+        ctx.fillText(G.shells.length + ' SHELLS LEFT IN THE GUN', W - 20, 54);
+        ctx.restore();
+
+        /* grabbers: their items, big, to choose from */
+        if (S.pick === 'grab' && S.grabFrom >= 0) {
+          var from = G.players[S.grabFrom];
+          ctx.fillStyle = 'rgba(5,7,15,0.8)';
+          ctx.fillRect(0, 0, W, H);
+          text('TAKE ONE OF ' + from.name + "'S", W / 2, 170, 24, from.color, 10);
+          for (var g = 0; g < from.items.length; g++) {
+            var gs = grabSlot(g, from.items.length);
+            itemTile(from.items[g], gs, S.mouse && inRect(S.mouse.x, S.mouse.y, gs));
+            text(ITEMS[from.items[g]].name, gs.x + gs.w / 2, gs.y + gs.h + 20, 12, '#8ea7d6');
+          }
+        }
+        if (S.hoverItem >= 0 && S.hoverItem < me.items.length && !(S.pick === 'grab' && S.grabFrom >= 0)) {
+          var hs = itemSlot(S.hoverItem);
+          tooltip(me.items[S.hoverItem], hs.x + hs.w / 2, hs.y);
+        }
+      }
+
+      /* what your radio, glass or crowbar told you - for this turn */
+      if (S.note && (S.phase === 'aim' || S.phase === 'shot')) {
+        text(S.note, W / 2, 30, 20, '#ffd166', 12);
+      }
+
+      if (S.phase === 'item') drawItemUse();
 
       /* what it was */
       if (S.phase === 'shot' && S.t >= SHOT_AIM) {
         var res = S.data.res;
         if (res.live) {
-          text('LIVE!', W / 2, 130, 64, '#ff2d55', 30);
-          if (res.died && S.data.applied) text(G.players[res.target].name + ' IS OUT', W / 2, 172, 22, '#ff8fa3');
+          text(res.dmg > 1 ? 'LIVE!  x2' : 'LIVE!', W / 2, 130, 64, '#ff2d55', 30);
+          if (res.died && S.t >= SHOT_AIM + KNOCK_BACK + KNOCK_HOLD) {
+            text(G.players[res.target].name + ' IS OUT', W / 2, 172, 22, '#ff8fa3');
+          }
         } else {
           text('*click*', W / 2, 130, 58, '#e6ecff', 18);
           text('BLANK', W / 2, 192, 52, '#c9d2e6', 12);
         }
+      }
+    }
+
+    /* an item being used: what it looks like, over your view */
+    function drawItemUse() {
+      var r = S.data.res, t = S.t, k = Math.min(1, t / ITEM_T);
+      var gx = W / 2, gy = H - 110;                   // the gun's chamber, more or less
+      var me = G.players[G.holder];
+      var col = function (live) { return live ? '#ff2d55' : '#c9d2e6'; };
+      var word = function (live) { return live ? 'LIVE' : 'BLANK'; };
+      var i;
+
+      if (r.kind === 'radio') {
+        drawItemIcon('radio', W / 2, 200, 110);
+        ctx.save();
+        ctx.strokeStyle = '#4ec3ff';
+        ctx.lineWidth = 3;
+        for (i = 0; i < 3; i++) {                       // it crackles
+          var rad = 40 + ((t * 90 + i * 30) % 90);
+          ctx.globalAlpha = 1 - (rad - 40) / 90;
+          ctx.beginPath();
+          ctx.arc(W / 2 + 30, 160, rad, -1.2, -0.2);
+          ctx.stroke();
+        }
+        ctx.restore();
+        if (r.pos < 0) text('...NOTHING AFTER THIS ONE', W / 2, 300, 30, '#c9d2e6', 10);
+        else {
+          text('THE ' + ordinal(r.pos + 1) + ' SHELL IS...', W / 2, 300, 30, '#c9d2e6', 10);
+          if (t > 1.2) text(word(r.live), W / 2, 356, 52, col(r.live), 20);
+        }
+      } else if (r.kind === 'glass') {
+        /* the glass comes down over the chamber, and you see the shell */
+        var lx = gx + 120 * (1 - k), ly = gy - 40 - 60 * (1 - k);
+        ctx.fillStyle = col(r.live);
+        ctx.beginPath();
+        ctx.arc(lx - 6, ly - 6, 22, 0, Math.PI * 2);
+        ctx.fill();
+        drawItemIcon('glass', lx, ly, 100);
+        if (t > 0.7) text('THIS SHELL IS ' + word(r.live), W / 2, 200, 40, col(r.live), 16);
+      } else if (r.kind === 'crowbar') {
+        /* pried at, and the shell flies out */
+        ctx.save();
+        ctx.translate(gx + 40, gy);
+        ctx.rotate(-0.4 + Math.sin(Math.min(1, t / 0.5) * Math.PI) * 0.5);
+        drawItemIcon('crowbar', 0, -30, 90);
+        ctx.restore();
+        if (t > 0.5) {
+          var ft = (t - 0.5) / 1.1;
+          var sx = gx + 20 + ft * 300, sy = gy - 20 - ft * 260 + ft * ft * 260;
+          ctx.save();
+          ctx.translate(sx, sy);
+          ctx.rotate(ft * 10);
+          ctx.fillStyle = col(r.live);
+          rr(-9, -20, 18, 34, 5);
+          ctx.fill();
+          ctx.fillStyle = '#ffd166';
+          rr(-9, 10, 18, 8, 3);
+          ctx.fill();
+          ctx.restore();
+          text('OUT IT COMES: ' + word(r.live), W / 2, 200, 36, col(r.live), 14);
+        }
+      } else if (r.kind === 'powder') {
+        /* poured in, a stream of grains into the gun */
+        drawItemIcon('powder', gx + 90, gy - 150 + 20 * Math.sin(t * 3), 80);
+        ctx.fillStyle = '#ff8c42';
+        for (i = 0; i < 24; i++) {
+          var pt = (t * 1.6 + i / 24) % 1;
+          ctx.fillRect(gx + 80 - pt * 80 + Math.sin(i * 7) * 4, gy - 120 + pt * 110, 3, 3);
+        }
+        text('DOUBLE DAMAGE', W / 2, 200, 40, '#ff8c42', 16);
+        if (t > 0.9) text('...and the gun spins', W / 2, 240, 18, '#8ea7d6');
+      } else if (r.kind === 'grab') {
+        /* the claw reaches over and brings it back */
+        var v = viewSpot(r.from);
+        var back = t < 0.6 ? t / 0.6 : 1 - (t - 0.6) / 1.0;
+        var slot = itemSlot(me.items.length - 1);
+        var hx = (slot.x + 32) + (v.x - slot.x - 32) * Math.max(0, back);
+        var hy = (slot.y + 32) + (v.y - 200 * v.s - slot.y - 32) * Math.max(0, back);
+        drawItemIcon('grab', hx, hy - 30, 70);
+        if (t > 0.6) drawItemIcon(r.took, hx, hy, 40);
+        text('TOOK ' + ITEMS[r.took].name, W / 2, 200, 32, '#7bffb2', 12);
+      } else if (r.kind === 'remote') {
+        drawItemIcon('remote', W / 2, 220, 110);
+        if (Math.sin(t * 30) > 0) {
+          ctx.fillStyle = 'rgba(255,45,85,0.35)';
+          ctx.beginPath(); ctx.arc(W / 2, 200, 40, 0, Math.PI * 2); ctx.fill();
+        }
+        text('SPIN IT!', W / 2, 330, 44, '#ff5f7e', 16);
+      } else if (r.kind === 'jammer') {
+        /* it flies over and sticks to them */
+        var jv = viewSpot(r.on);
+        var e = Math.min(1, t / 0.8);
+        drawItemIcon('jammer', W / 2 + (jv.x - W / 2) * e, H - 140 + (jv.y - 120 * jv.s - H + 140) * e, 70);
+        if (t > 0.8) text(G.players[r.on].name + ' IS JAMMED', W / 2, 200, 34, '#c7a0ff', 14);
+      } else if (r.kind === 'invert') {
+        /* the arrows go round the chamber, and it flips */
+        ctx.save();
+        ctx.translate(gx, gy - 40);
+        ctx.rotate(t * 7);
+        drawItemIcon('invert', 0, 0, 130);
+        ctx.restore();
+        text('THE SHELL IS FLIPPED', W / 2, 200, 36, '#ffd166', 14);
+      } else if (r.kind === 'drink') {
+        /* up to your mouth, tipped back, and down */
+        var up = t < 0.5 ? t / 0.5 : t < 1.2 ? 1 : 1 - (t - 1.2) / 0.4;
+        ctx.save();
+        ctx.translate(W / 2 + 60, H + 40 - up * 260);
+        ctx.rotate(-up * 2.2);
+        drawItemIcon('drink', 0, 0, 120);
+        ctx.restore();
+        if (t > 0.9) text(me.lives > r.was ? '+1 LIFE' : 'ALREADY FULL', W / 2, 200, 40, '#7bffb2', 16);
       }
     }
 
@@ -917,7 +1382,7 @@
       if (S.phase === 'announce') drawAnnounce();
       else if (S.phase === 'spin') drawSpin();
       else if (S.phase === 'pass') drawPass();
-      else if (S.phase === 'aim' || S.phase === 'shot') drawView();
+      else if (S.phase === 'aim' || S.phase === 'shot' || S.phase === 'item') drawView();
       else if (S.phase === 'win') drawWin();
       else drawRoom();
       ctx.restore();
@@ -955,6 +1420,7 @@
     }
     wirePick('pickPlayers', function (v) { setupN = v; showNameBoxes(); });
     wirePick('pickLives', function (v) { setupLives = v; });
+    wirePick('pickShow', function (v) { setupShow = v; });
     document.getElementById('startBtn').addEventListener('click', function () {
       setupNames = [];
       for (var i = 0; i < nameInputs.length; i++) setupNames.push(nameInputs[i].value.trim());
