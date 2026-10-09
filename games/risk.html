@@ -192,7 +192,8 @@
        else). Returns what happened and who goes next:
          a number - that player has the gun
          'spin'   - it spins to a random player
-         'round'  - the gun is empty: new shells, then a spin
+         'round'  - the gun is empty: new shells, and `then` - who was
+                    getting it - keeps it (or it spins, if that was next)
          'win'    - one player is left */
     function fire(target) {
       var shooter = G.holder;
@@ -203,10 +204,12 @@
         t.lives--;
         if (t.lives <= 0) { t.lives = 0; t.alive = false; res.died = true; }
       }
+      var who;
+      if (target === shooter) who = live ? 'spin' : shooter;   // a blank at yourself: again
+      else who = res.died ? 'spin' : target;                   // they get it
       if (winner() !== -1) res.next = 'win';
-      else if (!G.shells.length) res.next = 'round';
-      else if (target === shooter) res.next = live ? 'spin' : shooter;   // a blank at yourself: again
-      else res.next = res.died ? 'spin' : target;                        // they get it
+      else if (!G.shells.length) { res.next = 'round'; res.then = who; }   // and they keep it into it
+      else res.next = who;
       return res;
     }
 
@@ -218,10 +221,12 @@
     var SPIN_T     = 2.6;          // the gun spinning
     var SPIN_HOLD  = 1.3;          // and who it landed on
     var SHOT_AIM   = 0.5;          // turning the gun on them
-    var KNOCK_BACK = 0.14;         // a live one throws them back, fast
-    var KNOCK_RISE = 1.4;          // and they come back up, slowly
+    var KNOCK_BACK = 0.1;          // a live one throws them back - fast
+    var KNOCK_HOLD = 0.25;         // a moment there
+    var KNOCK_RISE = 1.7;          // and they come back up, slowly
     var BLANK_HOLD = 1.1;          // how long a blank's *click* hangs there
-    var OUT_HOLD   = 1.0;          // the last one: thrown back, and they stay there
+    var OUT_FALL   = 0.9;          // the last one: thrown back, then off the chair
+    var OUT_HOLD   = 0.6;          // and lying there a moment before the game goes on
 
     var S = { phase: 'setup', t: 0, data: {}, hover: -1, hoverSelf: false, shake: 0, flash: 0 };
     var setupN = 2, setupLives = 3, setupNames = [];
@@ -255,7 +260,7 @@
 
     function afterShot(res) {
       if (res.next === 'win') { go('win', { who: winner() }); return; }
-      if (res.next === 'round') { newRound(); go('announce'); return; }
+      if (res.next === 'round') { newRound(); go('announce', { then: res.then, gunAng: S.data.gunAng }); return; }
       if (res.next === 'spin') { startSpin(); return; }
       if (res.next === G.holder) { go('aim'); return; }      // same hands: on you go
       G.holder = res.next;
@@ -270,12 +275,21 @@
         var pl = G.players[i];
         if (pl.knockT >= 0) {
           pl.knockT += dt;
-          if (pl.knockT > KNOCK_BACK + KNOCK_RISE) pl.knockT = -1;
+          /* up again and done - unless they are out: then it keeps
+             counting, for the fall off the chair */
+          if (pl.alive && pl.knockT > KNOCK_BACK + KNOCK_HOLD + KNOCK_RISE) pl.knockT = -1;
+          if (!pl.alive && pl.knockT > 10) pl.knockT = 10;
         }
       }
 
       if (S.phase === 'announce' && S.t >= ANNOUNCE_T) {
-        startSpin();
+        /* whoever was getting the gun when it ran dry keeps it - unless
+           it was going to spin anyway */
+        var then = S.data.then;
+        if (typeof then === 'number' && G.players[then].alive) {
+          G.holder = then;
+          go('pass');
+        } else startSpin();
       } else if (S.phase === 'spin') {
         var k = Math.min(1, S.t / SPIN_T);
         var e = 1 - Math.pow(1 - k, 3);
@@ -299,8 +313,8 @@
         }
         /* a hit: thrown back and slowly up again - or, out, thrown back
            and left there a moment; a blank: just the click */
-        var hitEnd = SHOT_AIM + (r.died ? KNOCK_BACK + OUT_HOLD :
-                                 r.live ? KNOCK_BACK + KNOCK_RISE : BLANK_HOLD);
+        var hitEnd = SHOT_AIM + (r.died ? KNOCK_BACK + KNOCK_HOLD + OUT_FALL + OUT_HOLD :
+                                 r.live ? KNOCK_BACK + KNOCK_HOLD + KNOCK_RISE : BLANK_HOLD);
         if (S.t >= hitEnd) afterShot(r);
       }
     }
@@ -410,14 +424,26 @@
       for (var i = 0; i < G.lives; i++) heart(x0 + i * gap, y, s, i < pl.shown);
     }
 
-    /* how far back a hit has thrown them, 0..1: snapped back, then a
-       slow climb back up */
+    /* how far back a hit has thrown them, 0..1: snapped back fast, held
+       there a moment, then a slow climb back up */
     function leanOf(pl) {
       if (pl.knockT < 0) return pl.alive ? 0 : 1;          // out: and they stay down
-      if (pl.knockT < KNOCK_BACK) return pl.knockT / KNOCK_BACK;
-      if (!pl.alive) return 1;
-      var k = (pl.knockT - KNOCK_BACK) / KNOCK_RISE;
+      if (pl.knockT < KNOCK_BACK) {
+        var q = pl.knockT / KNOCK_BACK;
+        return 1 - (1 - q) * (1 - q);
+      }
+      if (!pl.alive || pl.knockT < KNOCK_BACK + KNOCK_HOLD) return 1;
+      var k = Math.min(1, (pl.knockT - KNOCK_BACK - KNOCK_HOLD) / KNOCK_RISE);
       return 1 - k * k * (3 - 2 * k);
+    }
+
+    /* out: how far off the chair they've gone, 0..1, after the hit has
+       thrown them back */
+    function fallOf(pl) {
+      if (pl.alive) return 0;
+      if (pl.knockT < 0) return 1;                         // out from before: lying there
+      var k = (pl.knockT - KNOCK_BACK - KNOCK_HOLD) / OUT_FALL;
+      return Math.max(0, Math.min(1, k));
     }
 
     /* A block drawn like the cube on A Platformer Game's icon: a rounded
@@ -472,6 +498,17 @@
 
       ctx.save();
       ctx.translate(cx, seat);
+
+      /* out: after the hit has thrown them back, they go off the chair -
+         over its side and down onto the floor beside it, and lie there */
+      var fall = fallOf(pl);
+      if (fall > 0) {
+        var fdir = outDir || (i % 2 ? 1 : -1);
+        var e = fall * fall * (3 - 2 * fall);
+        ctx.translate(fdir * e * 100 * s, -Math.sin(e * Math.PI) * 30 * s + e * 46 * s);
+        ctx.rotate(fdir * e * Math.PI / 2);
+      }
+
       /* legs on the seat and down off its front */
       block(-20 * s, -6 * s, 40 * s, 14 * s, col, s);
       block(-19 * s, 6 * s, 16 * s, 36 * s, col, s);
@@ -479,15 +516,25 @@
 
       /* the top half, from the hips: thrown back by a hit */
       ctx.translate(0, -4 * s);
-      if (outDir) ctx.rotate(outDir * lean * 0.85);
+      if (outDir) ctx.rotate(outDir * lean * 1.05);
       else {                                       // straight across: back and up
-        ctx.translate(0, -lean * 16 * s);
-        ctx.scale(1 - 0.18 * lean, 1 - 0.18 * lean);
-        ctx.rotate(lean * 0.2);
+        ctx.translate(0, -lean * 22 * s);
+        ctx.scale(1 - 0.2 * lean, 1 - 0.2 * lean);
+        ctx.rotate(lean * 0.25);
       }
       block(-20 * s, -54 * s, 40 * s, 52 * s, col, s);                  // body
-      block(-32 * s, -52 * s, 12 * s, 42 * s, col, s);                  // arms
-      block(20 * s, -52 * s, 12 * s, 42 * s, col, s);
+      /* the arms: flung up and out by the hit, coming back down with them */
+      var fling = lean * 1.9;
+      ctx.save();
+      ctx.translate(-26 * s, -50 * s);
+      ctx.rotate(fling);
+      block(-6 * s, -2 * s, 12 * s, 42 * s, col, s);
+      ctx.restore();
+      ctx.save();
+      ctx.translate(26 * s, -50 * s);
+      ctx.rotate(-fling);
+      block(-6 * s, -2 * s, 12 * s, 42 * s, col, s);
+      ctx.restore();
       var hw = 38 * s, hy = -54 * s - hw - 3 * s;
       block(-hw / 2, hy, hw, hw, col, s);                               // head
       /* the cube's eyes: two white bars, looking your way - shut, out */
@@ -607,14 +654,25 @@
        turned round on yourself */
     function drawGun(ang, self, fired) {
       ctx.save();
-      ctx.translate(W / 2, H - 70);
+      ctx.translate(W / 2, H - 80);
+      /* a pool of light under it, so it stands out from the table */
+      var lg = ctx.createRadialGradient(0, -40, 10, 0, -40, 190);
+      lg.addColorStop(0, 'rgba(160,196,255,0.22)');
+      lg.addColorStop(1, 'rgba(160,196,255,0)');
+      ctx.fillStyle = lg;
+      ctx.beginPath();
+      ctx.arc(0, -40, 190, 0, Math.PI * 2);
+      ctx.fill();
       if (self) {
         ctx.translate(0, -50);
-        ctx.scale(1.5, 1.5);                         // coming at you
+        ctx.scale(1.7, 1.7);                         // coming at you
         ctx.rotate(Math.PI);
       } else {
+        ctx.scale(1.35, 1.35);                       // big, and in your hand
         ctx.rotate(ang);
       }
+      ctx.shadowColor = 'rgba(220,230,255,0.85)';    // a bright edge all round it
+      ctx.shadowBlur = 12;
       drawRevolver(fired);
       ctx.restore();
     }
@@ -659,7 +717,7 @@
          goes dark */
       var myLean = leanOf(me);
       var myFall = (!me.alive && S.phase === 'shot')
-        ? Math.min(1, Math.max(0, S.t - SHOT_AIM - KNOCK_BACK) / OUT_HOLD) : 0;
+        ? Math.min(1, Math.max(0, S.t - SHOT_AIM - KNOCK_BACK - KNOCK_HOLD) / OUT_FALL) : 0;
       ctx.save();
       /* blasted back from the table: everything goes further off, then
          slowly comes back */
@@ -743,7 +801,7 @@
 
     function aimAt(i) {
       var v = viewSpot(i);
-      return Math.atan2(v.x - W / 2, (H - 70) - (v.y - 45 * v.s));   // their chest
+      return Math.atan2(v.x - W / 2, (H - 80) - (v.y - 45 * v.s));   // their chest
     }
 
     /* the table from above, with the gun spinning in the middle */
