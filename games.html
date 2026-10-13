@@ -507,7 +507,8 @@
       </form>
       <p class="rv-msg"></p>
 
-      <div class="rv-list"></div>
+      <button type="button" class="rv-view">View others</button>
+      <div class="rv-list hidden"></div>
     </div>
   </div>
   <style>
@@ -566,6 +567,12 @@
     .rv-send:disabled { opacity: 0.5; cursor: default; }
     .rv-msg { min-height: 1.2em; margin: 0.4rem 0 0.2rem; font-size: 0.9rem; color: #ffd166; }
     .rv-off { color: #ffd166; margin-bottom: 0.8rem; }
+    .rv-view {
+      display: block; margin: 0.8rem auto 0; font: 700 0.85rem/1 sans-serif; letter-spacing: 1px;
+      color: #a0c4ff; background: none; border: 2px solid #3a4a78; border-radius: 8px;
+      padding: 0.55rem 1.1rem; cursor: pointer;
+    }
+    .rv-view:hover { border-color: #a0c4ff; color: #fff; }
     .rv-list { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.6rem; }
     .rv-empty { color: #8ea7d6; font-style: italic; }
     .rv-item { padding: 0.7rem 0.85rem; background: #0b1022; border: 1px solid #1d2b5c; border-radius: 10px; }

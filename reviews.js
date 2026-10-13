@@ -49,6 +49,13 @@
 
   function say(t) { msg.textContent = t; }
 
+  /* everyone else's (and yours), under "View others" */
+  var viewBtn = panel.querySelector('.rv-view');
+  viewBtn.addEventListener('click', function () {
+    var showing = list.classList.toggle('hidden') === false;
+    viewBtn.textContent = showing ? 'Hide others' : 'View others';
+  });
+
   /* ---- Firebase: loaded the first time the panel opens ---- */
   function load(src) {
     return new Promise(function (ok, fail) {
