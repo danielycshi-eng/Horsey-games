@@ -55,6 +55,10 @@
     var showing = list.classList.toggle('hidden') === false;
     viewBtn.textContent = showing ? 'Hide others' : 'View others';
   });
+  function showList() {
+    list.classList.remove('hidden');
+    viewBtn.textContent = 'Hide others';
+  }
 
   /* ---- Firebase: loaded the first time the panel opens ---- */
   function load(src) {
@@ -70,9 +74,8 @@
   function start() {
     if (started) return;
     started = true;
-    if (!FIREBASE_CONFIG) {
-      offNote.classList.remove('hidden');
-      for (var i = 0; i < forms.length; i++) forms[i].querySelector('.rv-send').disabled = true;
+    if (!FIREBASE_CONFIG) {              // (no Firebase: reviews just go on the page, below the form)
+      uid = 'me';
       draw();
       return;
     }
@@ -110,15 +113,26 @@
     var text = form.elements.text.value.trim();
     if (!name) { say('Write your name first.'); return; }
     if (!text) { say(tab === 'idea' ? 'Write your idea first.' : 'Write your comment first.'); return; }
-    if (!db || !uid) { say('Still connecting - try again in a moment.'); return; }
     var review = {
       kind: form.getAttribute('data-kind'),
       name: name.slice(0, 40),
       text: text.slice(0, 1000),
-      uid: uid,
-      at: firebase.firestore.FieldValue.serverTimestamp()
+      uid: uid
     };
     if (review.kind === 'comment') review.type = form.elements.type.value === 'complaint' ? 'complaint' : 'praise';
+    /* no Firebase: it just goes on the page, under the form */
+    if (!FIREBASE_CONFIG) {
+      review.id = 'r' + new Date().getTime();
+      review.at = null;
+      all.unshift(review);
+      form.elements.text.value = '';
+      say('Sent - thanks!');
+      showList();
+      draw();
+      return;
+    }
+    if (!db || !uid) { say('Still connecting - try again in a moment.'); return; }
+    review.at = firebase.firestore.FieldValue.serverTimestamp();
     var sendBtn = form.querySelector('.rv-send');
     sendBtn.disabled = true;
     db.collection(COLLECTION).add(review).then(function () {
@@ -131,8 +145,7 @@
 
   /* ---- the list: this tab's reviews, yours with a Delete ---- */
   function draw() {
-    if (!FIREBASE_CONFIG) { list.innerHTML = ''; return; }
-    if (!db) return;
+    if (FIREBASE_CONFIG && !db) return;
     list.innerHTML = '';
     var shown = 0;
     for (var i = 0; i < all.length; i++) {
@@ -176,6 +189,11 @@
       del.textContent = 'Delete';
       del.addEventListener('click', function () {
         if (!confirm('Delete this?')) return;
+        if (!FIREBASE_CONFIG) {
+          for (var k = 0; k < all.length; k++) if (all[k].id === r.id) { all.splice(k, 1); break; }
+          draw();
+          return;
+        }
         db.collection(COLLECTION).doc(r.id).delete().catch(function () { say('That didn\'t delete - try again.'); });
       });
       top.appendChild(del);
