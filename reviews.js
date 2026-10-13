@@ -6,8 +6,8 @@
    account, no password - and that's how it knows which reviews are yours
    to delete. Daniel can delete any of them from the Firebase console.
 
-   Until FIREBASE_CONFIG below is filled in, the panel just says reviews
-   aren't switched on yet. */
+   Until FIREBASE_CONFIG below is filled in, a review just goes on the
+   page, under the form, on the computer of whoever wrote it. */
 (function () {
   /* paste the config from Firebase here (Project settings > Your apps) */
   var FIREBASE_CONFIG = null;
