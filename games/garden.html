@@ -241,24 +241,14 @@
       return '<ellipse cx="' + x + '" cy="' + y + '" rx="3.6" ry="6" transform="rotate(' + rot + ' ' + x + ' ' + y + ')" fill="' + fill + '" stroke="' + edge + '" stroke-width="0.7"/>';
     }
     /* A wheat head: pairs of grains down a short spike, one on top. */
-    function head(cx, top, rows, fill, edge, awnColor, anthers) {
+    function head(cx, top, rows, fill, edge, anthers) {
       var s = '', i, y;
-      if (awnColor) {
-        for (i = 0; i < rows; i++) {
-          y = top + 8 + i * 6;
-          s += '<path d="M' + (cx - 5) + ' ' + (y - 3) + ' L' + (cx - 15) + ' ' + (y - 20) +
-               ' M' + (cx + 5) + ' ' + (y - 3) + ' L' + (cx + 15) + ' ' + (y - 20) +
-               '" stroke="' + awnColor + '" stroke-width="0.7" opacity="0.85"/>';
-        }
-        s += '<path d="M' + cx + ' ' + top + ' L' + cx + ' ' + (top - 16) + '" stroke="' + awnColor + '" stroke-width="0.7" opacity="0.85"/>';
-      }
       for (i = rows - 1; i >= 0; i--) {
         y = top + 8 + i * 6;
         s += grain(cx - 3.6, y, -24, fill, edge) + grain(cx + 3.6, y, 24, fill, edge);
         if (anthers && i % 2 === 0) {
-          s += '<path d="M' + (cx - 7) + ' ' + y + ' l-3 3 M' + (cx + 7) + ' ' + (y + 2) + ' l3 3" stroke="#e8e2b0" stroke-width="0.5"/>' +
-               '<rect x="' + (cx - 12) + '" y="' + (y + 2.5) + '" width="2.2" height="3.5" rx="1" fill="#f1e58a"/>' +
-               '<rect x="' + (cx + 9.5) + '" y="' + (y + 4.5) + '" width="2.2" height="3.5" rx="1" fill="#f1e58a"/>';
+          s += '<rect x="' + (cx - 9.6) + '" y="' + (y + 1) + '" width="2.2" height="3.5" rx="1" fill="#f1e58a"/>' +
+               '<rect x="' + (cx + 7.4) + '" y="' + (y + 2) + '" width="2.2" height="3.5" rx="1" fill="#f1e58a"/>';
         }
       }
       s += grain(cx, top + 3, 0, fill, edge);
@@ -278,18 +268,18 @@
           leaf('M45 76 Q30 64 20 46 Q34 60 46 72 Z', 'url(#gLeaf)') +
           leaf('M45.5 64 Q60 54 70 38 Q58 56 46 68 Z', 'url(#gLeafLight)') +
           leaf('M45 50 Q35 44 28 32 Q38 43 45.5 53 Z', 'url(#gLeaf)') +
-          head(45, 8, 4, 'url(#gGreenGrain)', '#3f6a1c', null, true)),
+          head(45, 8, 4, 'url(#gGreenGrain)', '#3f6a1c', true)),
       // mature: golden, heavy head with awns
       svg('<path d="M45 81 Q47 52 45 30" stroke="url(#gStraw)" stroke-width="2.6" fill="none" stroke-linecap="round"/>' +
           leaf('M45 74 Q32 66 24 54 Q35 63 46 70 Z', 'url(#gDryLeaf)') +
           leaf('M45.5 60 Q58 54 66 44 Q57 56 46 64 Z', 'url(#gDryLeaf)') +
-          head(45, 8, 4, 'url(#gGold)', '#8a5f1a', '#e9cf7a', false))
+          head(45, 8, 4, 'url(#gGold)', '#8a5f1a', false))
     ];
     // dead: brown stalk bent over, head drooping
     var DEAD_SVG = svg('<path d="M45 81 Q47 52 54 40 Q60 32 66 40" stroke="#6e5a3a" stroke-width="2.6" fill="none" stroke-linecap="round"/>' +
       leaf('M45 76 Q34 74 26 80 Q35 72 46 72 Z', '#5a4a30') +
       leaf('M46 62 Q56 66 62 76 Q54 64 46.5 59 Z', '#5a4a30') +
-      '<g transform="rotate(160 66 40) translate(21 5)">' + head(45, 8, 4, 'url(#gDead)', '#3a2e1c', null, false) + '</g>');
+      '<g transform="rotate(160 66 40) translate(21 5)">' + head(45, 8, 4, 'url(#gDead)', '#3a2e1c', false) + '</g>');
 
     var gridEl = document.getElementById('grid');
     var tileEls = [];

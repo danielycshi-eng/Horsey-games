@@ -28,7 +28,7 @@
     unnamed:               'UNDEFINED',
     risk:                  'BANG',
     password:              'THXNEIL',
-    garden:                'THXORTIEL'
+    garden:                'THXORTEIL'
   };
 
   var LABELS = {
