@@ -106,8 +106,6 @@
     <div class="seed" id="seed-wheat" data-kind="wheat">
       <svg width="44" height="44" viewBox="0 0 44 44">
         <ellipse cx="22" cy="24" rx="9" ry="13" fill="#1a1608" stroke="#ffd166" stroke-width="2.5"/>
-        <rect x="17" y="20" width="3" height="5" fill="#fff"/>
-        <rect x="24" y="20" width="3" height="5" fill="#fff"/>
       </svg>
       <div class="label">Wheat</div>
     </div>
@@ -217,15 +215,15 @@
     /* ---- drawing ---- */
     var STAGE_SVG = [
       // seed
-      '<svg width="90" height="90" viewBox="0 0 90 90"><ellipse cx="45" cy="62" rx="9" ry="12" fill="#1a1608" stroke="#ffd166" stroke-width="3"/><rect x="40" y="58" width="3" height="5" fill="#fff"/><rect x="47" y="58" width="3" height="5" fill="#fff"/></svg>',
+      '<svg width="90" height="90" viewBox="0 0 90 90"><ellipse cx="45" cy="62" rx="9" ry="12" fill="#1a1608" stroke="#ffd166" stroke-width="3"/></svg>',
       // sprout
       '<svg width="90" height="90" viewBox="0 0 90 90"><line x1="45" y1="78" x2="45" y2="48" stroke="#7bffb2" stroke-width="4" stroke-linecap="round"/><ellipse cx="35" cy="48" rx="10" ry="5" fill="#0b1a10" stroke="#7bffb2" stroke-width="3" transform="rotate(-25 35 48)"/><ellipse cx="55" cy="48" rx="10" ry="5" fill="#0b1a10" stroke="#7bffb2" stroke-width="3" transform="rotate(25 55 48)"/></svg>',
       // bloom
-      '<svg width="90" height="90" viewBox="0 0 90 90"><line x1="45" y1="82" x2="45" y2="30" stroke="#7bffb2" stroke-width="4" stroke-linecap="round"/><ellipse cx="34" cy="60" rx="11" ry="5" fill="#0b1a10" stroke="#7bffb2" stroke-width="3" transform="rotate(-30 34 60)"/><ellipse cx="56" cy="52" rx="11" ry="5" fill="#0b1a10" stroke="#7bffb2" stroke-width="3" transform="rotate(30 56 52)"/><circle cx="45" cy="24" r="10" fill="#1a0b1a" stroke="#ff9ff3" stroke-width="3"/><rect x="40" y="21" width="3" height="5" fill="#fff"/><rect x="47" y="21" width="3" height="5" fill="#fff"/></svg>',
+      '<svg width="90" height="90" viewBox="0 0 90 90"><line x1="45" y1="82" x2="45" y2="30" stroke="#7bffb2" stroke-width="4" stroke-linecap="round"/><ellipse cx="34" cy="60" rx="11" ry="5" fill="#0b1a10" stroke="#7bffb2" stroke-width="3" transform="rotate(-30 34 60)"/><ellipse cx="56" cy="52" rx="11" ry="5" fill="#0b1a10" stroke="#7bffb2" stroke-width="3" transform="rotate(30 56 52)"/><circle cx="45" cy="24" r="10" fill="#1a0b1a" stroke="#ff9ff3" stroke-width="3"/></svg>',
       // mature
-      '<svg width="90" height="90" viewBox="0 0 90 90"><line x1="45" y1="84" x2="45" y2="22" stroke="#c9a640" stroke-width="4" stroke-linecap="round"/><g fill="#1a1608" stroke="#ffd166" stroke-width="2.5"><ellipse cx="38" cy="22" rx="5" ry="8" transform="rotate(-20 38 22)"/><ellipse cx="52" cy="22" rx="5" ry="8" transform="rotate(20 52 22)"/><ellipse cx="38" cy="36" rx="5" ry="8" transform="rotate(-20 38 36)"/><ellipse cx="52" cy="36" rx="5" ry="8" transform="rotate(20 52 36)"/><ellipse cx="45" cy="12" rx="5" ry="8"/></g><rect x="40" y="10" width="2" height="4" fill="#fff"/><rect x="47" y="10" width="2" height="4" fill="#fff"/></svg>'
+      '<svg width="90" height="90" viewBox="0 0 90 90"><line x1="45" y1="84" x2="45" y2="22" stroke="#c9a640" stroke-width="4" stroke-linecap="round"/><g fill="#1a1608" stroke="#ffd166" stroke-width="2.5"><ellipse cx="38" cy="22" rx="5" ry="8" transform="rotate(-20 38 22)"/><ellipse cx="52" cy="22" rx="5" ry="8" transform="rotate(20 52 22)"/><ellipse cx="38" cy="36" rx="5" ry="8" transform="rotate(-20 38 36)"/><ellipse cx="52" cy="36" rx="5" ry="8" transform="rotate(20 52 36)"/><ellipse cx="45" cy="12" rx="5" ry="8"/></g></svg>'
     ];
-    var DEAD_SVG = '<svg width="90" height="90" viewBox="0 0 90 90"><path d="M45 84 L45 52 Q45 36 62 38" stroke="#6b6b6b" stroke-width="4" fill="none" stroke-linecap="round"/><ellipse cx="64" cy="44" rx="6" ry="9" fill="#1a1a1a" stroke="#6b6b6b" stroke-width="2.5" transform="rotate(30 64 44)"/><path d="M58 40 l4 4 M62 40 l-4 4 M64 46 l4 4 M68 46 l-4 4" stroke="#bbb" stroke-width="1.5"/></svg>';
+    var DEAD_SVG = '<svg width="90" height="90" viewBox="0 0 90 90"><path d="M45 84 L45 52 Q45 36 62 38" stroke="#6b6b6b" stroke-width="4" fill="none" stroke-linecap="round"/><ellipse cx="64" cy="44" rx="6" ry="9" fill="#1a1a1a" stroke="#6b6b6b" stroke-width="2.5" transform="rotate(30 64 44)"/></svg>';
 
     var gridEl = document.getElementById('grid');
     var tileEls = [];
