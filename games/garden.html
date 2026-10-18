@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Garden - Horsey Games</title>
+  <link rel="stylesheet" href="../style.css">
+  <script src="../gate.js" data-gate="garden"></script>
+  <style>
+    body {
+      overflow: hidden;
+      user-select: none;
+      background-color: #4a3020;
+      background-image:
+        radial-gradient(circle at 20% 30%, rgba(0,0,0,0.18) 0 2px, transparent 3px),
+        radial-gradient(circle at 70% 60%, rgba(0,0,0,0.15) 0 1.5px, transparent 2.5px),
+        radial-gradient(circle at 45% 85%, rgba(255,220,170,0.07) 0 2px, transparent 3px),
+        radial-gradient(ellipse at center, #5a3a26 0%, #3a2416 100%);
+      background-size: 38px 38px, 27px 27px, 51px 51px, 100% 100%;
+    }
+
+    .money {
+      position: fixed; top: 1rem; right: 1.5rem;
+      font-size: 1.6rem; font-weight: bold;
+      color: #7bffb2; text-shadow: 0 0 12px rgba(123,255,178,0.6);
+      background: rgba(5,7,15,0.6); border: 2px solid #7bffb2;
+      border-radius: 10px; padding: 0.3rem 0.9rem;
+    }
+
+    .seeds {
+      position: fixed; left: 1.2rem; top: 50%; transform: translateY(-50%);
+      display: flex; flex-direction: column; gap: 0.8rem;
+      background: rgba(5,7,15,0.55); border: 2px solid #3a2a1c;
+      border-radius: 14px; padding: 0.8rem;
+    }
+    .seeds h2 { font-size: 0.85rem; letter-spacing: 3px; color: #e8d3b0; text-align: center; }
+    .seed {
+      width: 84px; height: 84px; border-radius: 12px;
+      background: #0b0f1a; border: 2px solid #ffd166;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      cursor: pointer; transition: transform 0.1s, box-shadow 0.15s;
+    }
+    .seed:hover { transform: scale(1.05); }
+    .seed.selected { box-shadow: 0 0 18px #ffd166; background: #1a1608; }
+    .seed .label { font-size: 0.75rem; color: #ffd166; margin-top: 2px; }
+
+    .center { display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+    .grid {
+      display: grid; grid-template-columns: repeat(2, 130px); gap: 12px;
+    }
+    .tile {
+      width: 130px; height: 130px; border-radius: 12px;
+      background: #2a1a10; border: 3px solid #1a0f08;
+      box-shadow: inset 0 0 18px rgba(0,0,0,0.6);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: border-color 0.15s;
+      position: relative;
+    }
+    .tile:hover { border-color: #e8d3b0; }
+    .tile.mature { border-color: #ffd166; box-shadow: inset 0 0 18px rgba(0,0,0,0.6), 0 0 14px rgba(255,209,102,0.5); }
+    .frozen .tile { background: #1d3a4a; border-color: #8fdcff; }
+    .frozen .tile::after {
+      content: ''; position: absolute; inset: 0; border-radius: 9px;
+      background: rgba(143,220,255,0.18); pointer-events: none;
+    }
+
+    .bar-row { display: flex; gap: 0.8rem; align-items: center; }
+    .clock { color: #e8d3b0; font-size: 0.95rem; min-width: 150px; text-align: right; }
+    .freeze {
+      padding: 0.5rem 1.1rem; font-size: 0.95rem; border-radius: 10px; cursor: pointer;
+      background: #0b0f1a; color: #8fdcff; border: 2px solid #8fdcff;
+    }
+    .freeze:hover { background: #12202e; }
+    .freeze.on { background: #8fdcff; color: #05070f; }
+
+    .tip {
+      position: fixed; z-index: 20; pointer-events: none;
+      background: rgba(5,7,15,0.92); border: 2px solid #e8d3b0; border-radius: 10px;
+      padding: 0.6rem 0.8rem; min-width: 170px; font-size: 0.9rem; line-height: 1.45;
+    }
+    .tip.hidden { display: none; }
+    .tip .t-name { font-weight: bold; font-size: 1rem; color: #ffd166; }
+    .tip .t-bar { height: 10px; border-radius: 5px; background: #222a3a; margin: 4px 0; overflow: hidden; }
+    .tip .t-fill { height: 100%; border-radius: 5px; }
+
+    .msg { color: #ff8fa3; min-height: 1.2em; font-size: 0.95rem; }
+
+    .start {
+      position: fixed; inset: 0; z-index: 30;
+      background: rgba(5,7,15,0.85);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem;
+    }
+    .start.hidden { display: none; }
+    .start h1 { color: #7bffb2; text-shadow: 0 0 20px rgba(123,255,178,0.5); }
+    .start .btn.hidden { display: none; }
+    .admin { color: #a0c4ff; font-size: 0.95rem; cursor: pointer; }
+    .admin input { margin-right: 0.4rem; }
+  </style>
+</head>
+<body>
+  <a href="../games.html" class="back-link">&larr; All Games</a>
+  <div class="money" id="money">$0</div>
+
+  <div class="seeds">
+    <h2>SEEDS</h2>
+    <div class="seed" id="seed-wheat" data-kind="wheat">
+      <svg width="44" height="44" viewBox="0 0 44 44">
+        <ellipse cx="22" cy="24" rx="9" ry="13" fill="#1a1608" stroke="#ffd166" stroke-width="2.5"/>
+        <rect x="17" y="20" width="3" height="5" fill="#fff"/>
+        <rect x="24" y="20" width="3" height="5" fill="#fff"/>
+      </svg>
+      <div class="label">Wheat</div>
+    </div>
+  </div>
+
+  <div class="center" id="garden">
+    <div class="grid" id="grid"></div>
+    <div class="bar-row">
+      <div class="clock" id="clock"></div>
+      <button class="freeze" id="freeze">Freeze Garden</button>
+    </div>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <div class="tip hidden" id="tip"></div>
+
+  <div class="start" id="start">
+    <h1>Garden</h1>
+    <button class="btn hidden" id="continueBtn">Continue</button>
+    <button class="btn" id="newBtn">New Game</button>
+    <label class="admin"><input type="checkbox" id="adminBox">Admin (1 tick = 1 second)</label>
+  </div>
+
+  <script>
+  (function () {
+    var SAVE_KEY = 'garden_save';
+    var GRID = 2;
+    var START_MONEY = 10;
+
+    /* Every plant kind. stages = the age (in ticks) each stage starts at. */
+    var PLANTS = {
+      wheat: {
+        name: 'Wheat', cost: 5, sell: 10, life: 17,
+        stages: [0, 1, 3, 5],
+        stageNames: ['Seed', 'Sprout', 'Bloom', 'Mature']
+      }
+    };
+
+    var state = null;
+    var hoverTile = -1, hoverSeed = null;
+    var selected = 'wheat';
+    var msgTimer = null;
+
+    function tickMs() { return state && state.admin ? 1000 : 60000; }
+
+    function fresh(admin) {
+      var tiles = [];
+      for (var i = 0; i < GRID * GRID; i++) tiles.push(null);
+      return { money: START_MONEY, tiles: tiles, clock: 0, frozen: false, admin: admin, lastSeen: Date.now() };
+    }
+
+    function save() {
+      if (!state) return;
+      state.lastSeen = Date.now();
+      try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); } catch (e) {}
+    }
+    function load() {
+      try {
+        var s = JSON.parse(localStorage.getItem(SAVE_KEY));
+        if (s && s.tiles) return s;
+      } catch (e) {}
+      return null;
+    }
+
+    /* ---- plant helpers ---- */
+    function stageOf(t) {
+      var p = PLANTS[t.kind];
+      if (t.age >= p.life) return -1; // dead
+      var s = 0;
+      for (var i = 0; i < p.stages.length; i++) if (t.age >= p.stages[i]) s = i;
+      return s;
+    }
+    function matureAt(p) { return p.stages[p.stages.length - 1]; }
+    function isMature(t) { var s = stageOf(t); return s === PLANTS[t.kind].stages.length - 1; }
+
+    function mix(a, b, f) {
+      var r = Math.round(a[0] + (b[0] - a[0]) * f);
+      var g = Math.round(a[1] + (b[1] - a[1]) * f);
+      var bl = Math.round(a[2] + (b[2] - a[2]) * f);
+      return 'rgb(' + r + ',' + g + ',' + bl + ')';
+    }
+    /* White getting bluer while growing, then green, yellow, red. */
+    function barColor(t, age) {
+      var p = PLANTS[t.kind], m = matureAt(p);
+      if (age < m) return mix([255, 255, 255], [59, 130, 246], age / m);
+      var third = (p.life - m) / 3;
+      if (age < m + third) return '#22c55e';
+      if (age < m + third * 2) return '#eab308';
+      return '#ef4444';
+    }
+
+    /* ---- time ---- */
+    function doTick() {
+      for (var i = 0; i < state.tiles.length; i++) {
+        var t = state.tiles[i];
+        if (t && t.age < PLANTS[t.kind].life) t.age++;
+      }
+    }
+    function advance(dt) {
+      if (state.frozen || dt <= 0) return;
+      state.clock += dt;
+      var n = 0, ms = tickMs();
+      while (state.clock >= ms && n < 1000) { state.clock -= ms; doTick(); n++; }
+      if (state.clock >= ms) state.clock = state.clock % ms;
+    }
+
+    /* ---- drawing ---- */
+    var STAGE_SVG = [
+      // seed
+      '<svg width="90" height="90" viewBox="0 0 90 90"><ellipse cx="45" cy="62" rx="9" ry="12" fill="#1a1608" stroke="#ffd166" stroke-width="3"/><rect x="40" y="58" width="3" height="5" fill="#fff"/><rect x="47" y="58" width="3" height="5" fill="#fff"/></svg>',
+      // sprout
+      '<svg width="90" height="90" viewBox="0 0 90 90"><line x1="45" y1="78" x2="45" y2="48" stroke="#7bffb2" stroke-width="4" stroke-linecap="round"/><ellipse cx="35" cy="48" rx="10" ry="5" fill="#0b1a10" stroke="#7bffb2" stroke-width="3" transform="rotate(-25 35 48)"/><ellipse cx="55" cy="48" rx="10" ry="5" fill="#0b1a10" stroke="#7bffb2" stroke-width="3" transform="rotate(25 55 48)"/></svg>',
+      // bloom
+      '<svg width="90" height="90" viewBox="0 0 90 90"><line x1="45" y1="82" x2="45" y2="30" stroke="#7bffb2" stroke-width="4" stroke-linecap="round"/><ellipse cx="34" cy="60" rx="11" ry="5" fill="#0b1a10" stroke="#7bffb2" stroke-width="3" transform="rotate(-30 34 60)"/><ellipse cx="56" cy="52" rx="11" ry="5" fill="#0b1a10" stroke="#7bffb2" stroke-width="3" transform="rotate(30 56 52)"/><circle cx="45" cy="24" r="10" fill="#1a0b1a" stroke="#ff9ff3" stroke-width="3"/><rect x="40" y="21" width="3" height="5" fill="#fff"/><rect x="47" y="21" width="3" height="5" fill="#fff"/></svg>',
+      // mature
+      '<svg width="90" height="90" viewBox="0 0 90 90"><line x1="45" y1="84" x2="45" y2="22" stroke="#c9a640" stroke-width="4" stroke-linecap="round"/><g fill="#1a1608" stroke="#ffd166" stroke-width="2.5"><ellipse cx="38" cy="22" rx="5" ry="8" transform="rotate(-20 38 22)"/><ellipse cx="52" cy="22" rx="5" ry="8" transform="rotate(20 52 22)"/><ellipse cx="38" cy="36" rx="5" ry="8" transform="rotate(-20 38 36)"/><ellipse cx="52" cy="36" rx="5" ry="8" transform="rotate(20 52 36)"/><ellipse cx="45" cy="12" rx="5" ry="8"/></g><rect x="40" y="10" width="2" height="4" fill="#fff"/><rect x="47" y="10" width="2" height="4" fill="#fff"/></svg>'
+    ];
+    var DEAD_SVG = '<svg width="90" height="90" viewBox="0 0 90 90"><path d="M45 84 L45 52 Q45 36 62 38" stroke="#6b6b6b" stroke-width="4" fill="none" stroke-linecap="round"/><ellipse cx="64" cy="44" rx="6" ry="9" fill="#1a1a1a" stroke="#6b6b6b" stroke-width="2.5" transform="rotate(30 64 44)"/><path d="M58 40 l4 4 M62 40 l-4 4 M64 46 l4 4 M68 46 l-4 4" stroke="#bbb" stroke-width="1.5"/></svg>';
+
+    var gridEl = document.getElementById('grid');
+    var tileEls = [];
+    var lastDrawn = [];
+    for (var i = 0; i < GRID * GRID; i++) {
+      var d = document.createElement('div');
+      d.className = 'tile';
+      (function (idx) {
+        d.addEventListener('click', function () { clickTile(idx); });
+        d.addEventListener('mouseenter', function () { hoverTile = idx; });
+        d.addEventListener('mouseleave', function () { if (hoverTile === idx) hoverTile = -1; });
+      })(i);
+      gridEl.appendChild(d);
+      tileEls.push(d);
+      lastDrawn.push(null);
+    }
+
+    var tip = document.getElementById('tip');
+    var mouseX = 0, mouseY = 0;
+    document.addEventListener('mousemove', function (e) { mouseX = e.clientX; mouseY = e.clientY; placeTip(); });
+    function placeTip() {
+      var x = mouseX + 16, y = mouseY + 16;
+      var w = tip.offsetWidth, h = tip.offsetHeight;
+      if (x + w > window.innerWidth - 8) x = mouseX - w - 12;
+      if (y + h > window.innerHeight - 8) y = mouseY - h - 12;
+      tip.style.left = x + 'px';
+      tip.style.top = y + 'px';
+    }
+
+    var seedEl = document.getElementById('seed-wheat');
+    seedEl.addEventListener('mouseenter', function () { hoverSeed = 'wheat'; });
+    seedEl.addEventListener('mouseleave', function () { hoverSeed = null; });
+    seedEl.addEventListener('click', function () {
+      selected = selected === 'wheat' ? null : 'wheat';
+      render();
+    });
+
+    function render() {
+      document.getElementById('money').textContent = '$' + state.money;
+      seedEl.classList.toggle('selected', selected === 'wheat');
+      document.getElementById('garden').classList.toggle('frozen', state.frozen);
+      var fb = document.getElementById('freeze');
+      fb.textContent = state.frozen ? 'Unfreeze Garden' : 'Freeze Garden';
+      fb.classList.toggle('on', state.frozen);
+
+      var left = Math.ceil((tickMs() - state.clock) / 1000);
+      document.getElementById('clock').textContent =
+        state.frozen ? 'Frozen' : 'Next tick in ' + left + 's';
+
+      for (var i = 0; i < tileEls.length; i++) {
+        var t = state.tiles[i], key = t ? t.kind + ':' + stageOf(t) : '';
+        if (key !== lastDrawn[i]) {
+          var s = t ? stageOf(t) : null;
+          tileEls[i].innerHTML = !t ? '' : (s < 0 ? DEAD_SVG : STAGE_SVG[s]);
+          lastDrawn[i] = key;
+        }
+        tileEls[i].classList.toggle('mature', !!t && isMature(t));
+      }
+      renderTip();
+    }
+
+    function renderTip() {
+      var html = '';
+      if (hoverSeed) {
+        var p = PLANTS[hoverSeed];
+        html = '<div class="t-name">' + p.name + ' seed</div>' +
+          'Price: $' + p.cost + '<br>' +
+          'Matures in: ' + matureAt(p) + ' ticks<br>' +
+          'Lifetime: ' + p.life + ' ticks';
+      } else if (hoverTile >= 0 && state.tiles[hoverTile]) {
+        var t = state.tiles[hoverTile], q = PLANTS[t.kind], s = stageOf(t);
+        if (s < 0) {
+          html = '<div class="t-name">' + q.name + '</div>Stage: Dead<br>Click to clear';
+        } else {
+          var age = t.age + (state.clock / tickMs());
+          var m = matureAt(q);
+          html = '<div class="t-name">' + q.name + '</div>' +
+            'Stage: ' + q.stageNames[s] +
+            '<div class="t-bar"><div class="t-fill" style="width:' +
+              Math.min(100, age / q.life * 100).toFixed(1) + '%;background:' + barColor(t, t.age) + '"></div></div>' +
+            (t.age < m ? 'Mature in: ' + (m - t.age) + ' ticks' : 'Mature! Click to sell ($' + q.sell + ')') + '<br>' +
+            'Life left: ' + (q.life - t.age) + ' ticks';
+        }
+      }
+      if (html) {
+        tip.innerHTML = html;
+        tip.classList.remove('hidden');
+        placeTip();
+      } else {
+        tip.classList.add('hidden');
+      }
+    }
+
+    function say(text) {
+      var m = document.getElementById('msg');
+      m.textContent = text;
+      clearTimeout(msgTimer);
+      msgTimer = setTimeout(function () { m.textContent = ''; }, 2000);
+    }
+
+    function clickTile(i) {
+      var t = state.tiles[i];
+      if (!t) {
+        if (!selected) { say('Pick a seed on the left first'); return; }
+        var p = PLANTS[selected];
+        if (state.money < p.cost) { say('Not enough money ($' + p.cost + ' needed)'); return; }
+        state.money -= p.cost;
+        state.tiles[i] = { kind: selected, age: 0 };
+      } else if (stageOf(t) < 0) {
+        state.tiles[i] = null;
+      } else if (isMature(t)) {
+        state.money += PLANTS[t.kind].sell;
+        state.tiles[i] = null;
+      } else {
+        say('Not mature yet');
+        return;
+      }
+      save();
+      render();
+    }
+
+    document.getElementById('freeze').addEventListener('click', function () {
+      state.frozen = !state.frozen;
+      save();
+      render();
+    });
+
+    /* ---- loop: time keeps running even while you're away ---- */
+    var last = 0;
+    function loop() {
+      var now = Date.now();
+      advance(now - last);
+      last = now;
+      render();
+    }
+
+    function begin(s) {
+      state = s;
+      /* catch up on the time you were gone (unless frozen) */
+      last = state.lastSeen || Date.now();
+      document.getElementById('start').classList.add('hidden');
+      loop();
+      save();
+      setInterval(function () { loop(); save(); }, 250);
+    }
+
+    var saved = load();
+    var adminBox = document.getElementById('adminBox');
+    if (saved) {
+      document.getElementById('continueBtn').classList.remove('hidden');
+      adminBox.checked = !!saved.admin;
+    }
+    document.getElementById('continueBtn').addEventListener('click', function () {
+      saved.admin = adminBox.checked;
+      begin(saved);
+    });
+    document.getElementById('newBtn').addEventListener('click', function () {
+      begin(fresh(adminBox.checked));
+    });
+    window.addEventListener('pagehide', save);
+  })();
+  </script>
+</body>
+</html>

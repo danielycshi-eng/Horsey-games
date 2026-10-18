@@ -27,7 +27,8 @@
     shapes:                'TRIANGLE',
     unnamed:               'UNDEFINED',
     risk:                  'BANG',
-    password:              'THXNEIL'
+    password:              'THXNEIL',
+    garden:                'THXORTIEL'
   };
 
   var LABELS = {
@@ -43,7 +44,8 @@
     shapes:                'Shapes',
     unnamed:               'A Platformer Game',
     risk:                  'Risk',
-    password:              'Choose a Password'
+    password:              'Choose a Password',
+    garden:                'Garden'
   };
 
   var script = document.currentScript;
