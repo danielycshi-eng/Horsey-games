@@ -162,6 +162,10 @@
       <radialGradient id="gRiceWhite" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#ffffff"/><stop offset="0.6" stop-color="#f4f0e4"/><stop offset="1" stop-color="#cfc6b0"/></radialGradient>
       <!-- fertilizer sack -->
       <linearGradient id="gSack" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#7a5a32"/><stop offset="0.5" stop-color="#c49a62"/><stop offset="1" stop-color="#6a4a26"/></linearGradient>
+      <!-- forteweed: green and red -->
+      <linearGradient id="gWeed" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#8a1e18"/><stop offset="0.45" stop-color="#3f7a26"/><stop offset="1" stop-color="#7ab83c"/></linearGradient>
+      <linearGradient id="gWeedLight" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#a8261e"/><stop offset="0.5" stop-color="#4f8f2e"/><stop offset="1" stop-color="#9ccf55"/></linearGradient>
+      <radialGradient id="gWeedRed" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#ff7a66"/><stop offset="0.6" stop-color="#d42a1e"/><stop offset="1" stop-color="#7a0f0a"/></radialGradient>
       <radialGradient id="gSoil" cx="50%" cy="20%" r="80%"><stop offset="0" stop-color="#6a4630"/><stop offset="1" stop-color="#2e1c10"/></radialGradient>
     </defs>
   </svg>
@@ -209,9 +213,17 @@
         stages: [0, 8, 15, 35],
         stageNames: ['Seed', 'Sprout', 'Bloom', 'Mature'],
         harvestBonus: 0.10
+      },
+      /* A weed: pops up on its own and overruns other plants. No effect. */
+      forteweed: {
+        name: 'Forteweed', cost: 15, sell: 0, life: 60, locked: true, weed: true,
+        stages: [0, 5],
+        stageNames: ['Seed', 'Mature']
       }
     };
-    var SEED_ORDER = ['wheat', 'corn', 'rice'];
+    var SEED_ORDER = ['wheat', 'corn', 'rice', 'forteweed'];
+    var WEED_SPAWN = 0.05;   // per tick, any empty tile: a Forteweed appears
+    var WEED_SPREAD = 0.25;  // per tick, any tile touching a Forteweed: it takes over (killing what's there)
     /* How much of a plant's effect works at each stage: Seed, Sprout, Bloom, Mature. */
     var EFFECT_BY_STAGE = [0.10, 0.25, 0.50, 1];
 
@@ -324,15 +336,18 @@
     /* ---- time ---- */
     function alive(t) { return !!t && t.age < PLANTS[t.kind].life; }
 
-    /* Living plants touching tile i (sides and corners). */
-    function neighbours(i) {
+    function isWeed(t) { return !!t && !!PLANTS[t.kind].weed; }
+
+    /* Living plants touching tile i (sides and corners). weeds: true for
+       the Forteweeds, false for everything else. */
+    function neighbours(i, weeds) {
       var C = cols(), out = [], r = Math.floor(i / C), c = i % C;
       for (var dr = -1; dr <= 1; dr++) for (var dc = -1; dc <= 1; dc++) {
         if (!dr && !dc) continue;
         var rr = r + dr, cc = c + dc;
         if (rr < 0 || cc < 0 || rr >= rows() || cc >= C) continue;
         var t = state.tiles[rr * C + cc];
-        if (alive(t)) out.push(t);
+        if (alive(t) && isWeed(t) === !!weeds) out.push(t);
       }
       return out;
     }
@@ -353,8 +368,13 @@
          can't help spread in the same tick. */
       var born = [];
       for (i = 0; i < state.tiles.length; i++) {
-        if (state.tiles[i] || state.ferts[i]) continue;  // fertilizer sits there until picked up
-        var near = neighbours(i);
+        if (state.ferts[i] || isWeed(state.tiles[i])) continue;  // fertilizer sits there until picked up
+        /* Forteweed creeps in from next door - even over a plant, killing it */
+        if (neighbours(i, true).length && Math.random() < WEED_SPREAD) { born.push([i, 'forteweed']); continue; }
+        if (state.tiles[i]) continue;
+        /* ...or just pops up out of the empty dirt */
+        if (Math.random() < WEED_SPAWN) { born.push([i, 'forteweed']); continue; }
+        var near = neighbours(i, false);
         if (near.length < 2) continue;
         var count = {}, k;
         for (k = 0; k < near.length; k++) count[near[k].kind] = (count[near[k].kind] || 0) + 1;
@@ -443,8 +463,52 @@
     var ART = {
       wheat: drawSet({ sfx: '', ripeEdge: '#8a5f1a', youngEdge: '#3f6a1c', crease: '#9a6c22', anther: '#f1e58a' }),
       corn: drawCorn(),
-      rice: drawRice()
+      rice: drawRice(),
+      forteweed: drawWeed()
     };
+
+    /* Forteweed: a sprawling, jagged green-and-red weed. Seed, then straight
+       to mature - which grows small red leaves. */
+    function drawWeed() {
+      /* a jagged leaf from the base out to (tx, ty) */
+      var jag = function (tx, ty, w, fill) {
+        var dx = tx - 45, dy = ty - 80, len = Math.sqrt(dx * dx + dy * dy);
+        var nx = -dy / len * w, ny = dx / len * w, s = 'M45 80', i, f, px, py, side = [];
+        for (i = 1; i <= 4; i++) {  // teeth up one side...
+          f = i / 5;
+          px = 45 + dx * f; py = 80 + dy * f;
+          s += ' L' + (px + nx * (1.4 - f * 0.6)).toFixed(1) + ' ' + (py + ny * (1.4 - f * 0.6)).toFixed(1) +
+               ' L' + (px + nx * 0.5 + dx * 0.06).toFixed(1) + ' ' + (py + ny * 0.5 + dy * 0.06).toFixed(1);
+          side.push([px, py, f]);
+        }
+        s += ' L' + tx + ' ' + ty;
+        for (i = side.length - 1; i >= 0; i--) {  // ...and back down the other
+          px = side[i][0]; py = side[i][1]; f = side[i][2];
+          s += ' L' + (px - nx * 0.5 + dx * 0.06).toFixed(1) + ' ' + (py - ny * 0.5 + dy * 0.06).toFixed(1) +
+               ' L' + (px - nx * (1.4 - f * 0.6)).toFixed(1) + ' ' + (py - ny * (1.4 - f * 0.6)).toFixed(1);
+        }
+        return '<path d="' + s + ' Z" fill="' + fill + '" stroke="#4a1a14" stroke-width="0.5"/>';
+      };
+      var redLeaf = function (x, y, rot) {
+        return '<ellipse cx="' + x + '" cy="' + y + '" rx="2.4" ry="4.2" transform="rotate(' + rot + ' ' + x + ' ' + y + ')" fill="url(#gWeedRed)" stroke="#5a0e0a" stroke-width="0.4"/>';
+      };
+      return {
+        stages: [
+          // seed: a small mottled green-red seed
+          svg('<ellipse cx="45" cy="77" rx="5" ry="6" fill="url(#gWeed)" stroke="#4a1a14" stroke-width="0.7"/>' +
+              '<ellipse cx="43.5" cy="75" rx="1.6" ry="2" fill="#d2483a" opacity="0.8"/>'),
+          // mature: a jagged rosette, red-veined, dotted with small red leaves
+          svg(jag(16, 58, 4, 'url(#gWeed)') + jag(74, 56, 4, 'url(#gWeed)') +
+              jag(26, 34, 4.4, 'url(#gWeedLight)') + jag(64, 32, 4.4, 'url(#gWeedLight)') +
+              jag(45, 18, 4.8, 'url(#gWeed)') +
+              redLeaf(28, 50, -50) + redLeaf(62, 48, 50) + redLeaf(36, 36, -25) + redLeaf(55, 34, 25) +
+              redLeaf(45, 26, 0) + redLeaf(22, 64, -70) + redLeaf(68, 62, 70))
+        ],
+        icon: '<svg width="44" height="44" viewBox="0 0 44 44">' +
+          '<ellipse cx="22" cy="23" rx="10" ry="12" fill="url(#gWeed)" stroke="#4a1a14" stroke-width="1"/>' +
+          '<ellipse cx="19" cy="19" rx="3" ry="4" fill="#d2483a" opacity="0.8"/></svg>'
+      };
+    }
 
     /* Rice: a clump of thin grassy blades; panicles of grains that start
        green and upright, then turn gold and droop under their weight. */
@@ -724,7 +788,7 @@
           'Stage: ' + q.stageNames[s] +
           '<div class="t-bar"><div class="t-fill" style="width:' +
             Math.min(100, age / q.life * 100).toFixed(1) + '%;background:' + barColor(t, t.age) + '"></div></div>' +
-          (t.age < m ? 'Mature in: ' + (m - t.age) + ' ticks' : 'Mature! Click to harvest ($' + harvestValue(hoverTile) + ')') + '<br>' +
+          (t.age < m ? 'Mature in: ' + (m - t.age) + ' ticks' : (harvestValue(hoverTile) ? 'Mature! Click to harvest ($' + harvestValue(hoverTile) + ')' : 'Mature! Click to pull it up')) + '<br>' +
           'Life left: ' + (q.life - t.age) + ' ticks' + effectText(q, t) +
           (isUnlocked(t.kind) ? '' : '<br>Harvest when ripe to get the seed!');
       }
