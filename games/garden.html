@@ -154,8 +154,8 @@
     var GRID = 2;
     var START_MONEY = 10;
 
-    var SPREAD_CHANCE = 0.10;  // per tick, for an empty tile next to 2+ plants
-    var MUTATE_CHANCE = 0.05;  // of those new plants, the chance it's a mutation
+    var SPREAD_CHANCE = 0.10;  // per tick, for an empty tile next to 2+ plants: grows the same plant
+    var MUTATE_CHANCE = 0.05;  // per tick, same tile: grows the mutation instead (on top of the 10%)
 
     /* Every plant kind. stages = the age (in ticks) each stage starts at.
        cost: bought with money. fromSeeds: only planted from harvested seeds.
@@ -263,10 +263,11 @@
       for (i = 0; i < state.tiles.length; i++) {
         if (state.tiles[i]) continue;
         var near = neighbours(i);
-        if (near.length < 2 || Math.random() >= SPREAD_CHANCE) continue;
+        if (near.length < 2) continue;
         var kind = near[Math.floor(Math.random() * near.length)].kind;
-        var into = PLANTS[kind].mutatesInto;
-        if (into && Math.random() < MUTATE_CHANCE) kind = into;
+        var into = PLANTS[kind].mutatesInto, roll = Math.random();
+        if (into && roll < MUTATE_CHANCE) kind = into;
+        else if (roll >= (into ? MUTATE_CHANCE : 0) + SPREAD_CHANCE) continue;
         born.push([i, kind]);
       }
       for (i = 0; i < born.length; i++) {
