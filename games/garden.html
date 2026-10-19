@@ -134,6 +134,13 @@
       <linearGradient id="gHusk" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#5f9a35"/><stop offset="0.5" stop-color="#a9d873"/><stop offset="1" stop-color="#4c8128"/></linearGradient>
       <radialGradient id="gKernel" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#fff2a8"/><stop offset="0.55" stop-color="#f6c83a"/><stop offset="1" stop-color="#c88d12"/></radialGradient>
       <radialGradient id="gTassel" cx="40%" cy="30%" r="80%"><stop offset="0" stop-color="#f4e1a0"/><stop offset="1" stop-color="#b08a3c"/></radialGradient>
+      <!-- rice -->
+      <linearGradient id="gRiceLeaf" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#2f6e2a"/><stop offset="1" stop-color="#86c95a"/></linearGradient>
+      <linearGradient id="gRiceLeafLight" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#3c7f30"/><stop offset="1" stop-color="#a6dc72"/></linearGradient>
+      <linearGradient id="gRiceLeafRipe" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#5f7a2a"/><stop offset="1" stop-color="#c9c26a"/></linearGradient>
+      <radialGradient id="gRiceGreen" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#d4ec9a"/><stop offset="1" stop-color="#6f9e36"/></radialGradient>
+      <radialGradient id="gRiceGold" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#fbeab0"/><stop offset="0.6" stop-color="#e2bd5c"/><stop offset="1" stop-color="#a8822c"/></radialGradient>
+      <radialGradient id="gRiceSeed" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#fffaf0"/><stop offset="0.6" stop-color="#efe3c2"/><stop offset="1" stop-color="#c9b68a"/></radialGradient>
       <radialGradient id="gSoil" cx="50%" cy="20%" r="80%"><stop offset="0" stop-color="#6a4630"/><stop offset="1" stop-color="#2e1c10"/></radialGradient>
     </defs>
   </svg>
@@ -144,28 +151,41 @@
     var GRID = 2;
     var START_MONEY = 10;
 
-    var SPREAD_CHANCE = 0.10;  // per tick, for an empty tile next to 2+ plants: grows the same plant
-    var MUTATE_CHANCE = 0.05;  // per tick, same tile: grows the mutation instead (on top of the 10%)
+    var SPREAD_CHANCE = 0.10;  // per tick, for an empty tile next to 2+ plants: grows one of them
+
+    /* Mutations: an empty tile touching these plants also gets this chance,
+       per tick, of growing the new plant instead (on top of the 10%). */
+    var MUTATIONS = [
+      { needs: { wheat: 2 },          into: 'corn', chance: 0.05 },
+      { needs: { wheat: 1, corn: 1 }, into: 'rice', chance: 0.05 }
+    ];
 
     /* Every plant kind. stages = the age (in ticks) each stage starts at.
        cost: bought with money. locked: not in your seeds until you harvest
-       one ripe - then it's unlocked forever (even after New Game).
-       mutatesInto: what a spread of this plant can turn into. */
+       one ripe - then it's yours until you Destroy Garden.
+       Effects (scaled by stage, see EFFECT_BY_STAGE):
+         tickCut      - the tick timer is this much shorter
+         harvestBonus - every other plant you harvest pays this much more */
     var PLANTS = {
       wheat: {
         name: 'Wheat', cost: 5, sell: 10, life: 17,
         stages: [0, 1, 3, 5],
-        stageNames: ['Seed', 'Sprout', 'Bloom', 'Mature'],
-        mutatesInto: 'corn'
+        stageNames: ['Seed', 'Sprout', 'Bloom', 'Mature']
       },
       corn: {
         name: 'Corn', cost: 25, sell: 65, life: 24, locked: true,
         stages: [0, 2, 5, 7],
         stageNames: ['Seed', 'Sprout', 'Bloom', 'Mature'],
-        tickCut: 0.25   // effect: the tick timer is 25% shorter (when mature)
+        tickCut: 0.25
+      },
+      rice: {
+        name: 'Rice', cost: 150, sell: 400, life: 72, locked: true,
+        stages: [0, 8, 15, 35],
+        stageNames: ['Seed', 'Sprout', 'Bloom', 'Mature'],
+        harvestBonus: 0.10
       }
     };
-    var SEED_ORDER = ['wheat', 'corn'];
+    var SEED_ORDER = ['wheat', 'corn', 'rice'];
     /* How much of a plant's effect works at each stage: Seed, Sprout, Bloom, Mature. */
     var EFFECT_BY_STAGE = [0.10, 0.25, 0.50, 1];
 
@@ -189,6 +209,30 @@
       return f;
     }
     function tickMs() { return (state && state.admin ? 1000 : 10000) * tickFactor(); }
+
+    /* The extra harvest money one planted plant gives right now. */
+    function plantBonus(t) {
+      var p = PLANTS[t.kind];
+      return p.harvestBonus ? p.harvestBonus * EFFECT_BY_STAGE[stageOf(t)] : 0;
+    }
+    /* What harvesting tile i pays: its price plus every OTHER plant's bonus
+       (two mature Rice: +20%). */
+    function harvestValue(i) {
+      var b = 0;
+      for (var j = 0; j < state.tiles.length; j++) {
+        if (j !== i && state.tiles[j]) b += plantBonus(state.tiles[j]);
+      }
+      return Math.round(PLANTS[state.tiles[i].kind].sell * (1 + b));
+    }
+    function pct(x) { return Math.round(x * 10000) / 100 + '%'; }
+    /* The effect line for a seed (full strength) or a planted plant (now). */
+    function effectText(p, t) {
+      var out = '';
+      if (p.tickCut) out += '<br>Effect: tick timer -' + pct(t ? plantCut(t) : p.tickCut);
+      if (p.harvestBonus) out += '<br>Effect: other harvests +' + pct(t ? plantBonus(t) : p.harvestBonus) + ' money';
+      if (out && !t) out += ' (less while growing)';
+      return out;
+    }
 
     function fresh(admin) {
       var tiles = [];
@@ -280,11 +324,19 @@
         if (state.tiles[i]) continue;
         var near = neighbours(i);
         if (near.length < 2) continue;
-        var kind = near[Math.floor(Math.random() * near.length)].kind;
-        var into = PLANTS[kind].mutatesInto, roll = Math.random();
-        if (into && roll < MUTATE_CHANCE) kind = into;
-        else if (roll >= (into ? MUTATE_CHANCE : 0) + SPREAD_CHANCE) continue;
-        born.push([i, kind]);
+        var count = {}, k;
+        for (k = 0; k < near.length; k++) count[near[k].kind] = (count[near[k].kind] || 0) + 1;
+        /* one roll: each mutation that fits gets its slice, then the 10% spread */
+        var roll = Math.random(), edge = 0, kind = null;
+        for (k = 0; k < MUTATIONS.length && !kind; k++) {
+          var mu = MUTATIONS[k], fits = true;
+          for (var need in mu.needs) if ((count[need] || 0) < mu.needs[need]) fits = false;
+          if (!fits) continue;
+          edge += mu.chance;
+          if (roll < edge) kind = mu.into;
+        }
+        if (!kind && roll < edge + SPREAD_CHANCE) kind = near[Math.floor(Math.random() * near.length)].kind;
+        if (kind) born.push([i, kind]);
       }
       for (i = 0; i < born.length; i++) {
         state.tiles[born[i][0]] = { kind: born[i][1], age: 0 };
@@ -358,8 +410,59 @@
     }
     var ART = {
       wheat: drawSet({ sfx: '', ripeEdge: '#8a5f1a', youngEdge: '#3f6a1c', crease: '#9a6c22', anther: '#f1e58a' }),
-      corn: drawCorn()
+      corn: drawCorn(),
+      rice: drawRice()
     };
+
+    /* Rice: a clump of thin grassy blades; panicles of grains that start
+       green and upright, then turn gold and droop under their weight. */
+    function drawRice() {
+      var blade = function (x0, tx, ty, w, fill) {
+        var mx = (x0 + tx) / 2, my = (82 + ty) / 2;
+        return '<path d="M' + (x0 - w) + ' 82 Q' + (mx - w) + ' ' + my + ' ' + tx + ' ' + ty +
+               ' Q' + (mx + w) + ' ' + my + ' ' + (x0 + w) + ' 82 Z" fill="' + fill + '" stroke="rgba(0,0,0,0.2)" stroke-width="0.4"/>';
+      };
+      var clump = function (tips, w, a, b) {
+        var s = '';
+        for (var i = 0; i < tips.length; i++) s += blade(45 + tips[i][2], tips[i][0], tips[i][1], w, i % 2 ? a : b);
+        return s;
+      };
+      /* grains along a curve from (x0,y0) bending through (cx,cy) to (x1,y1) */
+      var panicle = function (x0, y0, cx, cy, x1, y1, n, fill, edge, stem) {
+        var s = '<path d="M' + x0 + ' ' + y0 + ' Q' + cx + ' ' + cy + ' ' + x1 + ' ' + y1 + '" stroke="' + stem + '" stroke-width="1.3" fill="none"/>';
+        for (var i = 1; i <= n; i++) {
+          var t = 0.25 + 0.75 * i / n, u = 1 - t;
+          var x = u * u * x0 + 2 * u * t * cx + t * t * x1;
+          var y = u * u * y0 + 2 * u * t * cy + t * t * y1;
+          var dx = 2 * u * (cx - x0) + 2 * t * (x1 - cx), dy = 2 * u * (cy - y0) + 2 * t * (y1 - cy);
+          var ang = Math.atan2(dy, dx) * 180 / Math.PI - 90 + (i % 2 ? 28 : -28);
+          s += '<ellipse cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" rx="1.7" ry="3.2" transform="rotate(' + ang.toFixed(0) + ' ' + x.toFixed(1) + ' ' + y.toFixed(1) + ')" fill="' + fill + '" stroke="' + edge + '" stroke-width="0.4"/>';
+        }
+        return s;
+      };
+      var tall = [[22, 22, -6], [30, 14, -3], [40, 10, -1], [50, 12, 1], [60, 16, 3], [68, 24, 6], [34, 30, -2], [56, 28, 2]];
+      return {
+        stages: [
+          // seed: a slender pale grain in the soil
+          svg('<ellipse cx="45" cy="76" rx="3.2" ry="7.5" transform="rotate(-25 45 76)" fill="url(#gRiceSeed)" stroke="#a8925a" stroke-width="0.7"/>' +
+              '<path d="M43.5 70 Q44 76 47 82" stroke="#c9b27a" stroke-width="0.6" fill="none"/>'),
+          // sprout: a few thin young blades
+          svg(clump([[34, 56, -2], [42, 50, -1], [50, 48, 1], [57, 56, 2]], 1.6, 'url(#gRiceLeaf)', 'url(#gRiceLeafLight)')),
+          // bloom: a tall clump, green panicles held up
+          svg(clump(tall, 1.8, 'url(#gRiceLeaf)', 'url(#gRiceLeafLight)') +
+              panicle(42, 40, 38, 22, 30, 10, 8, 'url(#gRiceGreen)', '#4c7a22', '#6a9a3a') +
+              panicle(48, 38, 54, 20, 62, 12, 8, 'url(#gRiceGreen)', '#4c7a22', '#6a9a3a')),
+          // mature: gold panicles bowing over
+          svg(clump(tall, 1.8, 'url(#gRiceLeafRipe)', 'url(#gRiceLeaf)') +
+              panicle(41, 34, 30, 14, 20, 34, 10, 'url(#gRiceGold)', '#9a7420', '#b8973e') +
+              panicle(46, 30, 46, 10, 52, 30, 10, 'url(#gRiceGold)', '#9a7420', '#b8973e') +
+              panicle(50, 34, 64, 16, 72, 38, 10, 'url(#gRiceGold)', '#9a7420', '#b8973e'))
+        ],
+        icon: '<svg width="44" height="44" viewBox="0 0 44 44">' +
+          '<ellipse cx="22" cy="22" rx="5.5" ry="13" transform="rotate(-25 22 22)" fill="url(#gRiceSeed)" stroke="#a8925a" stroke-width="1"/>' +
+          '<path d="M19 11 Q20 22 26 33" stroke="#c9b27a" stroke-width="1" fill="none"/></svg>'
+      };
+    }
 
     /* Corn: tall jointed stalk, broad arching leaves, a tassel on top and
        an ear on the side - green husk while young, yellow kernels when ripe. */
@@ -503,8 +606,7 @@
         html = '<div class="t-name">' + p.name + ' seed</div>' +
           'Price: $' + p.cost + '<br>' +
           'Matures in: ' + matureAt(p) + ' ticks<br>' +
-          'Lifetime: ' + p.life + ' ticks' +
-          (p.tickCut ? '<br>Effect: tick timer -' + (p.tickCut * 100) + '% (less while growing)' : '');
+          'Lifetime: ' + p.life + ' ticks' + effectText(p, null);
       } else if (hoverTile >= 0 && state.tiles[hoverTile]) {
         var t = state.tiles[hoverTile], q = PLANTS[t.kind], s = stageOf(t);
         var age = t.age + (state.clock / tickMs());
@@ -513,9 +615,8 @@
           'Stage: ' + q.stageNames[s] +
           '<div class="t-bar"><div class="t-fill" style="width:' +
             Math.min(100, age / q.life * 100).toFixed(1) + '%;background:' + barColor(t, t.age) + '"></div></div>' +
-          (t.age < m ? 'Mature in: ' + (m - t.age) + ' ticks' : 'Mature! Click to harvest ($' + q.sell + ')') + '<br>' +
-          'Life left: ' + (q.life - t.age) + ' ticks' +
-          (q.tickCut ? '<br>Effect: tick timer -' + Math.round(plantCut(t) * 10000) / 100 + '%' : '') +
+          (t.age < m ? 'Mature in: ' + (m - t.age) + ' ticks' : 'Mature! Click to harvest ($' + harvestValue(hoverTile) + ')') + '<br>' +
+          'Life left: ' + (q.life - t.age) + ' ticks' + effectText(q, t) +
           (isUnlocked(t.kind) ? '' : '<br>Harvest when ripe to get the seed!');
       }
       if (html) {
@@ -543,7 +644,7 @@
         state.money -= p.cost;
         state.tiles[i] = { kind: selected, age: 0 };
       } else if (isMature(t)) {
-        state.money += PLANTS[t.kind].sell;
+        state.money += harvestValue(i);
         if (!isUnlocked(t.kind)) {
           state.unlocked[t.kind] = true;
           say('New seed: ' + PLANTS[t.kind].name + '!');
