@@ -34,6 +34,7 @@
       border-radius: 14px; padding: 0.8rem;
     }
     .seeds h2 { font-size: 0.85rem; letter-spacing: 3px; color: #e8d3b0; text-align: center; }
+    #seedList { display: flex; flex-direction: column; gap: 0.8rem; }
     .seed {
       width: 84px; height: 84px; border-radius: 12px;
       background: #0b0f1a; border: 2px solid #ffd166;
@@ -103,13 +104,7 @@
 
   <div class="seeds">
     <h2>SEEDS</h2>
-    <div class="seed" id="seed-wheat" data-kind="wheat">
-      <svg width="44" height="44" viewBox="0 0 44 44">
-        <ellipse cx="22" cy="23" rx="8" ry="12" transform="rotate(-15 22 23)" fill="url(#gGold)" stroke="#8a5f1a" stroke-width="1"/>
-        <path d="M21 13 Q18.5 23 22 33" stroke="#9a6c22" stroke-width="1.2" fill="none"/>
-      </svg>
-      <div class="label">Wheat</div>
-    </div>
+    <div id="seedList"></div>
   </div>
 
   <div class="center" id="garden">
@@ -133,6 +128,15 @@
       <radialGradient id="gGold" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#fbe9a8"/><stop offset="0.55" stop-color="#e0b44c"/><stop offset="1" stop-color="#a7771e"/></radialGradient>
       <radialGradient id="gGreenGrain" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#c8e68a"/><stop offset="0.6" stop-color="#7fae3c"/><stop offset="1" stop-color="#4c7a22"/></radialGradient>
       <radialGradient id="gDead" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#9a8762"/><stop offset="1" stop-color="#4e3f28"/></radialGradient>
+      <!-- ??? : the same plant, in purple -->
+      <linearGradient id="gLeafP" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#4a2270"/><stop offset="1" stop-color="#9a5fd0"/></linearGradient>
+      <linearGradient id="gLeafLightP" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#5a2c85"/><stop offset="1" stop-color="#b57fe6"/></linearGradient>
+      <linearGradient id="gStemP" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#4f2678"/><stop offset="1" stop-color="#a06ad8"/></linearGradient>
+      <linearGradient id="gStrawP" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#6a3a8a"/><stop offset="1" stop-color="#c79ae6"/></linearGradient>
+      <linearGradient id="gDryLeafP" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#5e3a7a"/><stop offset="1" stop-color="#b08ad0"/></linearGradient>
+      <radialGradient id="gGoldP" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#f0d4ff"/><stop offset="0.55" stop-color="#b06ae0"/><stop offset="1" stop-color="#6a2a9a"/></radialGradient>
+      <radialGradient id="gGreenGrainP" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#dcb8f5"/><stop offset="0.6" stop-color="#9156c4"/><stop offset="1" stop-color="#5a2a86"/></radialGradient>
+      <radialGradient id="gDeadP" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#8e7a9a"/><stop offset="1" stop-color="#46364e"/></radialGradient>
       <radialGradient id="gSoil" cx="50%" cy="20%" r="80%"><stop offset="0" stop-color="#6a4630"/><stop offset="1" stop-color="#2e1c10"/></radialGradient>
     </defs>
   </svg>
@@ -150,14 +154,26 @@
     var GRID = 2;
     var START_MONEY = 10;
 
-    /* Every plant kind. stages = the age (in ticks) each stage starts at. */
+    var SPREAD_CHANCE = 0.10;  // per tick, for an empty tile next to 2+ plants
+    var MUTATE_CHANCE = 0.05;  // of those new plants, the chance it's a mutation
+
+    /* Every plant kind. stages = the age (in ticks) each stage starts at.
+       cost: bought with money. fromSeeds: only planted from harvested seeds.
+       mutatesInto: what a spread of this plant can turn into. */
     var PLANTS = {
       wheat: {
         name: 'Wheat', cost: 5, sell: 10, life: 17,
         stages: [0, 1, 3, 5],
+        stageNames: ['Seed', 'Sprout', 'Bloom', 'Mature'],
+        mutatesInto: 'mystery'
+      },
+      mystery: {
+        name: '???', sell: 10, life: 17, fromSeeds: true,
+        stages: [0, 1, 3, 5],
         stageNames: ['Seed', 'Sprout', 'Bloom', 'Mature']
       }
     };
+    var SEED_ORDER = ['wheat', 'mystery'];
 
     var state = null;
     var hoverTile = -1, hoverSeed = null;
@@ -169,7 +185,13 @@
     function fresh(admin) {
       var tiles = [];
       for (var i = 0; i < GRID * GRID; i++) tiles.push(null);
-      return { money: START_MONEY, tiles: tiles, clock: 0, frozen: false, admin: admin, lastSeen: Date.now() };
+      return { money: START_MONEY, tiles: tiles, clock: 0, frozen: false, admin: admin, lastSeen: Date.now(),
+               seeds: {}, found: { wheat: true } };
+    }
+    function patch(s) {  // older saves
+      if (!s.seeds) s.seeds = {};
+      if (!s.found) s.found = { wheat: true };
+      return s;
     }
 
     function save() {
@@ -180,7 +202,7 @@
     function load() {
       try {
         var s = JSON.parse(localStorage.getItem(SAVE_KEY));
-        if (s && s.tiles) return s;
+        if (s && s.tiles) return patch(s);
       } catch (e) {}
       return null;
     }
@@ -213,10 +235,43 @@
     }
 
     /* ---- time ---- */
+    function alive(t) { return !!t && t.age < PLANTS[t.kind].life; }
+
+    /* Living plants touching tile i (sides and corners). */
+    function neighbours(i) {
+      var out = [], r = Math.floor(i / GRID), c = i % GRID;
+      for (var dr = -1; dr <= 1; dr++) for (var dc = -1; dc <= 1; dc++) {
+        if (!dr && !dc) continue;
+        var rr = r + dr, cc = c + dc;
+        if (rr < 0 || cc < 0 || rr >= GRID || cc >= GRID) continue;
+        var t = state.tiles[rr * GRID + cc];
+        if (alive(t)) out.push(t);
+      }
+      return out;
+    }
+
     function doTick() {
-      for (var i = 0; i < state.tiles.length; i++) {
+      var i;
+      for (i = 0; i < state.tiles.length; i++) {
         var t = state.tiles[i];
-        if (t && t.age < PLANTS[t.kind].life) t.age++;
+        if (alive(t)) t.age++;
+      }
+      /* Spreading: an empty tile next to two or more plants can sprout one
+         of them by itself. Worked out first, then placed, so a new plant
+         can't help spread in the same tick. */
+      var born = [];
+      for (i = 0; i < state.tiles.length; i++) {
+        if (state.tiles[i]) continue;
+        var near = neighbours(i);
+        if (near.length < 2 || Math.random() >= SPREAD_CHANCE) continue;
+        var kind = near[Math.floor(Math.random() * near.length)].kind;
+        var into = PLANTS[kind].mutatesInto;
+        if (into && Math.random() < MUTATE_CHANCE) kind = into;
+        born.push([i, kind]);
+      }
+      for (i = 0; i < born.length; i++) {
+        state.tiles[born[i][0]] = { kind: born[i][1], age: 0 };
+        state.found[born[i][1]] = true;
       }
     }
     function advance(dt) {
@@ -247,39 +302,54 @@
         y = top + 8 + i * 6;
         s += grain(cx - 3.6, y, -24, fill, edge) + grain(cx + 3.6, y, 24, fill, edge);
         if (anthers && i % 2 === 0) {
-          s += '<rect x="' + (cx - 9.6) + '" y="' + (y + 1) + '" width="2.2" height="3.5" rx="1" fill="#f1e58a"/>' +
-               '<rect x="' + (cx + 7.4) + '" y="' + (y + 2) + '" width="2.2" height="3.5" rx="1" fill="#f1e58a"/>';
+          s += '<rect x="' + (cx - 9.6) + '" y="' + (y + 1) + '" width="2.2" height="3.5" rx="1" fill="' + anthers + '"/>' +
+               '<rect x="' + (cx + 7.4) + '" y="' + (y + 2) + '" width="2.2" height="3.5" rx="1" fill="' + anthers + '"/>';
         }
       }
       s += grain(cx, top + 3, 0, fill, edge);
       return s;
     }
 
-    var STAGE_SVG = [
-      // seed: a single grain half in the soil
-      svg('<ellipse cx="45" cy="76" rx="6" ry="8.5" transform="rotate(-15 45 76)" fill="url(#gGold)" stroke="#8a5f1a" stroke-width="0.8"/>' +
-          '<path d="M44 69 Q42.5 76 45 83" stroke="#9a6c22" stroke-width="0.9" fill="none"/>'),
-      // sprout: two young blades
-      svg(leaf('M45 80 Q41 64 33 52 Q42 61 47 79 Z', 'url(#gLeaf)') +
-          leaf('M45 80 Q49 62 57 47 Q52 63 47 80 Z', 'url(#gLeafLight)') +
-          leaf('M45 80 Q44 66 46 56 Q47 68 46.5 80 Z', 'url(#gLeaf)')),
-      // bloom: green stalk, long leaves, green head with little pale-yellow flowers
-      svg('<path d="M45 81 Q46 55 45 30" stroke="url(#gStem)" stroke-width="2.6" fill="none" stroke-linecap="round"/>' +
-          leaf('M45 76 Q30 64 20 46 Q34 60 46 72 Z', 'url(#gLeaf)') +
-          leaf('M45.5 64 Q60 54 70 38 Q58 56 46 68 Z', 'url(#gLeafLight)') +
-          leaf('M45 50 Q35 44 28 32 Q38 43 45.5 53 Z', 'url(#gLeaf)') +
-          head(45, 8, 4, 'url(#gGreenGrain)', '#3f6a1c', true)),
-      // mature: golden, heavy head with awns
-      svg('<path d="M45 81 Q47 52 45 30" stroke="url(#gStraw)" stroke-width="2.6" fill="none" stroke-linecap="round"/>' +
-          leaf('M45 74 Q32 66 24 54 Q35 63 46 70 Z', 'url(#gDryLeaf)') +
-          leaf('M45.5 60 Q58 54 66 44 Q57 56 46 64 Z', 'url(#gDryLeaf)') +
-          head(45, 8, 4, 'url(#gGold)', '#8a5f1a', false))
-    ];
-    // dead: brown stalk bent over, head drooping
-    var DEAD_SVG = svg('<path d="M45 81 Q47 52 54 40 Q60 32 66 40" stroke="#6e5a3a" stroke-width="2.6" fill="none" stroke-linecap="round"/>' +
-      leaf('M45 76 Q34 74 26 80 Q35 72 46 72 Z', '#5a4a30') +
-      leaf('M46 62 Q56 66 62 76 Q54 64 46.5 59 Z', '#5a4a30') +
-      '<g transform="rotate(160 66 40) translate(21 5)">' + head(45, 8, 4, 'url(#gDead)', '#3a2e1c', false) + '</g>');
+    /* One drawing for every wheat-like plant; c = its colour set. */
+    function drawSet(c) {
+      var u = function (id) { return 'url(#' + id + c.sfx + ')'; };
+      return {
+        stages: [
+          // seed: a single grain half in the soil
+          svg('<ellipse cx="45" cy="76" rx="6" ry="8.5" transform="rotate(-15 45 76)" fill="' + u('gGold') + '" stroke="' + c.ripeEdge + '" stroke-width="0.8"/>' +
+              '<path d="M44 69 Q42.5 76 45 83" stroke="' + c.crease + '" stroke-width="0.9" fill="none"/>'),
+          // sprout: two young blades
+          svg(leaf('M45 80 Q41 64 33 52 Q42 61 47 79 Z', u('gLeaf')) +
+              leaf('M45 80 Q49 62 57 47 Q52 63 47 80 Z', u('gLeafLight')) +
+              leaf('M45 80 Q44 66 46 56 Q47 68 46.5 80 Z', u('gLeaf'))),
+          // bloom: stalk, long leaves, young head with little flowers
+          svg('<path d="M45 81 Q46 55 45 30" stroke="' + u('gStem') + '" stroke-width="2.6" fill="none" stroke-linecap="round"/>' +
+              leaf('M45 76 Q30 64 20 46 Q34 60 46 72 Z', u('gLeaf')) +
+              leaf('M45.5 64 Q60 54 70 38 Q58 56 46 68 Z', u('gLeafLight')) +
+              leaf('M45 50 Q35 44 28 32 Q38 43 45.5 53 Z', u('gLeaf')) +
+              head(45, 8, 4, u('gGreenGrain'), c.youngEdge, c.anther)),
+          // mature: ripe, heavy head
+          svg('<path d="M45 81 Q47 52 45 30" stroke="' + u('gStraw') + '" stroke-width="2.6" fill="none" stroke-linecap="round"/>' +
+              leaf('M45 74 Q32 66 24 54 Q35 63 46 70 Z', u('gDryLeaf')) +
+              leaf('M45.5 60 Q58 54 66 44 Q57 56 46 64 Z', u('gDryLeaf')) +
+              head(45, 8, 4, u('gGold'), c.ripeEdge, null))
+        ],
+        // dead: stalk bent over, head drooping
+        dead: svg('<path d="M45 81 Q47 52 54 40 Q60 32 66 40" stroke="' + c.deadStalk + '" stroke-width="2.6" fill="none" stroke-linecap="round"/>' +
+          leaf('M45 76 Q34 74 26 80 Q35 72 46 72 Z', c.deadLeaf) +
+          leaf('M46 62 Q56 66 62 76 Q54 64 46.5 59 Z', c.deadLeaf) +
+          '<g transform="rotate(160 66 40) translate(21 5)">' + head(45, 8, 4, u('gDead'), c.deadEdge, null) + '</g>'),
+        icon: '<svg width="44" height="44" viewBox="0 0 44 44">' +
+          '<ellipse cx="22" cy="23" rx="8" ry="12" transform="rotate(-15 22 23)" fill="' + u('gGold') + '" stroke="' + c.ripeEdge + '" stroke-width="1"/>' +
+          '<path d="M21 13 Q18.5 23 22 33" stroke="' + c.crease + '" stroke-width="1.2" fill="none"/></svg>'
+      };
+    }
+    var ART = {
+      wheat: drawSet({ sfx: '', ripeEdge: '#8a5f1a', youngEdge: '#3f6a1c', crease: '#9a6c22', anther: '#f1e58a',
+                       deadStalk: '#6e5a3a', deadLeaf: '#5a4a30', deadEdge: '#3a2e1c' }),
+      mystery: drawSet({ sfx: 'P', ripeEdge: '#4a1a70', youngEdge: '#3e1a5e', crease: '#5a2a80', anther: '#f0c8ff',
+                         deadStalk: '#5e4a6a', deadLeaf: '#4a3a54', deadEdge: '#2e2236' })
+    };
 
     var gridEl = document.getElementById('grid');
     var tileEls = [];
@@ -309,17 +379,30 @@
       tip.style.top = y + 'px';
     }
 
-    var seedEl = document.getElementById('seed-wheat');
-    seedEl.addEventListener('mouseenter', function () { hoverSeed = 'wheat'; });
-    seedEl.addEventListener('mouseleave', function () { hoverSeed = null; });
-    seedEl.addEventListener('click', function () {
-      selected = selected === 'wheat' ? null : 'wheat';
-      render();
+    /* Seed panel: Wheat is always there; others show up once you've found them. */
+    var seedEls = {};
+    SEED_ORDER.forEach(function (kind) {
+      var el = document.createElement('div');
+      el.className = 'seed';
+      el.innerHTML = ART[kind].icon + '<div class="label">' + PLANTS[kind].name + '</div>';
+      el.addEventListener('mouseenter', function () { hoverSeed = kind; });
+      el.addEventListener('mouseleave', function () { if (hoverSeed === kind) hoverSeed = null; });
+      el.addEventListener('click', function () {
+        selected = selected === kind ? null : kind;
+        render();
+      });
+      document.getElementById('seedList').appendChild(el);
+      seedEls[kind] = el;
     });
 
     function render() {
       document.getElementById('money').textContent = '$' + state.money;
-      seedEl.classList.toggle('selected', selected === 'wheat');
+      SEED_ORDER.forEach(function (kind) {
+        var el = seedEls[kind], p = PLANTS[kind];
+        el.style.display = state.found[kind] ? '' : 'none';
+        el.classList.toggle('selected', selected === kind);
+        el.lastChild.textContent = p.name + (p.fromSeeds ? ' x' + (state.seeds[kind] || 0) : '');
+      });
       document.getElementById('garden').classList.toggle('frozen', state.frozen);
       var fb = document.getElementById('freeze');
       fb.textContent = state.frozen ? 'Unfreeze Garden' : 'Freeze Garden';
@@ -333,7 +416,7 @@
         var t = state.tiles[i], key = t ? t.kind + ':' + stageOf(t) : '';
         if (key !== lastDrawn[i]) {
           var s = t ? stageOf(t) : null;
-          tileEls[i].innerHTML = !t ? '' : (s < 0 ? DEAD_SVG : STAGE_SVG[s]);
+          tileEls[i].innerHTML = !t ? '' : (s < 0 ? ART[t.kind].dead : ART[t.kind].stages[s]);
           lastDrawn[i] = key;
         }
         tileEls[i].classList.toggle('mature', !!t && isMature(t));
@@ -346,7 +429,8 @@
       if (hoverSeed) {
         var p = PLANTS[hoverSeed];
         html = '<div class="t-name">' + p.name + ' seed</div>' +
-          'Price: $' + p.cost + '<br>' +
+          (p.fromSeeds ? 'You have: ' + (state.seeds[hoverSeed] || 0) + ' (get more by harvesting it mature)'
+                       : 'Price: $' + p.cost) + '<br>' +
           'Matures in: ' + matureAt(p) + ' ticks<br>' +
           'Lifetime: ' + p.life + ' ticks';
       } else if (hoverTile >= 0 && state.tiles[hoverTile]) {
@@ -360,7 +444,8 @@
             'Stage: ' + q.stageNames[s] +
             '<div class="t-bar"><div class="t-fill" style="width:' +
               Math.min(100, age / q.life * 100).toFixed(1) + '%;background:' + barColor(t, t.age) + '"></div></div>' +
-            (t.age < m ? 'Mature in: ' + (m - t.age) + ' ticks' : 'Mature! Click to sell ($' + q.sell + ')') + '<br>' +
+            (t.age < m ? 'Mature in: ' + (m - t.age) + ' ticks<br>Click to harvest early (no money' + (q.fromSeeds ? ', no seed' : '') + ')'
+                       : 'Mature! Click to harvest ($' + q.sell + (q.fromSeeds ? ' + a seed' : '') + ')') + '<br>' +
             'Life left: ' + (q.life - t.age) + ' ticks';
         }
       }
@@ -385,17 +470,25 @@
       if (!t) {
         if (!selected) { say('Pick a seed on the left first'); return; }
         var p = PLANTS[selected];
-        if (state.money < p.cost) { say('Not enough money ($' + p.cost + ' needed)'); return; }
-        state.money -= p.cost;
+        if (p.fromSeeds) {
+          if (!state.seeds[selected]) { say('No ' + p.name + ' seeds left'); return; }
+          state.seeds[selected]--;
+        } else {
+          if (state.money < p.cost) { say('Not enough money ($' + p.cost + ' needed)'); return; }
+          state.money -= p.cost;
+        }
         state.tiles[i] = { kind: selected, age: 0 };
       } else if (stageOf(t) < 0) {
         state.tiles[i] = null;
       } else if (isMature(t)) {
-        state.money += PLANTS[t.kind].sell;
+        var q = PLANTS[t.kind];
+        state.money += q.sell;
+        if (q.fromSeeds) state.seeds[t.kind] = (state.seeds[t.kind] || 0) + 1;
         state.tiles[i] = null;
       } else {
-        say('Not mature yet');
-        return;
+        // harvested early: the plant is gone, nothing for it
+        state.tiles[i] = null;
+        say('Harvested early - nothing for it');
       }
       save();
       render();
