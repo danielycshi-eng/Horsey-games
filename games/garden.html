@@ -223,7 +223,7 @@
     };
     var SEED_ORDER = ['wheat', 'corn', 'rice', 'forteweed'];
     var WEED_SPAWN = 0.05;   // per tick, any empty tile: a Forteweed appears
-    var WEED_SPREAD = 0.25;  // per tick, any tile touching a Forteweed: it takes over (killing what's there)
+    var WEED_SPREAD = 0.08;  // per tick, a tile touching 2+ Forteweeds (like Wheat's spread): it takes over, killing what's there
     /* How much of a plant's effect works at each stage: Seed, Sprout, Bloom, Mature. */
     var EFFECT_BY_STAGE = [0.10, 0.25, 0.50, 1];
 
@@ -370,7 +370,7 @@
       for (i = 0; i < state.tiles.length; i++) {
         if (state.ferts[i] || isWeed(state.tiles[i])) continue;  // fertilizer sits there until picked up
         /* Forteweed creeps in from next door - even over a plant, killing it */
-        if (neighbours(i, true).length && Math.random() < WEED_SPREAD) { born.push([i, 'forteweed']); continue; }
+        if (neighbours(i, true).length >= 2 && Math.random() < WEED_SPREAD) { born.push([i, 'forteweed']); continue; }
         if (state.tiles[i]) continue;
         /* ...or just pops up out of the empty dirt */
         if (Math.random() < WEED_SPAWN) { born.push([i, 'forteweed']); continue; }
