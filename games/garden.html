@@ -350,12 +350,15 @@
       return out;
     }
     /* A plant can only spread or mutate when it is mature, not in the
-       last 5 ticks of its life, and touching another plant (any kind). */
+       last 5 ticks of its life, and touching another MATURE plant (any kind). */
     function canSpread(i) {
       var t = state.tiles[i];
       if (!alive(t) || !isMature(t) || PLANTS[t.kind].life - t.age <= 5) return false;
       var a = around(i);
-      for (var k = 0; k < a.length; k++) if (alive(state.tiles[a[k]])) return true;
+      for (var k = 0; k < a.length; k++) {
+        var o = state.tiles[a[k]];
+        if (alive(o) && isMature(o)) return true;
+      }
       return false;
     }
     /* The plants touching tile i that can spread right now.
