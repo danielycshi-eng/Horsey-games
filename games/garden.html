@@ -127,14 +127,13 @@
       <linearGradient id="gDryLeaf" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#8a6a2a"/><stop offset="1" stop-color="#cfae5a"/></linearGradient>
       <radialGradient id="gGold" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#fbe9a8"/><stop offset="0.55" stop-color="#e0b44c"/><stop offset="1" stop-color="#a7771e"/></radialGradient>
       <radialGradient id="gGreenGrain" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#c8e68a"/><stop offset="0.6" stop-color="#7fae3c"/><stop offset="1" stop-color="#4c7a22"/></radialGradient>
-      <!-- ??? : the same plant, in purple -->
-      <linearGradient id="gLeafP" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#4a2270"/><stop offset="1" stop-color="#9a5fd0"/></linearGradient>
-      <linearGradient id="gLeafLightP" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#5a2c85"/><stop offset="1" stop-color="#b57fe6"/></linearGradient>
-      <linearGradient id="gStemP" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#4f2678"/><stop offset="1" stop-color="#a06ad8"/></linearGradient>
-      <linearGradient id="gStrawP" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#6a3a8a"/><stop offset="1" stop-color="#c79ae6"/></linearGradient>
-      <linearGradient id="gDryLeafP" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#5e3a7a"/><stop offset="1" stop-color="#b08ad0"/></linearGradient>
-      <radialGradient id="gGoldP" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#f0d4ff"/><stop offset="0.55" stop-color="#b06ae0"/><stop offset="1" stop-color="#6a2a9a"/></radialGradient>
-      <radialGradient id="gGreenGrainP" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#dcb8f5"/><stop offset="0.6" stop-color="#9156c4"/><stop offset="1" stop-color="#5a2a86"/></radialGradient>
+      <!-- corn -->
+      <linearGradient id="gCornLeaf" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#2c6a1e"/><stop offset="1" stop-color="#7cc443"/></linearGradient>
+      <linearGradient id="gCornLeafLight" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#3a7f28"/><stop offset="1" stop-color="#9ad65a"/></linearGradient>
+      <linearGradient id="gCornStalk" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#4f8a2c"/><stop offset="0.5" stop-color="#8cc85a"/><stop offset="1" stop-color="#3f7524"/></linearGradient>
+      <linearGradient id="gHusk" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#5f9a35"/><stop offset="0.5" stop-color="#a9d873"/><stop offset="1" stop-color="#4c8128"/></linearGradient>
+      <radialGradient id="gKernel" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#fff2a8"/><stop offset="0.55" stop-color="#f6c83a"/><stop offset="1" stop-color="#c88d12"/></radialGradient>
+      <radialGradient id="gTassel" cx="40%" cy="30%" r="80%"><stop offset="0" stop-color="#f4e1a0"/><stop offset="1" stop-color="#b08a3c"/></radialGradient>
       <radialGradient id="gSoil" cx="50%" cy="20%" r="80%"><stop offset="0" stop-color="#6a4630"/><stop offset="1" stop-color="#2e1c10"/></radialGradient>
     </defs>
   </svg>
@@ -157,22 +156,39 @@
         name: 'Wheat', cost: 5, sell: 10, life: 17,
         stages: [0, 1, 3, 5],
         stageNames: ['Seed', 'Sprout', 'Bloom', 'Mature'],
-        mutatesInto: 'mystery'
+        mutatesInto: 'corn'
       },
-      mystery: {
-        name: '???', cost: 5, sell: 10, life: 17, locked: true,
-        stages: [0, 1, 3, 5],
-        stageNames: ['Seed', 'Sprout', 'Bloom', 'Mature']
+      corn: {
+        name: 'Corn', cost: 25, sell: 65, life: 24, locked: true,
+        stages: [0, 2, 5, 7],
+        stageNames: ['Seed', 'Sprout', 'Bloom', 'Mature'],
+        tickCut: 0.25   // effect: the tick timer is 25% shorter (when mature)
       }
     };
-    var SEED_ORDER = ['wheat', 'mystery'];
+    var SEED_ORDER = ['wheat', 'corn'];
+    /* How much of a plant's effect works at each stage: Seed, Sprout, Bloom, Mature. */
+    var EFFECT_BY_STAGE = [0.10, 0.25, 0.50, 1];
 
     var state = null;
     var hoverTile = -1, hoverSeed = null;
     var selected = 'wheat';
     var msgTimer = null;
 
-    function tickMs() { return state && state.admin ? 1000 : 10000; }
+    /* The cut one planted plant gives the tick timer right now. */
+    function plantCut(t) {
+      var p = PLANTS[t.kind];
+      return p.tickCut ? p.tickCut * EFFECT_BY_STAGE[stageOf(t)] : 0;
+    }
+    /* Every plant's cut is applied in turn (two mature Corn: 75% of 75%),
+       so the timer gets shorter but never reaches zero. */
+    function tickFactor() {
+      var f = 1;
+      for (var i = 0; state && i < state.tiles.length; i++) {
+        if (state.tiles[i]) f *= 1 - plantCut(state.tiles[i]);
+      }
+      return f;
+    }
+    function tickMs() { return (state && state.admin ? 1000 : 10000) * tickFactor(); }
 
     function fresh(admin) {
       var tiles = [];
@@ -200,7 +216,7 @@
       if (!s.unlocked) s.unlocked = {};
       for (var i = 0; i < s.tiles.length; i++) {
         var t = s.tiles[i];
-        if (t && t.age >= PLANTS[t.kind].life) s.tiles[i] = null;
+        if (t && (!PLANTS[t.kind] || t.age >= PLANTS[t.kind].life)) s.tiles[i] = null;  // dead, or a kind that's gone
       }
       return s;
     }
@@ -277,9 +293,10 @@
     function advance(dt) {
       if (state.frozen || dt <= 0) return;
       state.clock += dt;
-      var n = 0, ms = tickMs();
-      while (state.clock >= ms && n < 1000) { state.clock -= ms; doTick(); n++; }
-      if (state.clock >= ms) state.clock = state.clock % ms;
+      var n = 0;
+      // tickMs() is re-read every tick: Corn growing up speeds the next one
+      while (state.clock >= tickMs() && n < 1000) { state.clock -= tickMs(); doTick(); n++; }
+      if (state.clock >= tickMs()) state.clock = state.clock % tickMs();
     }
 
     /* ---- drawing ---- */
@@ -341,8 +358,71 @@
     }
     var ART = {
       wheat: drawSet({ sfx: '', ripeEdge: '#8a5f1a', youngEdge: '#3f6a1c', crease: '#9a6c22', anther: '#f1e58a' }),
-      mystery: drawSet({ sfx: 'P', ripeEdge: '#4a1a70', youngEdge: '#3e1a5e', crease: '#5a2a80', anther: '#f0c8ff' })
+      corn: drawCorn()
     };
+
+    /* Corn: tall jointed stalk, broad arching leaves, a tassel on top and
+       an ear on the side - green husk while young, yellow kernels when ripe. */
+    function drawCorn() {
+      var stalk = function (top, w) {
+        var s = '<path d="M' + (45 - w / 2) + ' 82 L' + (45 - w / 2.6) + ' ' + top + ' L' + (45 + w / 2.6) + ' ' + top + ' L' + (45 + w / 2) + ' 82 Z" fill="url(#gCornStalk)"/>';
+        for (var y = 72; y > top + 6; y -= 13) {  // the joints
+          s += '<ellipse cx="45" cy="' + y + '" rx="' + (w / 2 + 0.6) + '" ry="1.2" fill="#3c6e22"/>';
+        }
+        return s;
+      };
+      var tassel = function (top) {
+        var s = '';
+        var arms = [[-9, 7, -50], [-5, 9, -25], [0, 10, 0], [5, 9, 25], [9, 7, 50]];
+        for (var i = 0; i < arms.length; i++) {
+          var x = 45 + arms[i][0] / 2, y = top - arms[i][1] / 2;
+          s += '<ellipse cx="' + x + '" cy="' + y + '" rx="1.4" ry="' + (arms[i][1] / 2) + '" transform="rotate(' + arms[i][2] + ' ' + x + ' ' + (y + arms[i][1] / 2) + ')" fill="url(#gTassel)"/>';
+        }
+        return s;
+      };
+      var ear = function (x, y, len, ripe) {
+        var w = len * 0.32, s = '<g transform="rotate(28 ' + x + ' ' + y + ')">';
+        if (ripe) {
+          s += '<ellipse cx="' + x + '" cy="' + (y - len / 2) + '" rx="' + w + '" ry="' + (len / 2) + '" fill="url(#gKernel)" stroke="#b07a10" stroke-width="0.6"/>';
+          for (var r = 0; r < 6; r++) for (var c = -1; c <= 1; c++) {  // rows of kernels
+            s += '<ellipse cx="' + (x + c * w * 0.55) + '" cy="' + (y - len * 0.12 - r * len * 0.13) + '" rx="' + (w * 0.24) + '" ry="' + (len * 0.055) + '" fill="#fbd651" stroke="#c99a1c" stroke-width="0.35"/>';
+          }
+          // husk peeled back at the bottom
+          s += '<path d="M' + (x - w) + ' ' + (y - len * 0.25) + ' Q' + (x - w * 1.9) + ' ' + (y + 2) + ' ' + x + ' ' + (y + 3) + ' Q' + (x - w * 0.6) + ' ' + y + ' ' + (x - w) + ' ' + (y - len * 0.25) + ' Z" fill="url(#gHusk)"/>' +
+               '<path d="M' + (x + w) + ' ' + (y - len * 0.25) + ' Q' + (x + w * 1.9) + ' ' + (y + 2) + ' ' + x + ' ' + (y + 3) + ' Q' + (x + w * 0.6) + ' ' + y + ' ' + (x + w) + ' ' + (y - len * 0.25) + ' Z" fill="url(#gHusk)"/>';
+        } else {
+          s += '<ellipse cx="' + x + '" cy="' + (y - len / 2) + '" rx="' + w + '" ry="' + (len / 2) + '" fill="url(#gHusk)" stroke="#3f7524" stroke-width="0.6"/>' +
+               '<ellipse cx="' + x + '" cy="' + (y - len - 1) + '" rx="' + (w * 0.7) + '" ry="2.2" fill="#d9a46a"/>';  // silk tuft
+        }
+        return s + '</g>';
+      };
+      return {
+        stages: [
+          // seed: a yellow kernel half in the soil
+          svg('<path d="M39.5 80 Q39 71 45 70 Q51 71 50.5 80 Q45 83 39.5 80 Z" fill="url(#gKernel)" stroke="#b07a10" stroke-width="0.8"/>' +
+              '<ellipse cx="45" cy="76" rx="2" ry="3" fill="#fff6c8" opacity="0.7"/>'),
+          // sprout: broad young leaves
+          svg(leaf('M45 80 Q38 64 25 56 Q40 60 47.5 78 Z', 'url(#gCornLeaf)') +
+              leaf('M45 80 Q53 62 66 52 Q55 64 47 80 Z', 'url(#gCornLeafLight)') +
+              leaf('M44 80 Q43 64 46 52 Q49 66 47 80 Z', 'url(#gCornLeaf)')),
+          // bloom: taller stalk, tassel, a small green ear with silk
+          svg(stalk(22, 6) +
+              leaf('M44 74 Q28 66 14 72 Q30 62 46 70 Z', 'url(#gCornLeaf)') +
+              leaf('M46 60 Q62 50 76 56 Q62 46 44 57 Z', 'url(#gCornLeafLight)') +
+              leaf('M44 44 Q30 34 18 40 Q30 28 46 41 Z', 'url(#gCornLeaf)') +
+              tassel(22) + ear(49, 58, 16, false)),
+          // mature: full height, a ripe yellow ear with the husk pulled back
+          svg(stalk(14, 7) +
+              leaf('M44 76 Q26 68 10 76 Q28 62 46 72 Z', 'url(#gCornLeaf)') +
+              leaf('M46 62 Q64 50 80 58 Q64 44 44 58 Z', 'url(#gCornLeafLight)') +
+              leaf('M44 42 Q28 30 14 36 Q28 22 46 38 Z', 'url(#gCornLeaf)') +
+              tassel(14) + ear(50, 62, 26, true))
+        ],
+        icon: '<svg width="44" height="44" viewBox="0 0 44 44">' +
+          '<path d="M14 36 Q13 14 22 12 Q31 14 30 36 Q22 40 14 36 Z" fill="url(#gKernel)" stroke="#b07a10" stroke-width="1"/>' +
+          '<ellipse cx="22" cy="27" rx="3.5" ry="6" fill="#fff6c8" opacity="0.7"/></svg>'
+      };
+    }
 
     var gridEl = document.getElementById('grid');
     var tileEls = [];
@@ -399,9 +479,10 @@
       fb.textContent = state.frozen ? 'Unfreeze Garden' : 'Freeze Garden';
       fb.classList.toggle('on', state.frozen);
 
-      var left = Math.ceil((tickMs() - state.clock) / 1000);
+      var left = Math.max(0, Math.ceil((tickMs() - state.clock) / 1000));
+      var cut = Math.round((1 - tickFactor()) * 10000) / 100;
       document.getElementById('clock').textContent =
-        state.frozen ? 'Frozen' : 'Next tick in ' + left + 's';
+        state.frozen ? 'Frozen' : 'Next tick in ' + left + 's' + (cut ? ' (-' + cut + '%)' : '');
 
       for (var i = 0; i < tileEls.length; i++) {
         var t = state.tiles[i], key = t ? t.kind + ':' + stageOf(t) : '';
@@ -422,7 +503,8 @@
         html = '<div class="t-name">' + p.name + ' seed</div>' +
           'Price: $' + p.cost + '<br>' +
           'Matures in: ' + matureAt(p) + ' ticks<br>' +
-          'Lifetime: ' + p.life + ' ticks';
+          'Lifetime: ' + p.life + ' ticks' +
+          (p.tickCut ? '<br>Effect: tick timer -' + (p.tickCut * 100) + '% (less while growing)' : '');
       } else if (hoverTile >= 0 && state.tiles[hoverTile]) {
         var t = state.tiles[hoverTile], q = PLANTS[t.kind], s = stageOf(t);
         var age = t.age + (state.clock / tickMs());
@@ -433,6 +515,7 @@
             Math.min(100, age / q.life * 100).toFixed(1) + '%;background:' + barColor(t, t.age) + '"></div></div>' +
           (t.age < m ? 'Mature in: ' + (m - t.age) + ' ticks' : 'Mature! Click to harvest ($' + q.sell + ')') + '<br>' +
           'Life left: ' + (q.life - t.age) + ' ticks' +
+          (q.tickCut ? '<br>Effect: tick timer -' + Math.round(plantCut(t) * 10000) / 100 + '%' : '') +
           (isUnlocked(t.kind) ? '' : '<br>Harvest when ripe to get the seed!');
       }
       if (html) {
