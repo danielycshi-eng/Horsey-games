@@ -169,8 +169,9 @@
   <script>
   (function () {
     var SAVE_KEY = 'garden_save';
-    /* Farm sizes, rows x columns. Each upgrade uses one fertilizer. */
+    /* Farm sizes, rows x columns, and the fertilizer each upgrade takes. */
     var SIZES = [[2, 2], [2, 3], [3, 3], [3, 4], [4, 4]];
+    var UPGRADE_COST = [1, 4, 9, 16];  // to reach SIZES[1], [2], [3], [4]
     var FERT_CHANCE = 0.05;  // a dying plant drops fertilizer
     function rows() { return SIZES[state.size][0]; }
     function cols() { return SIZES[state.size][1]; }
@@ -613,7 +614,9 @@
     /* Upgrade Farm: one fertilizer grows the plot to the next size.
        Plants keep their row and column. */
     function upgradeFarm() {
-      if (state.fertilizer < 1 || state.size >= SIZES.length - 1) return;
+      if (state.size >= SIZES.length - 1) return;
+      var need = UPGRADE_COST[state.size];
+      if (state.fertilizer < need) { say('You need ' + need + ' fertilizer for that'); return; }
       var oc = cols(), or = rows();
       state.size++;
       var tiles = [], ferts = [], r, c;
@@ -624,7 +627,7 @@
       }
       state.tiles = tiles;
       state.ferts = ferts;
-      state.fertilizer--;
+      state.fertilizer -= need;
       say('Farm upgraded to ' + rows() + ' x ' + cols() + '!');
       buildGrid();
       save();
@@ -674,7 +677,9 @@
       document.getElementById('fertBox').style.display = state.fertilizer > 0 ? '' : 'none';
       document.getElementById('fertCount').textContent = 'Fertilizer: ' + state.fertilizer;
       document.getElementById('upgrade').style.display = maxed ? 'none' : '';
-      document.getElementById('upgrade').textContent = 'Upgrade Farm to ' + nx[0] + ' x ' + nx[1];
+      document.getElementById('upgrade').textContent = 'Upgrade Farm to ' + nx[0] + ' x ' + nx[1] +
+        (maxed ? '' : ' (' + UPGRADE_COST[state.size] + ' fertilizer)');
+      document.getElementById('upgrade').style.opacity = !maxed && state.fertilizer >= UPGRADE_COST[state.size] ? '1' : '0.5';
       SEED_ORDER.forEach(function (kind) {
         seedEls[kind].style.display = isUnlocked(kind) ? '' : 'none';
         seedEls[kind].classList.toggle('selected', selected === kind);
