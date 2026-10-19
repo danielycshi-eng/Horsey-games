@@ -86,16 +86,14 @@
 
     .msg { color: #ff8fa3; min-height: 1.2em; font-size: 0.95rem; }
 
-    .start {
-      position: fixed; inset: 0; z-index: 30;
-      background: rgba(5,7,15,0.85);
-      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem;
+    .title { color: #7bffb2; text-shadow: 0 0 20px rgba(123,255,178,0.5); font-size: 2.6rem; }
+    .title span { cursor: default; }  /* the secret admin "a" - looks like any other letter */
+
+    .destroy {
+      margin-top: 0.4rem; padding: 0.5rem 0.4rem; font-size: 0.8rem; border-radius: 10px; cursor: pointer;
+      background: #1a0b0e; color: #ff5f7e; border: 2px solid #ff5f7e;
     }
-    .start.hidden { display: none; }
-    .start h1 { color: #7bffb2; text-shadow: 0 0 20px rgba(123,255,178,0.5); }
-    .start .btn.hidden { display: none; }
-    .admin { color: #a0c4ff; font-size: 0.95rem; cursor: pointer; }
-    .admin input { margin-right: 0.4rem; }
+    .destroy:hover { background: #ff5f7e; color: #05070f; }
   </style>
 </head>
 <body>
@@ -105,9 +103,11 @@
   <div class="seeds">
     <h2>SEEDS</h2>
     <div id="seedList"></div>
+    <button class="destroy" id="destroy">Destroy Garden</button>
   </div>
 
   <div class="center" id="garden">
+    <h1 class="title">G<span id="secretA">a</span>rden</h1>
     <div class="grid" id="grid"></div>
     <div class="bar-row">
       <div class="clock" id="clock"></div>
@@ -127,7 +127,6 @@
       <linearGradient id="gDryLeaf" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#8a6a2a"/><stop offset="1" stop-color="#cfae5a"/></linearGradient>
       <radialGradient id="gGold" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#fbe9a8"/><stop offset="0.55" stop-color="#e0b44c"/><stop offset="1" stop-color="#a7771e"/></radialGradient>
       <radialGradient id="gGreenGrain" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#c8e68a"/><stop offset="0.6" stop-color="#7fae3c"/><stop offset="1" stop-color="#4c7a22"/></radialGradient>
-      <radialGradient id="gDead" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#9a8762"/><stop offset="1" stop-color="#4e3f28"/></radialGradient>
       <!-- ??? : the same plant, in purple -->
       <linearGradient id="gLeafP" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#4a2270"/><stop offset="1" stop-color="#9a5fd0"/></linearGradient>
       <linearGradient id="gLeafLightP" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#5a2c85"/><stop offset="1" stop-color="#b57fe6"/></linearGradient>
@@ -136,17 +135,9 @@
       <linearGradient id="gDryLeafP" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#5e3a7a"/><stop offset="1" stop-color="#b08ad0"/></linearGradient>
       <radialGradient id="gGoldP" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#f0d4ff"/><stop offset="0.55" stop-color="#b06ae0"/><stop offset="1" stop-color="#6a2a9a"/></radialGradient>
       <radialGradient id="gGreenGrainP" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#dcb8f5"/><stop offset="0.6" stop-color="#9156c4"/><stop offset="1" stop-color="#5a2a86"/></radialGradient>
-      <radialGradient id="gDeadP" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#8e7a9a"/><stop offset="1" stop-color="#46364e"/></radialGradient>
       <radialGradient id="gSoil" cx="50%" cy="20%" r="80%"><stop offset="0" stop-color="#6a4630"/><stop offset="1" stop-color="#2e1c10"/></radialGradient>
     </defs>
   </svg>
-
-  <div class="start" id="start">
-    <h1>Garden</h1>
-    <button class="btn hidden" id="continueBtn">Continue</button>
-    <button class="btn" id="newBtn">New Game</button>
-    <label class="admin"><input type="checkbox" id="adminBox">Admin (1 tick = 1 second)</label>
-  </div>
 
   <script>
   (function () {
@@ -158,7 +149,8 @@
     var MUTATE_CHANCE = 0.05;  // per tick, same tile: grows the mutation instead (on top of the 10%)
 
     /* Every plant kind. stages = the age (in ticks) each stage starts at.
-       cost: bought with money. fromSeeds: only planted from harvested seeds.
+       cost: bought with money. locked: not in your seeds until you harvest
+       one ripe - then it's unlocked forever (even after New Game).
        mutatesInto: what a spread of this plant can turn into. */
     var PLANTS = {
       wheat: {
@@ -168,7 +160,7 @@
         mutatesInto: 'mystery'
       },
       mystery: {
-        name: '???', sell: 10, life: 17, fromSeeds: true,
+        name: '???', cost: 5, sell: 10, life: 17, locked: true,
         stages: [0, 1, 3, 5],
         stageNames: ['Seed', 'Sprout', 'Bloom', 'Mature']
       }
@@ -186,13 +178,11 @@
       var tiles = [];
       for (var i = 0; i < GRID * GRID; i++) tiles.push(null);
       return { money: START_MONEY, tiles: tiles, clock: 0, frozen: false, admin: admin, lastSeen: Date.now(),
-               seeds: {}, found: { wheat: true } };
+               unlocked: {} };
     }
-    function patch(s) {  // older saves
-      if (!s.seeds) s.seeds = {};
-      if (!s.found) s.found = { wheat: true };
-      return s;
-    }
+
+    /* Unlocked seeds belong to this garden: Destroy Garden loses them. */
+    function isUnlocked(kind) { return !PLANTS[kind].locked || !!state.unlocked[kind]; }
 
     function save() {
       if (!state) return;
@@ -202,9 +192,17 @@
     function load() {
       try {
         var s = JSON.parse(localStorage.getItem(SAVE_KEY));
-        if (s && s.tiles) return patch(s);
+        if (s && s.tiles) return clearDead(s);
       } catch (e) {}
       return null;
+    }
+    function clearDead(s) {  // older saves: no unlocks yet, maybe dead plants
+      if (!s.unlocked) s.unlocked = {};
+      for (var i = 0; i < s.tiles.length; i++) {
+        var t = s.tiles[i];
+        if (t && t.age >= PLANTS[t.kind].life) s.tiles[i] = null;
+      }
+      return s;
     }
 
     /* ---- plant helpers ---- */
@@ -254,7 +252,9 @@
       var i;
       for (i = 0; i < state.tiles.length; i++) {
         var t = state.tiles[i];
-        if (alive(t)) t.age++;
+        if (!t) continue;
+        t.age++;
+        if (!alive(t)) state.tiles[i] = null;  // dies -> the tile just clears
       }
       /* Spreading: an empty tile next to two or more plants can sprout one
          of them by itself. Worked out first, then placed, so a new plant
@@ -272,7 +272,6 @@
       }
       for (i = 0; i < born.length; i++) {
         state.tiles[born[i][0]] = { kind: born[i][1], age: 0 };
-        state.found[born[i][1]] = true;
       }
     }
     function advance(dt) {
@@ -335,21 +334,14 @@
               leaf('M45.5 60 Q58 54 66 44 Q57 56 46 64 Z', u('gDryLeaf')) +
               head(45, 8, 4, u('gGold'), c.ripeEdge, null))
         ],
-        // dead: stalk bent over, head drooping
-        dead: svg('<path d="M45 81 Q47 52 54 40 Q60 32 66 40" stroke="' + c.deadStalk + '" stroke-width="2.6" fill="none" stroke-linecap="round"/>' +
-          leaf('M45 76 Q34 74 26 80 Q35 72 46 72 Z', c.deadLeaf) +
-          leaf('M46 62 Q56 66 62 76 Q54 64 46.5 59 Z', c.deadLeaf) +
-          '<g transform="rotate(160 66 40) translate(21 5)">' + head(45, 8, 4, u('gDead'), c.deadEdge, null) + '</g>'),
         icon: '<svg width="44" height="44" viewBox="0 0 44 44">' +
           '<ellipse cx="22" cy="23" rx="8" ry="12" transform="rotate(-15 22 23)" fill="' + u('gGold') + '" stroke="' + c.ripeEdge + '" stroke-width="1"/>' +
           '<path d="M21 13 Q18.5 23 22 33" stroke="' + c.crease + '" stroke-width="1.2" fill="none"/></svg>'
       };
     }
     var ART = {
-      wheat: drawSet({ sfx: '', ripeEdge: '#8a5f1a', youngEdge: '#3f6a1c', crease: '#9a6c22', anther: '#f1e58a',
-                       deadStalk: '#6e5a3a', deadLeaf: '#5a4a30', deadEdge: '#3a2e1c' }),
-      mystery: drawSet({ sfx: 'P', ripeEdge: '#4a1a70', youngEdge: '#3e1a5e', crease: '#5a2a80', anther: '#f0c8ff',
-                         deadStalk: '#5e4a6a', deadLeaf: '#4a3a54', deadEdge: '#2e2236' })
+      wheat: drawSet({ sfx: '', ripeEdge: '#8a5f1a', youngEdge: '#3f6a1c', crease: '#9a6c22', anther: '#f1e58a' }),
+      mystery: drawSet({ sfx: 'P', ripeEdge: '#4a1a70', youngEdge: '#3e1a5e', crease: '#5a2a80', anther: '#f0c8ff' })
     };
 
     var gridEl = document.getElementById('grid');
@@ -380,7 +372,7 @@
       tip.style.top = y + 'px';
     }
 
-    /* Seed panel: Wheat is always there; others show up once you've found them. */
+    /* Seed panel: Wheat is always there; others show up once unlocked. */
     var seedEls = {};
     SEED_ORDER.forEach(function (kind) {
       var el = document.createElement('div');
@@ -399,10 +391,8 @@
     function render() {
       document.getElementById('money').textContent = '$' + state.money;
       SEED_ORDER.forEach(function (kind) {
-        var el = seedEls[kind], p = PLANTS[kind];
-        el.style.display = state.found[kind] ? '' : 'none';
-        el.classList.toggle('selected', selected === kind);
-        el.lastChild.textContent = p.name + (p.fromSeeds ? ' x' + (state.seeds[kind] || 0) : '');
+        seedEls[kind].style.display = isUnlocked(kind) ? '' : 'none';
+        seedEls[kind].classList.toggle('selected', selected === kind);
       });
       document.getElementById('garden').classList.toggle('frozen', state.frozen);
       var fb = document.getElementById('freeze');
@@ -417,7 +407,7 @@
         var t = state.tiles[i], key = t ? t.kind + ':' + stageOf(t) : '';
         if (key !== lastDrawn[i]) {
           var s = t ? stageOf(t) : null;
-          tileEls[i].innerHTML = !t ? '' : (s < 0 ? ART[t.kind].dead : ART[t.kind].stages[s]);
+          tileEls[i].innerHTML = t ? ART[t.kind].stages[s] : '';
           lastDrawn[i] = key;
         }
         tileEls[i].classList.toggle('mature', !!t && isMature(t));
@@ -430,25 +420,20 @@
       if (hoverSeed) {
         var p = PLANTS[hoverSeed];
         html = '<div class="t-name">' + p.name + ' seed</div>' +
-          (p.fromSeeds ? 'You have: ' + (state.seeds[hoverSeed] || 0) + ' (get more by harvesting it mature)'
-                       : 'Price: $' + p.cost) + '<br>' +
+          'Price: $' + p.cost + '<br>' +
           'Matures in: ' + matureAt(p) + ' ticks<br>' +
           'Lifetime: ' + p.life + ' ticks';
       } else if (hoverTile >= 0 && state.tiles[hoverTile]) {
         var t = state.tiles[hoverTile], q = PLANTS[t.kind], s = stageOf(t);
-        if (s < 0) {
-          html = '<div class="t-name">' + q.name + '</div>Stage: Dead<br>Click to clear';
-        } else {
-          var age = t.age + (state.clock / tickMs());
-          var m = matureAt(q);
-          html = '<div class="t-name">' + q.name + '</div>' +
-            'Stage: ' + q.stageNames[s] +
-            '<div class="t-bar"><div class="t-fill" style="width:' +
-              Math.min(100, age / q.life * 100).toFixed(1) + '%;background:' + barColor(t, t.age) + '"></div></div>' +
-            (t.age < m ? 'Mature in: ' + (m - t.age) + ' ticks<br>Click to harvest early (no money' + (q.fromSeeds ? ', no seed' : '') + ')'
-                       : 'Mature! Click to harvest ($' + q.sell + (q.fromSeeds ? ' + a seed' : '') + ')') + '<br>' +
-            'Life left: ' + (q.life - t.age) + ' ticks';
-        }
+        var age = t.age + (state.clock / tickMs());
+        var m = matureAt(q);
+        html = '<div class="t-name">' + q.name + '</div>' +
+          'Stage: ' + q.stageNames[s] +
+          '<div class="t-bar"><div class="t-fill" style="width:' +
+            Math.min(100, age / q.life * 100).toFixed(1) + '%;background:' + barColor(t, t.age) + '"></div></div>' +
+          (t.age < m ? 'Mature in: ' + (m - t.age) + ' ticks' : 'Mature! Click to harvest ($' + q.sell + ')') + '<br>' +
+          'Life left: ' + (q.life - t.age) + ' ticks' +
+          (isUnlocked(t.kind) ? '' : '<br>Harvest when ripe to get the seed!');
       }
       if (html) {
         tip.innerHTML = html;
@@ -471,25 +456,18 @@
       if (!t) {
         if (!selected) { say('Pick a seed on the left first'); return; }
         var p = PLANTS[selected];
-        if (p.fromSeeds) {
-          if (!state.seeds[selected]) { say('No ' + p.name + ' seeds left'); return; }
-          state.seeds[selected]--;
-        } else {
-          if (state.money < p.cost) { say('Not enough money ($' + p.cost + ' needed)'); return; }
-          state.money -= p.cost;
-        }
+        if (state.money < p.cost) { say('Not enough money ($' + p.cost + ' needed)'); return; }
+        state.money -= p.cost;
         state.tiles[i] = { kind: selected, age: 0 };
-      } else if (stageOf(t) < 0) {
-        state.tiles[i] = null;
       } else if (isMature(t)) {
-        var q = PLANTS[t.kind];
-        state.money += q.sell;
-        if (q.fromSeeds) state.seeds[t.kind] = (state.seeds[t.kind] || 0) + 1;
+        state.money += PLANTS[t.kind].sell;
+        if (!isUnlocked(t.kind)) {
+          state.unlocked[t.kind] = true;
+          say('New seed: ' + PLANTS[t.kind].name + '!');
+        }
         state.tiles[i] = null;
       } else {
-        // harvested early: the plant is gone, nothing for it
-        state.tiles[i] = null;
-        say('Harvested early - nothing for it');
+        state.tiles[i] = null;  // harvested early: gone, nothing for it
       }
       save();
       render();
@@ -510,29 +488,32 @@
       render();
     }
 
-    function begin(s) {
-      state = s;
-      /* catch up on the time you were gone (unless frozen) */
-      last = state.lastSeen || Date.now();
-      document.getElementById('start').classList.add('hidden');
-      loop();
+    /* Destroy Garden: start over from nothing - plants, money and seeds. */
+    document.getElementById('destroy').addEventListener('click', function () {
+      if (!confirm('Destroy your garden? Your plants, money and seeds are all lost.')) return;
+      state = fresh(state.admin);
+      selected = 'wheat';
+      last = Date.now();
       save();
-      setInterval(function () { loop(); save(); }, 250);
-    }
+      render();
+    });
 
-    var saved = load();
-    var adminBox = document.getElementById('adminBox');
-    if (saved) {
-      document.getElementById('continueBtn').classList.remove('hidden');
-      adminBox.checked = !!saved.admin;
-    }
-    document.getElementById('continueBtn').addEventListener('click', function () {
-      saved.admin = adminBox.checked;
-      begin(saved);
+    /* Secret: the "a" in the Garden title switches admin (1 tick = 1 second). */
+    document.getElementById('secretA').addEventListener('click', function () {
+      state.admin = !state.admin;
+      state.clock = 0;
+      say(state.admin ? 'Admin on' : 'Admin off');
+      save();
+      render();
     });
-    document.getElementById('newBtn').addEventListener('click', function () {
-      begin(fresh(adminBox.checked));
-    });
+
+    /* Straight into your garden - it carries on where you left it,
+       catching up on the time you were gone (unless frozen). */
+    state = load() || fresh(false);
+    last = state.lastSeen || Date.now();
+    loop();
+    save();
+    setInterval(function () { loop(); save(); }, 250);
     window.addEventListener('pagehide', save);
   })();
   </script>
