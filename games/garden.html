@@ -181,9 +181,9 @@
     function cols() { return SIZES[state.size][1]; }
     var START_MONEY = 10;
 
-    var SPREAD_CHANCE = 0.10;  // per tick, for an empty tile next to 2+ plants: grows one of them
+    var SPREAD_CHANCE = 0.10;  // per tick, an empty tile touching a plant that can spread: grows one of them
 
-    /* Mutations: an empty tile touching these plants also gets this chance,
+    /* Mutations: an empty tile touching these plants (each able to spread) also gets this chance,
        per tick, of growing the new plant instead (on top of the 10%). */
     var MUTATIONS = [
       { needs: { wheat: 2 },          into: 'corn', chance: 0.05 },
@@ -222,8 +222,8 @@
       }
     };
     var SEED_ORDER = ['wheat', 'corn', 'rice', 'forteweed'];
-    var WEED_SPAWN = 0.03;   // per tick, any empty tile: a Forteweed appears
-    var WEED_SPREAD = 0.01;  // per tick, a tile touching 2+ Forteweeds (like Wheat's spread): it takes over, killing what's there
+    var WEED_SPAWN = 0.005;  // per tick, any empty tile: a Forteweed appears
+    var WEED_SPREAD = 0.004; // per tick, a tile touching a Forteweed that can spread: it takes over, killing what's there
     /* How much of a plant's effect works at each stage: Seed, Sprout, Bloom, Mature. */
     var EFFECT_BY_STAGE = [0.10, 0.25, 0.50, 1];
 
@@ -338,16 +338,33 @@
 
     function isWeed(t) { return !!t && !!PLANTS[t.kind].weed; }
 
-    /* Living plants touching tile i (sides and corners). weeds: true for
-       the Forteweeds, false for everything else. */
-    function neighbours(i, weeds) {
+    /* Tiles touching tile i (sides and corners). */
+    function around(i) {
       var C = cols(), out = [], r = Math.floor(i / C), c = i % C;
       for (var dr = -1; dr <= 1; dr++) for (var dc = -1; dc <= 1; dc++) {
         if (!dr && !dc) continue;
         var rr = r + dr, cc = c + dc;
         if (rr < 0 || cc < 0 || rr >= rows() || cc >= C) continue;
-        var t = state.tiles[rr * C + cc];
-        if (alive(t) && isWeed(t) === !!weeds) out.push(t);
+        out.push(rr * C + cc);
+      }
+      return out;
+    }
+    /* A plant can only spread or mutate when it is mature, not in the
+       last 5 ticks of its life, and touching another plant (any kind). */
+    function canSpread(i) {
+      var t = state.tiles[i];
+      if (!alive(t) || !isMature(t) || PLANTS[t.kind].life - t.age <= 5) return false;
+      var a = around(i);
+      for (var k = 0; k < a.length; k++) if (alive(state.tiles[a[k]])) return true;
+      return false;
+    }
+    /* The plants touching tile i that can spread right now.
+       weeds: true for the Forteweeds, false for everything else. */
+    function spreaders(i, weeds) {
+      var a = around(i), out = [];
+      for (var k = 0; k < a.length; k++) {
+        var t = state.tiles[a[k]];
+        if (canSpread(a[k]) && isWeed(t) === !!weeds) out.push(t);
       }
       return out;
     }
@@ -363,19 +380,19 @@
           if (Math.random() < FERT_CHANCE) state.ferts[i] = true;
         }
       }
-      /* Spreading: an empty tile next to two or more plants can sprout one
-         of them by itself. Worked out first, then placed, so a new plant
-         can't help spread in the same tick. */
+      /* Spreading: an empty tile touching a plant that can spread (see
+         canSpread) may sprout one by itself. Worked out first, then placed,
+         so a new plant can't help spread in the same tick. */
       var born = [];
       for (i = 0; i < state.tiles.length; i++) {
         if (state.ferts[i] || isWeed(state.tiles[i])) continue;  // fertilizer sits there until picked up
         /* Forteweed creeps in from next door - even over a plant, killing it */
-        if (neighbours(i, true).length >= 2 && Math.random() < WEED_SPREAD) { born.push([i, 'forteweed']); continue; }
+        if (spreaders(i, true).length && Math.random() < WEED_SPREAD) { born.push([i, 'forteweed']); continue; }
         if (state.tiles[i]) continue;
         /* ...or just pops up out of the empty dirt */
         if (Math.random() < WEED_SPAWN) { born.push([i, 'forteweed']); continue; }
-        var near = neighbours(i, false);
-        if (near.length < 2) continue;
+        var near = spreaders(i, false);
+        if (!near.length) continue;
         var count = {}, k;
         for (k = 0; k < near.length; k++) count[near[k].kind] = (count[near[k].kind] || 0) + 1;
         /* one roll: each mutation that fits gets its slice, then the 10% spread */
