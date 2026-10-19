@@ -138,9 +138,8 @@
       <linearGradient id="gRiceLeaf" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#2f6e2a"/><stop offset="1" stop-color="#86c95a"/></linearGradient>
       <linearGradient id="gRiceLeafLight" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#3c7f30"/><stop offset="1" stop-color="#a6dc72"/></linearGradient>
       <linearGradient id="gRiceLeafRipe" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#5f7a2a"/><stop offset="1" stop-color="#c9c26a"/></linearGradient>
-      <radialGradient id="gRiceGreen" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#d4ec9a"/><stop offset="1" stop-color="#6f9e36"/></radialGradient>
-      <radialGradient id="gRiceGold" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#fbeab0"/><stop offset="0.6" stop-color="#e2bd5c"/><stop offset="1" stop-color="#a8822c"/></radialGradient>
       <radialGradient id="gRiceSeed" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#fffaf0"/><stop offset="0.6" stop-color="#efe3c2"/><stop offset="1" stop-color="#c9b68a"/></radialGradient>
+      <radialGradient id="gRiceWhite" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#ffffff"/><stop offset="0.6" stop-color="#f4f0e4"/><stop offset="1" stop-color="#cfc6b0"/></radialGradient>
       <radialGradient id="gSoil" cx="50%" cy="20%" r="80%"><stop offset="0" stop-color="#6a4630"/><stop offset="1" stop-color="#2e1c10"/></radialGradient>
     </defs>
   </svg>
@@ -428,7 +427,7 @@
         return s;
       };
       /* grains along a curve from (x0,y0) bending through (cx,cy) to (x1,y1) */
-      var panicle = function (x0, y0, cx, cy, x1, y1, n, fill, edge, stem) {
+      var panicle = function (x0, y0, cx, cy, x1, y1, n, fill, edge, stem, rx, ry) {
         var s = '<path d="M' + x0 + ' ' + y0 + ' Q' + cx + ' ' + cy + ' ' + x1 + ' ' + y1 + '" stroke="' + stem + '" stroke-width="1.3" fill="none"/>';
         for (var i = 1; i <= n; i++) {
           var t = 0.25 + 0.75 * i / n, u = 1 - t;
@@ -436,7 +435,20 @@
           var y = u * u * y0 + 2 * u * t * cy + t * t * y1;
           var dx = 2 * u * (cx - x0) + 2 * t * (x1 - cx), dy = 2 * u * (cy - y0) + 2 * t * (y1 - cy);
           var ang = Math.atan2(dy, dx) * 180 / Math.PI - 90 + (i % 2 ? 28 : -28);
-          s += '<ellipse cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" rx="1.7" ry="3.2" transform="rotate(' + ang.toFixed(0) + ' ' + x.toFixed(1) + ' ' + y.toFixed(1) + ')" fill="' + fill + '" stroke="' + edge + '" stroke-width="0.4"/>';
+          s += '<ellipse cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" rx="' + rx + '" ry="' + ry + '" transform="rotate(' + ang.toFixed(0) + ' ' + x.toFixed(1) + ' ' + y.toFixed(1) + ')" fill="' + fill + '" stroke="' + edge + '" stroke-width="0.4"/>';
+        }
+        return s;
+      };
+      var dots = function (pts, r) {
+        var s = '';
+        for (var i = 0; i < pts.length; i++) s += '<circle cx="' + pts[i][0] + '" cy="' + pts[i][1] + '" r="' + r + '" fill="#fbfaf4"/>';
+        return s;
+      };
+      /* loose white grains [x, y, tilt] scattered over the clump */
+      var grains = function (pts) {
+        var s = '';
+        for (var i = 0; i < pts.length; i++) {
+          s += '<ellipse cx="' + pts[i][0] + '" cy="' + pts[i][1] + '" rx="1.8" ry="3.2" transform="rotate(' + pts[i][2] + ' ' + pts[i][0] + ' ' + pts[i][1] + ')" fill="url(#gRiceWhite)" stroke="#bdb49c" stroke-width="0.4"/>';
         }
         return s;
       };
@@ -446,17 +458,21 @@
           // seed: a slender pale grain in the soil
           svg('<ellipse cx="45" cy="76" rx="3.2" ry="7.5" transform="rotate(-25 45 76)" fill="url(#gRiceSeed)" stroke="#a8925a" stroke-width="0.7"/>' +
               '<path d="M43.5 70 Q44 76 47 82" stroke="#c9b27a" stroke-width="0.6" fill="none"/>'),
-          // sprout: a few thin young blades
-          svg(clump([[34, 56, -2], [42, 50, -1], [50, 48, 1], [57, 56, 2]], 1.6, 'url(#gRiceLeaf)', 'url(#gRiceLeafLight)')),
-          // bloom: a tall clump, green panicles held up
+          // sprout: a few thin young blades, dotted with little white specks
+          svg(clump([[34, 56, -2], [42, 50, -1], [50, 48, 1], [57, 56, 2]], 1.6, 'url(#gRiceLeaf)', 'url(#gRiceLeafLight)') +
+              dots([[38, 66], [36, 60], [42, 62], [43, 56], [48, 60], [49, 54], [53, 66], [55, 60]], 1.1)),
+          // bloom: a tall clump, panicles held up, full of white pods
           svg(clump(tall, 1.8, 'url(#gRiceLeaf)', 'url(#gRiceLeafLight)') +
-              panicle(42, 40, 38, 22, 30, 10, 8, 'url(#gRiceGreen)', '#4c7a22', '#6a9a3a') +
-              panicle(48, 38, 54, 20, 62, 12, 8, 'url(#gRiceGreen)', '#4c7a22', '#6a9a3a')),
-          // mature: gold panicles bowing over
+              panicle(42, 40, 38, 22, 30, 10, 9, 'url(#gRiceWhite)', '#bdb49c', '#8aa860', 2.2, 3.8) +
+              panicle(48, 38, 54, 20, 62, 12, 9, 'url(#gRiceWhite)', '#bdb49c', '#8aa860', 2.2, 3.8)),
+          // mature: heavy panicles bowing over, white grain everywhere
           svg(clump(tall, 1.8, 'url(#gRiceLeafRipe)', 'url(#gRiceLeaf)') +
-              panicle(41, 34, 30, 14, 20, 34, 10, 'url(#gRiceGold)', '#9a7420', '#b8973e') +
-              panicle(46, 30, 46, 10, 52, 30, 10, 'url(#gRiceGold)', '#9a7420', '#b8973e') +
-              panicle(50, 34, 64, 16, 72, 38, 10, 'url(#gRiceGold)', '#9a7420', '#b8973e'))
+              panicle(41, 34, 30, 14, 18, 36, 14, 'url(#gRiceWhite)', '#bdb49c', '#b8a86a', 1.9, 3.4) +
+              panicle(44, 30, 38, 8, 30, 26, 14, 'url(#gRiceWhite)', '#bdb49c', '#b8a86a', 1.9, 3.4) +
+              panicle(47, 30, 50, 8, 58, 26, 14, 'url(#gRiceWhite)', '#bdb49c', '#b8a86a', 1.9, 3.4) +
+              panicle(50, 34, 64, 16, 74, 38, 14, 'url(#gRiceWhite)', '#bdb49c', '#b8a86a', 1.9, 3.4) +
+              grains([[26, 52, 30], [33, 46, -20], [38, 58, 15], [44, 50, -35], [50, 56, 25], [56, 46, -15], [62, 54, 35], [68, 48, -25],
+                      [30, 66, -10], [41, 70, 20], [49, 68, -30], [58, 64, 10], [36, 76, 40], [54, 76, -40], [45, 42, 0], [64, 70, 20]]))
         ],
         icon: '<svg width="44" height="44" viewBox="0 0 44 44">' +
           '<ellipse cx="22" cy="22" rx="5.5" ry="13" transform="rotate(-25 22 22)" fill="url(#gRiceSeed)" stroke="#a8925a" stroke-width="1"/>' +
