@@ -154,7 +154,7 @@
     <div class="money" id="money">$0</div>
     <div class="fert" id="fertBox" style="display:none">
       <div id="fertCount"></div>
-      <button class="upgrade" id="upgrade">Upgrade Farm</button>
+      <button class="upgrade" id="upgrade">Upgrade Garden</button>
     </div>
   </div>
 
@@ -233,8 +233,8 @@
       <!-- brown mold -->
       <radialGradient id="gMold" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#b8946a"/><stop offset="0.55" stop-color="#7a5532"/><stop offset="1" stop-color="#3e2814"/></radialGradient>
       <radialGradient id="gMoldDark" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#94724a"/><stop offset="0.55" stop-color="#5a3c1e"/><stop offset="1" stop-color="#2a180a"/></radialGradient>
-      <!-- fortespore: a red-capped fungus -->
-      <radialGradient id="gSporeCap" cx="40%" cy="25%" r="80%"><stop offset="0" stop-color="#e2604a"/><stop offset="0.55" stop-color="#a42a1c"/><stop offset="1" stop-color="#5a1208"/></radialGradient>
+      <!-- fortespore: a brown mushroom -->
+      <radialGradient id="gSporeCap" cx="40%" cy="25%" r="80%"><stop offset="0" stop-color="#c8986a"/><stop offset="0.55" stop-color="#8a5a30"/><stop offset="1" stop-color="#432410"/></radialGradient>
       <linearGradient id="gSporeStem" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#cbb894"/><stop offset="0.5" stop-color="#f4ead2"/><stop offset="1" stop-color="#b09a72"/></linearGradient>
       <radialGradient id="gSpore" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#f6d8c8"/><stop offset="0.6" stop-color="#c8826a"/><stop offset="1" stop-color="#7a3a28"/></radialGradient>
       <radialGradient id="gSoil" cx="50%" cy="20%" r="80%"><stop offset="0" stop-color="#6a4630"/><stop offset="1" stop-color="#2e1c10"/></radialGradient>
@@ -607,9 +607,6 @@
               leaf('M45.5 60 Q58 54 66 44 Q57 56 46 64 Z', u('gDryLeaf')) +
               head(45, 8, 4, u('gGold'), c.ripeEdge, null))
         ],
-        icon: '<svg width="44" height="44" viewBox="0 0 44 44">' +
-          '<ellipse cx="22" cy="23" rx="8" ry="12" transform="rotate(-15 22 23)" fill="' + u('gGold') + '" stroke="' + c.ripeEdge + '" stroke-width="1"/>' +
-          '<path d="M21 13 Q18.5 23 22 33" stroke="' + c.crease + '" stroke-width="1.2" fill="none"/></svg>'
       };
     }
     var ART = {
@@ -622,8 +619,8 @@
       fortespore: drawSpore()
     };
 
-    /* Fortespore: a few loose spores on the dirt, then a grown fungus - a
-       big red-capped mushroom with two smaller ones at its foot. */
+    /* Fortespore: a few loose spores on the dirt, then a grown fungus - one
+       big brown mushroom. */
     function drawSpore() {
       var spores = function (list) {
         var s = '';
@@ -638,7 +635,7 @@
         return '<path d="M' + (x - w * 0.16) + ' 81 Q' + (x - w * 0.2) + ' ' + ((81 + y) / 2) + ' ' + (x - w * 0.12) + ' ' + y +
                ' L' + (x + w * 0.12) + ' ' + y + ' Q' + (x + w * 0.2) + ' ' + ((81 + y) / 2) + ' ' + (x + w * 0.16) + ' 81 Z" fill="url(#gSporeStem)" stroke="#8a7656" stroke-width="0.5"/>' +
                '<path d="M' + (x - w / 2) + ' ' + (y + 1) + ' Q' + (x - w / 2) + ' ' + (y - h) + ' ' + x + ' ' + (y - h) +
-               ' Q' + (x + w / 2) + ' ' + (y - h) + ' ' + (x + w / 2) + ' ' + (y + 1) + ' Q' + x + ' ' + (y + 3) + ' ' + (x - w / 2) + ' ' + (y + 1) + ' Z" fill="url(#gSporeCap)" stroke="#4a0e06" stroke-width="0.6"/>' +
+               ' Q' + (x + w / 2) + ' ' + (y - h) + ' ' + (x + w / 2) + ' ' + (y + 1) + ' Q' + x + ' ' + (y + 3) + ' ' + (x - w / 2) + ' ' + (y + 1) + ' Z" fill="url(#gSporeCap)" stroke="#2a1608" stroke-width="0.6"/>' +
                '<path d="M' + (x - w * 0.42) + ' ' + (y + 1.2) + ' Q' + x + ' ' + (y + 3.6) + ' ' + (x + w * 0.42) + ' ' + (y + 1.2) + '" stroke="#e8d8b8" stroke-width="1.2" fill="none" opacity="0.8"/>' +
                '<circle cx="' + (x - w * 0.18) + '" cy="' + (y - h * 0.6) + '" r="' + (w * 0.06) + '" fill="#f6ead0" opacity="0.85"/>' +
                '<circle cx="' + (x + w * 0.16) + '" cy="' + (y - h * 0.45) + '" r="' + (w * 0.05) + '" fill="#f6ead0" opacity="0.85"/>' +
@@ -649,13 +646,9 @@
           // spore: a few single spores lying on the dirt
           svg(spores([[38, 78, 2.6, -20], [47, 75, 3, 15], [53, 80, 2.4, 40], [43, 81, 2, 70]])),
           // mature: a grown fungus
-          svg(shroom(45, 44, 44, 20) + shroom(26, 68, 20, 9) + shroom(64, 64, 24, 11) +
+          svg(shroom(45, 44, 44, 20) +
               spores([[18, 80, 1.4, 0], [72, 80, 1.5, 30], [36, 82, 1.2, 60]]))
         ],
-        icon: '<svg width="44" height="44" viewBox="0 0 44 44">' +
-          '<path d="M19 38 Q18 30 20 24 L24 24 Q26 30 25 38 Z" fill="url(#gSporeStem)" stroke="#8a7656" stroke-width="0.6"/>' +
-          '<path d="M8 25 Q8 8 22 8 Q36 8 36 25 Q22 29 8 25 Z" fill="url(#gSporeCap)" stroke="#4a0e06" stroke-width="0.8"/>' +
-          '<circle cx="17" cy="15" r="2" fill="#f6ead0"/><circle cx="27" cy="17" r="1.6" fill="#f6ead0"/></svg>'
       };
     }
 
@@ -716,10 +709,6 @@
               leaf('M45 80 Q36 64 32 50 Q41 62 46.5 79 Z', 'url(#gLeaf)') +
               leaf('M45 80 Q54 64 58 50 Q49 62 43.5 79 Z', 'url(#gLeafLight)'))
         ],
-        icon: '<svg width="44" height="44" viewBox="0 0 44 44">' +
-          '<circle cx="15" cy="27" r="5" fill="url(#gGold)" stroke="#a7771e" stroke-width="0.8"/>' +
-          '<circle cx="29" cy="27" r="5" fill="url(#gGold)" stroke="#a7771e" stroke-width="0.8"/>' +
-          '<circle cx="22" cy="17" r="5.5" fill="url(#gGold)" stroke="#a7771e" stroke-width="0.8"/></svg>'
       };
     }
 
@@ -749,8 +738,6 @@
           svg(blobs([[45, 46, 8], [35, 55, 9], [56, 54, 9], [26, 68, 8], [64, 67, 8], [45, 62, 11],
                      [34, 74, 9], [57, 74, 9], [45, 79, 7], [20, 79, 5], [70, 79, 5]], 1))
         ],
-        icon: '<svg width="44" height="44" viewBox="0 0 44 44">' +
-          blobs([[16, 18, 6], [28, 17, 6.5], [22, 28, 8], [11, 30, 5], [33, 30, 5]], 1) + '</svg>'
       };
     }
 
@@ -791,9 +778,6 @@
               redLeaf(28, 50, -50) + redLeaf(62, 48, 50) + redLeaf(36, 36, -25) + redLeaf(55, 34, 25) +
               redLeaf(45, 26, 0) + redLeaf(22, 64, -70) + redLeaf(68, 62, 70))
         ],
-        icon: '<svg width="44" height="44" viewBox="0 0 44 44">' +
-          '<ellipse cx="22" cy="23" rx="10" ry="12" fill="url(#gWeed)" stroke="#4a1a14" stroke-width="1"/>' +
-          '<ellipse cx="19" cy="19" rx="3" ry="4" fill="#d2483a" opacity="0.8"/></svg>'
       };
     }
 
@@ -858,9 +842,6 @@
               grains([[26, 52, 30], [33, 46, -20], [38, 58, 15], [44, 50, -35], [50, 56, 25], [56, 46, -15], [62, 54, 35], [68, 48, -25],
                       [30, 66, -10], [41, 70, 20], [49, 68, -30], [58, 64, 10], [36, 76, 40], [54, 76, -40], [45, 42, 0], [64, 70, 20]]))
         ],
-        icon: '<svg width="44" height="44" viewBox="0 0 44 44">' +
-          '<ellipse cx="22" cy="22" rx="5.5" ry="13" transform="rotate(-25 22 22)" fill="url(#gRiceSeed)" stroke="#a8925a" stroke-width="1"/>' +
-          '<path d="M19 11 Q20 22 26 33" stroke="#c9b27a" stroke-width="1" fill="none"/></svg>'
       };
     }
 
@@ -921,9 +902,6 @@
               leaf('M44 42 Q28 30 14 36 Q28 22 46 38 Z', 'url(#gCornLeaf)') +
               tassel(14) + ear(50, 62, 26, true))
         ],
-        icon: '<svg width="44" height="44" viewBox="0 0 44 44">' +
-          '<path d="M14 36 Q13 14 22 12 Q31 14 30 36 Q22 40 14 36 Z" fill="url(#gKernel)" stroke="#b07a10" stroke-width="1"/>' +
-          '<ellipse cx="22" cy="27" rx="3.5" ry="6" fill="#fff6c8" opacity="0.7"/></svg>'
       };
     }
 
@@ -962,7 +940,7 @@
     }
     window.addEventListener('resize', function () { if (state) sizeGrid(); });
 
-    /* Upgrade Farm: one fertilizer grows the plot to the next size.
+    /* Upgrade Garden: one fertilizer grows the plot to the next size.
        Plants keep their row and column. */
     function upgradeFarm() {
       if (state.size >= SIZES.length - 1) return;
@@ -979,7 +957,7 @@
       state.tiles = tiles;
       state.ferts = ferts;
       state.fertilizer -= need;
-      say('Farm upgraded to ' + rows() + ' x ' + cols() + '!');
+      say('Garden upgraded to ' + rows() + ' x ' + cols() + '!');
       buildGrid();
       save();
       render();
@@ -1006,12 +984,31 @@
       tip.style.top = y + 'px';
     }
 
+    /* A seed's picture in the seed panel: just its Seed stage, without the
+       dirt, zoomed in to fill the box. */
+    function seedIcon(kind) {
+      var tmp = document.createElement('div');
+      tmp.innerHTML = ART[kind].stages[0];
+      var s = tmp.firstChild;
+      s.removeChild(s.firstChild);  // the shadow...
+      s.removeChild(s.firstChild);  // ...and the mound of dirt (see svg())
+      s.style.position = 'absolute'; s.style.left = '-9999px';
+      document.body.appendChild(s);
+      var b = s.getBBox(), size = Math.max(b.width, b.height) * 1.25;
+      document.body.removeChild(s);
+      s.removeAttribute('style');
+      s.setAttribute('width', '44'); s.setAttribute('height', '44');
+      s.setAttribute('viewBox', (b.x + b.width / 2 - size / 2).toFixed(1) + ' ' + (b.y + b.height / 2 - size / 2).toFixed(1) +
+                     ' ' + size.toFixed(1) + ' ' + size.toFixed(1));
+      return s.outerHTML;
+    }
+
     /* Seed panel: Wheat is always there; others show up once unlocked. */
     var seedEls = {};
     SEED_ORDER.forEach(function (kind) {
       var el = document.createElement('div');
       el.className = 'seed';
-      el.innerHTML = ART[kind].icon + '<div class="label">' + PLANTS[kind].name + '</div>';
+      el.innerHTML = seedIcon(kind) + '<div class="label">' + PLANTS[kind].name + '</div>';
       el.addEventListener('mouseenter', function () { hoverSeed = kind; });
       el.addEventListener('mouseleave', function () { if (hoverSeed === kind) hoverSeed = null; });
       el.addEventListener('click', function () {
@@ -1028,7 +1025,7 @@
       document.getElementById('fertBox').style.display = state.fertilizer > 0 ? '' : 'none';
       document.getElementById('fertCount').textContent = 'Fertilizer: ' + state.fertilizer;
       document.getElementById('upgrade').style.display = maxed ? 'none' : '';
-      document.getElementById('upgrade').textContent = 'Upgrade Farm to ' + nx[0] + ' x ' + nx[1] +
+      document.getElementById('upgrade').textContent = 'Upgrade Garden to ' + nx[0] + ' x ' + nx[1] +
         (maxed ? '' : ' (' + UPGRADE_COST[state.size] + ' fertilizer)');
       document.getElementById('upgrade').style.opacity = !maxed && state.fertilizer >= UPGRADE_COST[state.size] ? '1' : '0.5';
       SEED_ORDER.forEach(function (kind) {
@@ -1222,7 +1219,7 @@
         '<h3>EFFECTS</h3>Some plants change the whole garden while they\'re growing - good or bad. ' +
         'A plant\'s effect grows with it: ' +
         EFFECT_BY_STAGE.map(pct).join(', ') + ' at Seed, Sprout, Bloom and Mature.' +
-        '<h3>FERTILIZER</h3>Click fertilizer to pick it up, then use Upgrade Farm (under your money) to make your farm bigger.' +
+        '<h3>FERTILIZER</h3>Click fertilizer to pick it up, then use Upgrade Garden (under your money) to make your garden bigger.' +
         '<h3>TOOLS</h3>Harvest picks every plant at once - hold Shift to only pick the mature ones. ' +
         'Freeze stops time in the garden until you unfreeze it.';
     }
@@ -1240,7 +1237,7 @@
         (cut > 0 ? '<div class="row"><span>Tick time</span><span class="' + (cut > 0 ? 'good' : '') + '">' + (cut > 0 ? '-' : '') + pct(cut) +
           ' (' + Math.round(tickMs() / 100) / 10 + 's a tick)</span></div>' : '') +
         (boost > 0 ? '<div class="row"><span>Effects</span><span class="good">+' + pct(boost) + ' stronger</span></div>' : '') +
-        '<div class="row"><span>Farm</span><span>' + rows() + ' x ' + cols() + ', ' + n + ' planted</span></div>' +
+        '<div class="row"><span>Garden</span><span>' + rows() + ' x ' + cols() + ', ' + n + ' planted</span></div>' +
         '<div class="row"><span>Time</span><span>' + (state.frozen ? 'Frozen' : 'Running') + '</span></div>';
       if (html !== lastInfo) { document.getElementById('gardenInfo').innerHTML = html; lastInfo = html; }
     }
@@ -1256,7 +1253,7 @@
 
     /* Destroy Garden: start over from nothing - plants, money and seeds. */
     document.getElementById('destroy').addEventListener('click', function () {
-      if (!confirm('Destroy your garden? Your plants, money, seeds and farm upgrades are all lost.')) return;
+      if (!confirm('Destroy your garden? Your plants, money, seeds and garden upgrades are all lost.')) return;
       state = fresh(state.admin);
       selected = 'wheat';
       last = Date.now();
