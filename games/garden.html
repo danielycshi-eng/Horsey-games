@@ -889,7 +889,7 @@
       var left = Math.max(0, Math.ceil((tickMs() - state.clock) / 1000));
       var cut = Math.round((1 - tickFactor()) * 10000) / 100;
       document.getElementById('clock').textContent =
-        state.frozen ? 'Frozen' : 'Next tick in ' + left + 's' + (cut && knowsEffect('tickCut') ? ' (-' + cut + '%)' : '');
+        state.frozen ? 'Frozen' : 'Next tick in ' + left + 's' + (cut ? ' (-' + cut + '%)' : '');
 
       for (var i = 0; i < tileEls.length; i++) {
         var t = state.tiles[i], key = t ? t.kind + ':' + stageOf(t) : (state.ferts[i] ? 'fert' : '');
@@ -1067,23 +1067,17 @@
         'Freeze stops time in the garden until you unfreeze it.';
     }
 
-    /* Whether you've unlocked the seed of any plant with this effect. */
-    function knowsEffect(key) {
-      for (var k in PLANTS) if (PLANTS[k][key] && isUnlocked(k)) return true;
-      return false;
-    }
-
     /* The pinned part of Information: what the garden is doing right now. */
     var lastInfo = '';
     function renderInfo() {
       if (infoBack.classList.contains('hidden')) return;
       var b = gardenBonus(), cut = 1 - tickFactor(), n = 0;
       for (var i = 0; i < state.tiles.length; i++) if (state.tiles[i]) n++;
-      /* an effect only shows here once you've got the seed of a plant that has it */
+      /* an effect only shows here while something in the garden is giving it */
       var html = '<h3>YOUR GARDEN</h3>' +
-        (knowsEffect('harvestBonus') ? '<div class="row"><span>Harvest money</span><span class="' + (b > 0 ? 'good' : b < 0 ? 'bad' : '') + '">' +
+        (b !== 0 ? '<div class="row"><span>Harvest money</span><span class="' + (b > 0 ? 'good' : b < 0 ? 'bad' : '') + '">' +
           (b < 0 ? '-' : '+') + pct(Math.abs(b)) + '</span></div>' : '') +
-        (knowsEffect('tickCut') ? '<div class="row"><span>Tick time</span><span class="' + (cut > 0 ? 'good' : '') + '">' + (cut > 0 ? '-' : '') + pct(cut) +
+        (cut > 0 ? '<div class="row"><span>Tick time</span><span class="' + (cut > 0 ? 'good' : '') + '">' + (cut > 0 ? '-' : '') + pct(cut) +
           ' (' + Math.round(tickMs() / 100) / 10 + 's a tick)</span></div>' : '') +
         '<div class="row"><span>Farm</span><span>' + rows() + ' x ' + cols() + ', ' + n + ' planted</span></div>' +
         '<div class="row"><span>Time</span><span>' + (state.frozen ? 'Frozen' : 'Running') + '</span></div>';
