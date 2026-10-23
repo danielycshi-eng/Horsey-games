@@ -181,10 +181,10 @@
     function cols() { return SIZES[state.size][1]; }
     var START_MONEY = 10;
 
-    var SPREAD_CHANCE = 0.10;  // per tick, an empty tile touching a plant that can spread: grows one of them
+    var SPREAD_CHANCE = 0.01;  // per tick, an empty tile touching a plant that can spread: grows one of them
 
     /* Mutations: an empty tile touching these plants (each able to spread) also gets this chance,
-       per tick, of growing the new plant instead (on top of the 10%). */
+       per tick, of growing the new plant instead (on top of the 1%). */
     var MUTATIONS = [
       { needs: { wheat: 2 },          into: 'corn', chance: 0.05 },
       { needs: { wheat: 1, corn: 1 }, into: 'rice', chance: 0.05 }
@@ -395,7 +395,7 @@
         if (!near.length) continue;
         var count = {}, k;
         for (k = 0; k < near.length; k++) count[near[k].kind] = (count[near[k].kind] || 0) + 1;
-        /* one roll: each mutation that fits gets its slice, then the 10% spread */
+        /* one roll: each mutation that fits gets its slice, then the 1% spread */
         var roll = Math.random(), edge = 0, kind = null;
         for (k = 0; k < MUTATIONS.length && !kind; k++) {
           var mu = MUTATIONS[k], fits = true;
