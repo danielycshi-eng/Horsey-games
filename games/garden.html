@@ -233,7 +233,11 @@
       <!-- brown mold -->
       <radialGradient id="gMold" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#b8946a"/><stop offset="0.55" stop-color="#7a5532"/><stop offset="1" stop-color="#3e2814"/></radialGradient>
       <radialGradient id="gMoldDark" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#94724a"/><stop offset="0.55" stop-color="#5a3c1e"/><stop offset="1" stop-color="#2a180a"/></radialGradient>
-      <radialGradient id="gSoil"cx="50%" cy="20%" r="80%"><stop offset="0" stop-color="#6a4630"/><stop offset="1" stop-color="#2e1c10"/></radialGradient>
+      <!-- fortespore: a red-capped fungus -->
+      <radialGradient id="gSporeCap" cx="40%" cy="25%" r="80%"><stop offset="0" stop-color="#e2604a"/><stop offset="0.55" stop-color="#a42a1c"/><stop offset="1" stop-color="#5a1208"/></radialGradient>
+      <linearGradient id="gSporeStem" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#cbb894"/><stop offset="0.5" stop-color="#f4ead2"/><stop offset="1" stop-color="#b09a72"/></linearGradient>
+      <radialGradient id="gSpore" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#f6d8c8"/><stop offset="0.6" stop-color="#c8826a"/><stop offset="1" stop-color="#7a3a28"/></radialGradient>
+      <radialGradient id="gSoil" cx="50%" cy="20%" r="80%"><stop offset="0" stop-color="#6a4630"/><stop offset="1" stop-color="#2e1c10"/></radialGradient>
     </defs>
   </svg>
 
@@ -283,11 +287,21 @@
         stageNames: ['Seed', 'Sprout', 'Bloom', 'Mature'],
         harvestBonus: 0.10
       },
-      /* A weed: pops up on its own and overruns other plants. No effect. */
+      /* A weed: pops up on its own and overruns other plants. No effect.
+         invade: per tick, the chance it takes over a tile it touches (see doTick). */
       forteweed: {
-        name: 'Forteweed', cost: 15, sell: 0, life: 60, locked: true, weed: true,
+        name: 'Forteweed', cost: 15, sell: 0, life: 60, locked: true, invade: 0.004,
         stages: [0, 5],
         stageNames: ['Seed', 'Mature']
+      },
+      /* A fungus: sometimes found when you pull up a Forteweed, and takes over
+         plants like it. No effect - but if it dies of old age, it pays out
+         deathPay of your money. */
+      fortespore: {
+        name: 'Fortespore', cost: 250, sell: 0, life: 30, locked: true, invade: 0.004,
+        stages: [0, 15],
+        stageNames: ['Spore', 'Mature'],
+        deathPay: 0.01
       },
       /* A bad one: sometimes left behind when you pull up a Forteweed.
          While it's in the garden, every harvest pays less. */
@@ -305,10 +319,10 @@
         effectBoost: 0.10
       }
     };
-    var SEED_ORDER = ['wheat', 'corn', 'rice', 'millet', 'forteweed', 'mold'];
-    var MOLD_CHANCE = 0.10;  // pulling up a Forteweed leaves Brown Mold in its place
+    var SEED_ORDER = ['wheat', 'corn', 'rice', 'millet', 'forteweed', 'mold', 'fortespore'];
+    var MOLD_CHANCE = 0.10;   // pulling up a Forteweed leaves Brown Mold in its place...
+    var SPORE_CHANCE = 0.05;  // ...or, separately, a Fortespore
     var WEED_SPAWN = 0.001;  // per tick, any empty tile: a Forteweed appears
-    var WEED_SPREAD = 0.004; // per tick, a tile touching a Forteweed that can spread: it takes over, killing what's there
     /* How much of a plant's effect works at each stage: Seed, Sprout, Bloom, Mature. */
     var EFFECT_BY_STAGE = [0.10, 0.25, 0.50, 1];
     /* ...and for a plant right now. Mature is always full strength, even
@@ -375,6 +389,7 @@
       if (p.harvestBonus > 0) out += '<br>Effect: other harvests +' + pct(t ? plantBonus(t) : p.harvestBonus) + ' money';
       if (p.harvestBonus < 0) out += '<br>Effect: every harvest -' + pct(-(t ? plantBonus(t) : p.harvestBonus)) + ' money';
       if (p.effectBoost) out += '<br>Effect: every other effect +' + pct(t ? boostOf(t) : p.effectBoost) + ' stronger';
+      if (p.deathPay) out += '<br>Leave it to die of old age: +' + pct(p.deathPay) + ' of your money';
       if (out && !t) out += ' (less while growing)';
       return out;
     }
@@ -443,7 +458,8 @@
     /* ---- time ---- */
     function alive(t) { return !!t && t.age < PLANTS[t.kind].life; }
 
-    function isWeed(t) { return !!t && !!PLANTS[t.kind].weed; }
+    /* Forteweed and Fortespore: they take over the tiles around them. */
+    function isInvader(t) { return !!t && !!PLANTS[t.kind].invade; }
 
     /* Tiles touching tile i (sides and corners). */
     function around(i) {
@@ -466,12 +482,12 @@
       return false;
     }
     /* The plants touching tile i that can spread right now.
-       weeds: true for the Forteweeds, false for everything else. */
-    function spreaders(i, weeds) {
+       invaders: true for the ones that take over (see isInvader), false for everything else. */
+    function spreaders(i, invaders) {
       var a = around(i), out = [];
       for (var k = 0; k < a.length; k++) {
         var t = state.tiles[a[k]];
-        if (canSpread(a[k]) && isWeed(t) === !!weeds) out.push(t);
+        if (canSpread(a[k]) && isInvader(t) === !!invaders) out.push(t);
       }
       return out;
     }
@@ -484,6 +500,11 @@
         t.age++;
         if (!alive(t)) {  // dies -> the tile just clears, sometimes leaving fertilizer
           state.tiles[i] = null;
+          if (PLANTS[t.kind].deathPay) {  // Fortespore left to die of old age pays out
+            var gift = Math.round(state.money * PLANTS[t.kind].deathPay);
+            state.money += gift;
+            say(PLANTS[t.kind].name + ' gave you $' + gift + '!');
+          }
           if (Math.random() < FERT_CHANCE) state.ferts[i] = true;
         }
       }
@@ -492,15 +513,22 @@
          so a new plant can't help spread in the same tick. */
       var born = [];
       for (i = 0; i < state.tiles.length; i++) {
-        if (state.ferts[i] || isWeed(state.tiles[i])) continue;  // fertilizer sits there until picked up
-        /* Forteweed creeps in from next door - even over a plant, killing it */
-        if (spreaders(i, true).length && Math.random() < WEED_SPREAD) { born.push([i, 'forteweed']); continue; }
+        if (state.ferts[i] || isInvader(state.tiles[i])) continue;  // fertilizer sits there until picked up
+        /* Forteweed / Fortespore creep in from next door - even over a plant,
+           killing it. One roll for each kind touching this tile. */
+        var inv = spreaders(i, true), tried = {}, took = null, k;
+        for (k = 0; k < inv.length && !took; k++) {
+          if (tried[inv[k].kind]) continue;
+          tried[inv[k].kind] = true;
+          if (Math.random() < PLANTS[inv[k].kind].invade) took = inv[k].kind;
+        }
+        if (took) { born.push([i, took]); continue; }
         if (state.tiles[i]) continue;
         /* ...or just pops up out of the empty dirt */
         if (Math.random() < WEED_SPAWN) { born.push([i, 'forteweed']); continue; }
         var near = spreaders(i, false);
         if (!near.length) continue;
-        var count = {}, k;
+        var count = {};
         for (k = 0; k < near.length; k++) count[near[k].kind] = (count[near[k].kind] || 0) + 1;
         /* one roll: each mutation that fits gets its slice, then the 1% spread */
         var roll = Math.random(), edge = 0, kind = null;
@@ -590,8 +618,46 @@
       rice: drawRice(),
       forteweed: drawWeed(),
       mold: drawMold(),
-      millet: drawMillet()
+      millet: drawMillet(),
+      fortespore: drawSpore()
     };
+
+    /* Fortespore: a few loose spores on the dirt, then a grown fungus - a
+       big red-capped mushroom with two smaller ones at its foot. */
+    function drawSpore() {
+      var spores = function (list) {
+        var s = '';
+        for (var i = 0; i < list.length; i++) {
+          var p = list[i];
+          s += '<ellipse cx="' + p[0] + '" cy="' + p[1] + '" rx="' + p[2] + '" ry="' + (p[2] * 0.75) + '" transform="rotate(' + p[3] + ' ' + p[0] + ' ' + p[1] + ')" fill="url(#gSpore)" stroke="#5a2414" stroke-width="0.4"/>';
+        }
+        return s;
+      };
+      /* one mushroom: stem from the ground at x up to y, cap of width w */
+      var shroom = function (x, y, w, h) {
+        return '<path d="M' + (x - w * 0.16) + ' 81 Q' + (x - w * 0.2) + ' ' + ((81 + y) / 2) + ' ' + (x - w * 0.12) + ' ' + y +
+               ' L' + (x + w * 0.12) + ' ' + y + ' Q' + (x + w * 0.2) + ' ' + ((81 + y) / 2) + ' ' + (x + w * 0.16) + ' 81 Z" fill="url(#gSporeStem)" stroke="#8a7656" stroke-width="0.5"/>' +
+               '<path d="M' + (x - w / 2) + ' ' + (y + 1) + ' Q' + (x - w / 2) + ' ' + (y - h) + ' ' + x + ' ' + (y - h) +
+               ' Q' + (x + w / 2) + ' ' + (y - h) + ' ' + (x + w / 2) + ' ' + (y + 1) + ' Q' + x + ' ' + (y + 3) + ' ' + (x - w / 2) + ' ' + (y + 1) + ' Z" fill="url(#gSporeCap)" stroke="#4a0e06" stroke-width="0.6"/>' +
+               '<path d="M' + (x - w * 0.42) + ' ' + (y + 1.2) + ' Q' + x + ' ' + (y + 3.6) + ' ' + (x + w * 0.42) + ' ' + (y + 1.2) + '" stroke="#e8d8b8" stroke-width="1.2" fill="none" opacity="0.8"/>' +
+               '<circle cx="' + (x - w * 0.18) + '" cy="' + (y - h * 0.6) + '" r="' + (w * 0.06) + '" fill="#f6ead0" opacity="0.85"/>' +
+               '<circle cx="' + (x + w * 0.16) + '" cy="' + (y - h * 0.45) + '" r="' + (w * 0.05) + '" fill="#f6ead0" opacity="0.85"/>' +
+               '<circle cx="' + (x + w * 0.02) + '" cy="' + (y - h * 0.8) + '" r="' + (w * 0.04) + '" fill="#f6ead0" opacity="0.85"/>';
+      };
+      return {
+        stages: [
+          // spore: a few single spores lying on the dirt
+          svg(spores([[38, 78, 2.6, -20], [47, 75, 3, 15], [53, 80, 2.4, 40], [43, 81, 2, 70]])),
+          // mature: a grown fungus
+          svg(shroom(45, 44, 44, 20) + shroom(26, 68, 20, 9) + shroom(64, 64, 24, 11) +
+              spores([[18, 80, 1.4, 0], [72, 80, 1.5, 30], [36, 82, 1.2, 60]]))
+        ],
+        icon: '<svg width="44" height="44" viewBox="0 0 44 44">' +
+          '<path d="M19 38 Q18 30 20 24 L24 24 Q26 30 25 38 Z" fill="url(#gSporeStem)" stroke="#8a7656" stroke-width="0.6"/>' +
+          '<path d="M8 25 Q8 8 22 8 Q36 8 36 25 Q22 29 8 25 Z" fill="url(#gSporeCap)" stroke="#4a0e06" stroke-width="0.8"/>' +
+          '<circle cx="17" cy="15" r="2" fill="#f6ead0"/><circle cx="27" cy="17" r="1.6" fill="#f6ead0"/></svg>'
+      };
+    }
 
     /* Millet: golden seeds, then green shoots round a gold centre, then
        leaves, then a leafy base under tall stems of golden millet heads. */
@@ -1048,15 +1114,17 @@
         var got = pick(i, harvestValue(i));
         if (got.seed) say('New seed: ' + got.seed + '!');
         else if (got.mold) say('Brown Mold grew where the Forteweed was!');
+        else if (got.spore) say('You found a Fortespore under the Forteweed!');
       }
       save();
       render();
     }
 
     /* Harvests (mature) or pulls up (not yet mature) the plant on tile i.
-       pay: what it sells for. A pulled-up Forteweed sometimes leaves Brown Mold. */
+       pay: what it sells for. A pulled-up Forteweed sometimes leaves Brown Mold
+       or a Fortespore. */
     function pick(i, pay) {
-      var t = state.tiles[i], got = { pay: 0, seed: null, mold: false };
+      var t = state.tiles[i], got = { pay: 0, seed: null, mold: false, spore: false };
       if (isMature(t)) {
         got.pay = pay;
         state.money += pay;
@@ -1066,9 +1134,13 @@
         }
       }
       state.tiles[i] = null;  // harvested early: gone, nothing for it
-      if (t.kind === 'forteweed' && Math.random() < MOLD_CHANCE) {
+      var roll = Math.random();
+      if (t.kind === 'forteweed' && roll < MOLD_CHANCE) {
         state.tiles[i] = { kind: 'mold', age: 0 };
         got.mold = true;
+      } else if (t.kind === 'forteweed' && roll < MOLD_CHANCE + SPORE_CHANCE) {
+        state.tiles[i] = { kind: 'fortespore', age: 0 };
+        got.spore = true;
       }
       return got;
     }
@@ -1076,7 +1148,7 @@
     /* Harvest tool: every plant at once (shift: only the mature ones).
        Prices are worked out first, so they all pay what they're worth right now. */
     function harvestAll(onlyMature) {
-      var list = [], i, money = 0, seeds = [], molds = 0;
+      var list = [], i, money = 0, seeds = [], molds = 0, spores = 0;
       for (i = 0; i < state.tiles.length; i++) {
         var t = state.tiles[i];
         if (!t || (onlyMature && !isMature(t))) continue;
@@ -1088,10 +1160,12 @@
         money += got.pay;
         if (got.seed) seeds.push(got.seed);
         if (got.mold) molds++;
+        if (got.spore) spores++;
       }
       say('Harvested ' + list.length + (list.length === 1 ? ' plant' : ' plants') + ' for $' + money +
           (seeds.length ? ' - new seed: ' + seeds.join(', ') + '!' : '') +
-          (molds ? ' - Brown Mold grew!' : ''));
+          (molds ? ' - Brown Mold grew!' : '') +
+          (spores ? ' - you found a Fortespore!' : ''));
       save();
       render();
     }
@@ -1144,7 +1218,7 @@
         '<h3>MUTATING</h3>Instead of spreading, an empty tile touching the right mix of plants (all able to spread) ' +
         'can sometimes grow a brand new kind of plant. Which plants make what is up to you to find out!' +
         '<h3>WEEDS</h3>Weeds pop up on empty dirt by themselves. Once they can spread (same rules as above), ' +
-        'they creep into the tiles next to them, killing any plant there.' +
+        'they creep into the tiles next to them, killing any plant there. Weeds aren\'t the only things that do this!' +
         '<h3>EFFECTS</h3>Some plants change the whole garden while they\'re growing - good or bad. ' +
         'A plant\'s effect grows with it: ' +
         EFFECT_BY_STAGE.map(pct).join(', ') + ' at Seed, Sprout, Bloom and Mature.' +
