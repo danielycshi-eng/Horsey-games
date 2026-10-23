@@ -45,8 +45,22 @@
       display: flex; flex-direction: column; gap: 0.8rem;
       background: rgba(5,7,15,0.55); border: 2px solid #3a2a1c;
       border-radius: 14px; padding: 0.8rem;
+      max-height: calc(100vh - 5rem); overflow-y: auto;  /* short screens: scroll the panel */
     }
     .seeds h2 { font-size: 0.85rem; letter-spacing: 3px; color: #e8d3b0; text-align: center; }
+    .tools { display: flex; gap: 6px; justify-content: center; }
+    .tool {
+      width: 40px; height: 40px; border-radius: 10px; padding: 0;
+      background: #0b0f1a; border: 2px solid #e8d3b0;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; transition: transform 0.1s;
+    }
+    .tool:hover { transform: scale(1.08); }
+    .tool svg { width: 28px; height: 28px; }
+    #toolFreeze { border-color: #8fdcff; }
+    #toolFreeze.on { background: #8fdcff; }
+    #toolFreeze.on svg * { stroke: #05070f; }
+    #seedList { align-items: center; }
     #seedList { display: flex; flex-direction: column; gap: 0.8rem; }
     .seed {
       width: 84px; height: 84px; border-radius: 12px;
@@ -79,14 +93,38 @@
       background: rgba(143,220,255,0.18); pointer-events: none;
     }
 
-    .bar-row { display: flex; gap: 0.8rem; align-items: center; }
-    .clock { color: #e8d3b0; font-size: 0.95rem; min-width: 150px; text-align: right; }
-    .freeze {
-      padding: 0.5rem 1.1rem; font-size: 0.95rem; border-radius: 10px; cursor: pointer;
-      background: #0b0f1a; color: #8fdcff; border: 2px solid #8fdcff;
+    .clock { color: #e8d3b0; font-size: 0.95rem; text-align: center; }
+
+    /* Information: the garden's numbers stay pinned at the top, the guide scrolls under them. */
+    .info-back {
+      position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,0.55);
+      display: flex; align-items: center; justify-content: center;
     }
-    .freeze:hover { background: #12202e; }
-    .freeze.on { background: #8fdcff; color: #05070f; }
+    .info-back.hidden { display: none; }
+    .info {
+      width: min(480px, calc(100vw - 32px)); max-height: 82vh;
+      display: flex; flex-direction: column; gap: 0.8rem;
+      background: #0b0f1a; border: 2px solid #e8d3b0; border-radius: 14px;
+      padding: 1rem 1.1rem; color: #e8d3b0; user-select: text;
+    }
+    .info-head { display: flex; justify-content: space-between; align-items: center; }
+    .info-head h2 { font-size: 1.2rem; color: #ffd166; letter-spacing: 2px; }
+    .info-close {
+      background: none; border: 2px solid #e8d3b0; color: #e8d3b0; border-radius: 8px;
+      width: 32px; height: 32px; font-size: 1rem; cursor: pointer;
+    }
+    .info-close:hover { background: #e8d3b0; color: #05070f; }
+    .garden-info {
+      flex: none; border: 2px solid #7bffb2; border-radius: 10px; padding: 0.6rem 0.8rem;
+      background: rgba(123,255,178,0.06); line-height: 1.6;
+    }
+    .garden-info h3, .guide h3 { font-size: 0.85rem; letter-spacing: 2px; color: #7bffb2; margin-bottom: 0.2rem; }
+    .garden-info .row { display: flex; justify-content: space-between; gap: 1rem; }
+    .garden-info .good { color: #7bffb2; }
+    .garden-info .bad { color: #ff8fa3; }
+    .guide { overflow-y: auto; min-height: 0; flex: 1; padding-right: 0.4rem; line-height: 1.5; font-size: 0.92rem; }
+    .guide h3 { color: #ffd166; margin-top: 0.8rem; }
+    .guide h3:first-child { margin-top: 0; }
 
     .tip {
       position: fixed; z-index: 20; pointer-events: none;
@@ -121,6 +159,27 @@
   </div>
 
   <div class="seeds">
+    <h2>TOOLS</h2>
+    <div class="tools">
+      <!-- Information: a magnifying glass -->
+      <button class="tool" id="toolInfo"><svg viewBox="0 0 28 28">
+        <circle cx="11.5" cy="11.5" r="7.5" fill="rgba(143,220,255,0.25)" stroke="#e8d3b0" stroke-width="2.4"/>
+        <path d="M8 8.5 Q10 6.5 13 7" stroke="#ffffff" stroke-width="1.3" fill="none" stroke-linecap="round" opacity="0.8"/>
+        <path d="M17 17 L24.5 24.5" stroke="#a0703a" stroke-width="4" stroke-linecap="round"/></svg></button>
+      <!-- Harvest: a bundle of wheat -->
+      <button class="tool" id="toolHarvest"><svg viewBox="0 0 28 28">
+        <path d="M14 26 L14 10 M14 26 L9 11 M14 26 L19 11" stroke="#c99a3c" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+        <ellipse cx="14" cy="6.5" rx="2.3" ry="4.5" fill="#e0b44c" stroke="#8a5f1a" stroke-width="0.7"/>
+        <ellipse cx="8.4" cy="7.8" rx="2.1" ry="4.2" transform="rotate(-18 8.4 7.8)" fill="#e0b44c" stroke="#8a5f1a" stroke-width="0.7"/>
+        <ellipse cx="19.6" cy="7.8" rx="2.1" ry="4.2" transform="rotate(18 19.6 7.8)" fill="#e0b44c" stroke="#8a5f1a" stroke-width="0.7"/>
+        <rect x="10" y="18" width="8" height="3" rx="1.2" fill="#a0262a"/></svg></button>
+      <!-- Freeze: a snowflake -->
+      <button class="tool" id="toolFreeze"><svg viewBox="0 0 28 28">
+        <g stroke="#8fdcff" stroke-width="2" stroke-linecap="round" fill="none">
+          <path d="M14 3 V25 M4.5 8.5 L23.5 19.5 M4.5 19.5 L23.5 8.5"/>
+          <path d="M11 5 L14 8 L17 5 M11 23 L14 20 L17 23"/>
+        </g></svg></button>
+    </div>
     <h2>SEEDS</h2>
     <div id="seedList"></div>
     <button class="destroy" id="destroy">Destroy Garden</button>
@@ -129,11 +188,16 @@
   <div class="center" id="garden">
     <h1 class="title">G<span id="secretA">a</span>rden</h1>
     <div class="grid" id="grid"></div>
-    <div class="bar-row">
-      <div class="clock" id="clock"></div>
-      <button class="freeze" id="freeze">Freeze Garden</button>
-    </div>
+    <div class="clock" id="clock"></div>
     <div class="msg" id="msg"></div>
+  </div>
+
+  <div class="info-back hidden" id="infoBack">
+    <div class="info">
+      <div class="info-head"><h2>INFORMATION</h2><button class="info-close" id="infoClose">&times;</button></div>
+      <div class="garden-info" id="gardenInfo"></div>
+      <div class="guide" id="guide"></div>
+    </div>
   </div>
 
   <div class="tip hidden" id="tip"></div>
@@ -166,7 +230,10 @@
       <linearGradient id="gWeed" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#8a1e18"/><stop offset="0.45" stop-color="#3f7a26"/><stop offset="1" stop-color="#7ab83c"/></linearGradient>
       <linearGradient id="gWeedLight" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#a8261e"/><stop offset="0.5" stop-color="#4f8f2e"/><stop offset="1" stop-color="#9ccf55"/></linearGradient>
       <radialGradient id="gWeedRed" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#ff7a66"/><stop offset="0.6" stop-color="#d42a1e"/><stop offset="1" stop-color="#7a0f0a"/></radialGradient>
-      <radialGradient id="gSoil" cx="50%" cy="20%" r="80%"><stop offset="0" stop-color="#6a4630"/><stop offset="1" stop-color="#2e1c10"/></radialGradient>
+      <!-- brown mold -->
+      <radialGradient id="gMold" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#b8946a"/><stop offset="0.55" stop-color="#7a5532"/><stop offset="1" stop-color="#3e2814"/></radialGradient>
+      <radialGradient id="gMoldDark" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#94724a"/><stop offset="0.55" stop-color="#5a3c1e"/><stop offset="1" stop-color="#2a180a"/></radialGradient>
+      <radialGradient id="gSoil"cx="50%" cy="20%" r="80%"><stop offset="0" stop-color="#6a4630"/><stop offset="1" stop-color="#2e1c10"/></radialGradient>
     </defs>
   </svg>
 
@@ -219,13 +286,25 @@
         name: 'Forteweed', cost: 15, sell: 0, life: 60, locked: true, weed: true,
         stages: [0, 5],
         stageNames: ['Seed', 'Mature']
+      },
+      /* A bad one: sometimes left behind when you pull up a Forteweed.
+         While it's in the garden, every harvest pays less. */
+      mold: {
+        name: 'Brown Mold', cost: 25, sell: 0, life: 10, locked: true,
+        stages: [0, 5],
+        stageNames: ['Seed', 'Mature'],
+        harvestBonus: -0.10
       }
     };
-    var SEED_ORDER = ['wheat', 'corn', 'rice', 'forteweed'];
+    var SEED_ORDER = ['wheat', 'corn', 'rice', 'forteweed', 'mold'];
+    var MOLD_CHANCE = 0.10;  // pulling up a Forteweed leaves Brown Mold in its place
     var WEED_SPAWN = 0.001;  // per tick, any empty tile: a Forteweed appears
     var WEED_SPREAD = 0.004; // per tick, a tile touching a Forteweed that can spread: it takes over, killing what's there
     /* How much of a plant's effect works at each stage: Seed, Sprout, Bloom, Mature. */
     var EFFECT_BY_STAGE = [0.10, 0.25, 0.50, 1];
+    /* ...and for a plant right now. Mature is always full strength, even
+       for a plant like Brown Mold that goes straight from Seed to Mature. */
+    function effectScale(t) { return isMature(t) ? 1 : EFFECT_BY_STAGE[stageOf(t)]; }
 
     var state = null;
     var hoverTile = -1, hoverSeed = null;
@@ -235,7 +314,7 @@
     /* The cut one planted plant gives the tick timer right now. */
     function plantCut(t) {
       var p = PLANTS[t.kind];
-      return p.tickCut ? p.tickCut * EFFECT_BY_STAGE[stageOf(t)] : 0;
+      return p.tickCut ? p.tickCut * effectScale(t) : 0;
     }
     /* Every plant's cut is applied in turn (two mature Corn: 75% of 75%),
        so the timer gets shorter but never reaches zero. */
@@ -251,23 +330,30 @@
     /* The extra harvest money one planted plant gives right now. */
     function plantBonus(t) {
       var p = PLANTS[t.kind];
-      return p.harvestBonus ? p.harvestBonus * EFFECT_BY_STAGE[stageOf(t)] : 0;
+      return p.harvestBonus ? p.harvestBonus * effectScale(t) : 0;
     }
     /* What harvesting tile i pays: its price plus every OTHER plant's bonus
-       (two mature Rice: +20%). */
+       (two mature Rice: +20%; Brown Mold takes 10% off). Never below $0. */
     function harvestValue(i) {
       var b = 0;
       for (var j = 0; j < state.tiles.length; j++) {
         if (j !== i && state.tiles[j]) b += plantBonus(state.tiles[j]);
       }
-      return Math.round(PLANTS[state.tiles[i].kind].sell * (1 + b));
+      return Math.max(0, Math.round(PLANTS[state.tiles[i].kind].sell * (1 + b)));
+    }
+    /* The whole garden's harvest boost, for the Information panel. */
+    function gardenBonus() {
+      var b = 0;
+      for (var i = 0; i < state.tiles.length; i++) if (state.tiles[i]) b += plantBonus(state.tiles[i]);
+      return b;
     }
     function pct(x) { return Math.round(x * 10000) / 100 + '%'; }
     /* The effect line for a seed (full strength) or a planted plant (now). */
     function effectText(p, t) {
       var out = '';
       if (p.tickCut) out += '<br>Effect: tick timer -' + pct(t ? plantCut(t) : p.tickCut);
-      if (p.harvestBonus) out += '<br>Effect: other harvests +' + pct(t ? plantBonus(t) : p.harvestBonus) + ' money';
+      if (p.harvestBonus > 0) out += '<br>Effect: other harvests +' + pct(t ? plantBonus(t) : p.harvestBonus) + ' money';
+      if (p.harvestBonus < 0) out += '<br>Effect: every harvest -' + pct(-(t ? plantBonus(t) : p.harvestBonus)) + ' money';
       if (out && !t) out += ' (less while growing)';
       return out;
     }
@@ -481,8 +567,40 @@
       wheat: drawSet({ sfx: '', ripeEdge: '#8a5f1a', youngEdge: '#3f6a1c', crease: '#9a6c22', anther: '#f1e58a' }),
       corn: drawCorn(),
       rice: drawRice(),
-      forteweed: drawWeed()
+      forteweed: drawWeed(),
+      mold: drawMold()
     };
+
+    /* Brown Mold: a scatter of small fuzzy brown spots, then one squashed-
+       together clump of them. */
+    function drawMold() {
+      /* each blob: [x, y, size], drawn in order so later ones sit in front */
+      var blobs = function (list, k) {
+        var s = '', i, j, b, a, d;
+        for (i = 0; i < list.length; i++) {
+          b = list[i];
+          s += '<ellipse cx="' + b[0] + '" cy="' + b[1] + '" rx="' + (b[2] * 1.12 * k).toFixed(1) + '" ry="' + (b[2] * 0.88 * k).toFixed(1) +
+               '" fill="url(#' + (i % 3 === 1 ? 'gMoldDark' : 'gMold') + ')" stroke="#24160a" stroke-width="0.5"/>';
+          for (j = 0; j < 4; j++) {  // pale fuzz on top
+            a = i * 2.3 + j * 1.7; d = b[2] * k * (0.25 + 0.15 * j);
+            s += '<circle cx="' + (b[0] + Math.cos(a) * d).toFixed(1) + '" cy="' + (b[1] - b[2] * k * 0.2 + Math.sin(a) * d * 0.7).toFixed(1) +
+                 '" r="' + (0.5 + 0.12 * b[2] * k / 4).toFixed(2) + '" fill="#e2cfa8" opacity="0.55"/>';
+          }
+        }
+        return s;
+      };
+      return {
+        stages: [
+          // seed: a bunch of little mold spots on the dirt
+          svg(blobs([[34, 73, 2.6], [56, 72, 2.8], [40, 77, 3.6], [51, 78, 3.4], [45, 73, 4.2], [45, 81, 2.8], [30, 79, 2], [60, 79, 2.2]], 1)),
+          // mature: a big clump of them all squished together
+          svg(blobs([[45, 46, 8], [35, 55, 9], [56, 54, 9], [26, 68, 8], [64, 67, 8], [45, 62, 11],
+                     [34, 74, 9], [57, 74, 9], [45, 79, 7], [20, 79, 5], [70, 79, 5]], 1))
+        ],
+        icon: '<svg width="44" height="44" viewBox="0 0 44 44">' +
+          blobs([[16, 18, 6], [28, 17, 6.5], [22, 28, 8], [11, 30, 5], [33, 30, 5]], 1) + '</svg>'
+      };
+    }
 
     /* Forteweed: a sprawling, jagged green-and-red weed. Seed, then straight
        to mature - which grows small red leaves. */
@@ -682,7 +800,7 @@
     }
     function sizeGrid() {
       var byH = (window.innerHeight - 230 - 12 * (rows() - 1)) / rows();
-      var byW = (window.innerWidth - 320 - 12 * (cols() - 1)) / cols();
+      var byW = (window.innerWidth - 400 - 12 * (cols() - 1)) / cols();
       var px = Math.max(64, Math.min(130, Math.floor(Math.min(byH, byW))));
       gridEl.style.gridTemplateColumns = 'repeat(' + cols() + ', ' + px + 'px)';
       for (var i = 0; i < tileEls.length; i++) {
@@ -766,9 +884,7 @@
         seedEls[kind].classList.toggle('selected', selected === kind);
       });
       document.getElementById('garden').classList.toggle('frozen', state.frozen);
-      var fb = document.getElementById('freeze');
-      fb.textContent = state.frozen ? 'Unfreeze Garden' : 'Freeze Garden';
-      fb.classList.toggle('on', state.frozen);
+      document.getElementById('toolFreeze').classList.toggle('on', state.frozen);
 
       var left = Math.max(0, Math.ceil((tickMs() - state.clock) / 1000));
       var cut = Math.round((1 - tickFactor()) * 10000) / 100;
@@ -785,11 +901,16 @@
         tileEls[i].classList.toggle('mature', !!t && isMature(t));
       }
       renderTip();
+      renderInfo();
     }
 
     function renderTip() {
       var html = '';
-      if (hoverSeed) {
+      if (hoverTool) {
+        html = TOOL_TIPS[hoverTool] || (state.frozen
+          ? '<div class="t-name">Unfreeze</div>Time in the garden is stopped - click to start it again'
+          : '<div class="t-name">Freeze</div>Stops time in the garden until you click again');
+      } else if (hoverSeed) {
         var p = PLANTS[hoverSeed];
         html = '<div class="t-name">' + p.name + ' seed</div>' +
           'Price: $' + p.cost + '<br>' +
@@ -837,25 +958,135 @@
         if (state.money < p.cost) { say('Not enough money ($' + p.cost + ' needed)'); return; }
         state.money -= p.cost;
         state.tiles[i] = { kind: selected, age: 0 };
-      } else if (isMature(t)) {
-        state.money += harvestValue(i);
-        if (!isUnlocked(t.kind)) {
-          state.unlocked[t.kind] = true;
-          say('New seed: ' + PLANTS[t.kind].name + '!');
-        }
-        state.tiles[i] = null;
       } else {
-        state.tiles[i] = null;  // harvested early: gone, nothing for it
+        var got = pick(i, harvestValue(i));
+        if (got.seed) say('New seed: ' + got.seed + '!');
+        else if (got.mold) say('Brown Mold grew where the Forteweed was!');
       }
       save();
       render();
     }
 
-    document.getElementById('freeze').addEventListener('click', function () {
+    /* Harvests (mature) or pulls up (not yet mature) the plant on tile i.
+       pay: what it sells for. A pulled-up Forteweed sometimes leaves Brown Mold. */
+    function pick(i, pay) {
+      var t = state.tiles[i], got = { pay: 0, seed: null, mold: false };
+      if (isMature(t)) {
+        got.pay = pay;
+        state.money += pay;
+        if (!isUnlocked(t.kind)) {
+          state.unlocked[t.kind] = true;
+          got.seed = PLANTS[t.kind].name;
+        }
+      }
+      state.tiles[i] = null;  // harvested early: gone, nothing for it
+      if (t.kind === 'forteweed' && Math.random() < MOLD_CHANCE) {
+        state.tiles[i] = { kind: 'mold', age: 0 };
+        got.mold = true;
+      }
+      return got;
+    }
+
+    /* Harvest tool: every plant at once (shift: only the mature ones).
+       Prices are worked out first, so they all pay what they're worth right now. */
+    function harvestAll(onlyMature) {
+      var list = [], i, money = 0, seeds = [], molds = 0;
+      for (i = 0; i < state.tiles.length; i++) {
+        var t = state.tiles[i];
+        if (!t || (onlyMature && !isMature(t))) continue;
+        list.push([i, harvestValue(i)]);
+      }
+      if (!list.length) { say(onlyMature ? 'Nothing is mature yet' : 'Nothing to harvest'); return; }
+      for (i = 0; i < list.length; i++) {
+        var got = pick(list[i][0], list[i][1]);
+        money += got.pay;
+        if (got.seed) seeds.push(got.seed);
+        if (got.mold) molds++;
+      }
+      say('Harvested ' + list.length + (list.length === 1 ? ' plant' : ' plants') + ' for $' + money +
+          (seeds.length ? ' - new seed: ' + seeds.join(', ') + '!' : '') +
+          (molds ? ' - Brown Mold grew!' : ''));
+      save();
+      render();
+    }
+
+    /* ---- tools ---- */
+    var hoverTool = null;
+    var TOOL_TIPS = {
+      toolInfo: '<div class="t-name">Information</div>How to play, and what your garden is doing right now',
+      toolHarvest: '<div class="t-name">Harvest</div>Harvests every plant at once<br>Shift-click: only the mature ones',
+      toolFreeze: null  // depends on whether it's frozen - see renderTip
+    };
+    Object.keys(TOOL_TIPS).forEach(function (id) {
+      var el = document.getElementById(id);
+      el.addEventListener('mouseenter', function () { hoverTool = id; });
+      el.addEventListener('mouseleave', function () { if (hoverTool === id) hoverTool = null; });
+    });
+    document.getElementById('toolHarvest').addEventListener('click', function (e) { harvestAll(e.shiftKey); });
+    document.getElementById('toolFreeze').addEventListener('click', function () {
       state.frozen = !state.frozen;
       save();
       render();
     });
+
+    var infoBack = document.getElementById('infoBack');
+    function showInfo(on) {
+      infoBack.classList.toggle('hidden', !on);
+      if (on) { hoverTool = null; hoverSeed = null; hoverTile = -1; buildGuide(); render(); }
+    }
+    document.getElementById('toolInfo').addEventListener('click', function () { showInfo(true); });
+    document.getElementById('infoClose').addEventListener('click', function () { showInfo(false); });
+    infoBack.addEventListener('click', function (e) { if (e.target === infoBack) showInfo(false); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') showInfo(false); });
+
+    /* The how-to part of Information. Numbers come straight from the rules above. */
+    function buildGuide() {
+      var mut = MUTATIONS.map(function (mu) {
+        var parts = [];
+        for (var k in mu.needs) parts.push((mu.needs[k] > 1 ? mu.needs[k] + ' ' : '') + PLANTS[k].name);
+        return '<li>' + parts.join(' + ') + ' &rarr; ' + PLANTS[mu.into].name + ' (' + pct(mu.chance) + ' per tick)</li>';
+      }).join('');
+      document.getElementById('guide').innerHTML =
+        '<h3>PLANTING</h3>Pick a seed on the left, then click an empty tile. It costs the seed\'s price. ' +
+        'Hover a seed to see its price, how long it takes and what it does.' +
+        '<h3>GROWING</h3>Every tick, each plant gets one tick older: Seed, Sprout, Bloom, then Mature ' +
+        '(some go straight from Seed to Mature). Hover a plant to see how it\'s doing. ' +
+        'Every plant dies when its life runs out, and sometimes leaves fertilizer behind.' +
+        '<h3>HARVESTING &amp; UPROOTING</h3>Click a mature plant (gold border) to harvest it for money. ' +
+        'Clicking a plant that isn\'t mature yet uproots it - it\'s gone and you get nothing. ' +
+        'Harvest a new kind of plant when it\'s mature to get its seed for good. ' +
+        'Uprooting a Forteweed has a ' + pct(MOLD_CHANCE) + ' chance to leave Brown Mold behind.' +
+        '<h3>SPREADING</h3>A plant can spread when it\'s mature, isn\'t in its last 5 ticks of life, ' +
+        'and is touching (sides or corners) another plant that is too - any kind. ' +
+        'Then every empty tile next to it has a ' + pct(SPREAD_CHANCE) + ' chance per tick to sprout one of its kind ' +
+        '(if a few plants can spread there, it\'s one of them at random).' +
+        '<h3>MUTATING</h3>Instead of spreading, an empty tile touching the right plants (all able to spread) can grow a new one:' +
+        '<ul style="margin:0.2rem 0 0 1.2rem">' + mut + '</ul>' +
+        '<h3>FORTEWEED</h3>Pops up on empty dirt (' + pct(WEED_SPAWN) + ' per tick). Once it can spread (same rules as above), ' +
+        'it creeps into the tiles next to it (' + pct(WEED_SPREAD) + ' per tick), killing any plant there.' +
+        '<h3>EFFECTS</h3>Some plants change the whole garden - Corn makes ticks shorter, Rice makes harvests pay more, ' +
+        'Brown Mold makes them pay less. A plant\'s effect grows with it: ' +
+        EFFECT_BY_STAGE.map(pct).join(', ') + ' at Seed, Sprout, Bloom and Mature.' +
+        '<h3>FERTILIZER</h3>Click fertilizer to pick it up, then use Upgrade Farm (under your money) to make your farm bigger.' +
+        '<h3>TOOLS</h3>Harvest picks every plant at once - hold Shift to only pick the mature ones. ' +
+        'Freeze stops time in the garden until you unfreeze it.';
+    }
+
+    /* The pinned part of Information: what the garden is doing right now. */
+    var lastInfo = '';
+    function renderInfo() {
+      if (infoBack.classList.contains('hidden')) return;
+      var b = gardenBonus(), cut = 1 - tickFactor(), n = 0;
+      for (var i = 0; i < state.tiles.length; i++) if (state.tiles[i]) n++;
+      var html = '<h3>YOUR GARDEN</h3>' +
+        '<div class="row"><span>Harvest money</span><span class="' + (b > 0 ? 'good' : b < 0 ? 'bad' : '') + '">' +
+          (b < 0 ? '-' : '+') + pct(Math.abs(b)) + '</span></div>' +
+        '<div class="row"><span>Tick time</span><span class="' + (cut > 0 ? 'good' : '') + '">' + (cut > 0 ? '-' : '') + pct(cut) +
+          ' (' + Math.round(tickMs() / 100) / 10 + 's a tick)</span></div>' +
+        '<div class="row"><span>Farm</span><span>' + rows() + ' x ' + cols() + ', ' + n + ' planted</span></div>' +
+        '<div class="row"><span>Time</span><span>' + (state.frozen ? 'Frozen' : 'Running') + '</span></div>';
+      if (html !== lastInfo) { document.getElementById('gardenInfo').innerHTML = html; lastInfo = html; }
+    }
 
     /* ---- loop: time keeps running even while you're away ---- */
     var last = 0;
