@@ -254,7 +254,8 @@
        per tick, of growing the new plant instead (on top of the 1%). */
     var MUTATIONS = [
       { needs: { wheat: 2 },          into: 'corn', chance: 0.05 },
-      { needs: { wheat: 1, corn: 1 }, into: 'rice', chance: 0.05 }
+      { needs: { wheat: 1, corn: 1 }, into: 'rice', chance: 0.05 },
+      { needs: { rice: 1, corn: 1 },  into: 'millet', chance: 0.05 }
     ];
 
     /* Every plant kind. stages = the age (in ticks) each stage starts at.
@@ -262,7 +263,8 @@
        one ripe - then it's yours until you Destroy Garden.
        Effects (scaled by stage, see EFFECT_BY_STAGE):
          tickCut      - the tick timer is this much shorter
-         harvestBonus - every other plant you harvest pays this much more */
+         harvestBonus - every other plant you harvest pays this much more
+         effectBoost  - every other effect is this much stronger */
     var PLANTS = {
       wheat: {
         name: 'Wheat', cost: 5, sell: 10, life: 17,
@@ -294,9 +296,16 @@
         stages: [0, 5],
         stageNames: ['Seed', 'Mature'],
         harvestBonus: -0.10
+      },
+      /* Makes every other effect in the garden stronger (Rice's +10% -> +11%). */
+      millet: {
+        name: 'Millet', cost: 5000, sell: 12000, life: 60, locked: true,
+        stages: [0, 10, 20, 30],
+        stageNames: ['Seed', 'Sprout', 'Bloom', 'Mature'],
+        effectBoost: 0.10
       }
     };
-    var SEED_ORDER = ['wheat', 'corn', 'rice', 'forteweed', 'mold'];
+    var SEED_ORDER = ['wheat', 'corn', 'rice', 'millet', 'forteweed', 'mold'];
     var MOLD_CHANCE = 0.10;  // pulling up a Forteweed leaves Brown Mold in its place
     var WEED_SPAWN = 0.001;  // per tick, any empty tile: a Forteweed appears
     var WEED_SPREAD = 0.004; // per tick, a tile touching a Forteweed that can spread: it takes over, killing what's there
@@ -314,7 +323,18 @@
     /* The cut one planted plant gives the tick timer right now. */
     function plantCut(t) {
       var p = PLANTS[t.kind];
-      return p.tickCut ? p.tickCut * effectScale(t) : 0;
+      return p.tickCut ? Math.min(0.9, p.tickCut * effectScale(t) * effectBoost()) : 0;
+    }
+    /* Millet: every effect in the garden is this much stronger
+       (two mature Millet: x1.2). */
+    function boostOf(t) {
+      var p = PLANTS[t.kind];
+      return p.effectBoost ? p.effectBoost * effectScale(t) : 0;
+    }
+    function effectBoost() {
+      var b = 1;
+      for (var i = 0; state && i < state.tiles.length; i++) if (state.tiles[i]) b += boostOf(state.tiles[i]);
+      return b;
     }
     /* Every plant's cut is applied in turn (two mature Corn: 75% of 75%),
        so the timer gets shorter but never reaches zero. */
@@ -330,7 +350,7 @@
     /* The extra harvest money one planted plant gives right now. */
     function plantBonus(t) {
       var p = PLANTS[t.kind];
-      return p.harvestBonus ? p.harvestBonus * effectScale(t) : 0;
+      return p.harvestBonus ? p.harvestBonus * effectScale(t) * effectBoost() : 0;
     }
     /* What harvesting tile i pays: its price plus every OTHER plant's bonus
        (two mature Rice: +20%; Brown Mold takes 10% off). Never below $0. */
@@ -354,6 +374,7 @@
       if (p.tickCut) out += '<br>Effect: tick timer -' + pct(t ? plantCut(t) : p.tickCut);
       if (p.harvestBonus > 0) out += '<br>Effect: other harvests +' + pct(t ? plantBonus(t) : p.harvestBonus) + ' money';
       if (p.harvestBonus < 0) out += '<br>Effect: every harvest -' + pct(-(t ? plantBonus(t) : p.harvestBonus)) + ' money';
+      if (p.effectBoost) out += '<br>Effect: every other effect +' + pct(t ? boostOf(t) : p.effectBoost) + ' stronger';
       if (out && !t) out += ' (less while growing)';
       return out;
     }
@@ -568,8 +589,73 @@
       corn: drawCorn(),
       rice: drawRice(),
       forteweed: drawWeed(),
-      mold: drawMold()
+      mold: drawMold(),
+      millet: drawMillet()
     };
+
+    /* Millet: golden seeds, then green shoots round a gold centre, then
+       leaves, then a leafy base under tall stems of golden millet heads. */
+    function drawMillet() {
+      var dots = function (list) {
+        var s = '';
+        for (var i = 0; i < list.length; i++) {
+          s += '<circle cx="' + list[i][0] + '" cy="' + list[i][1] + '" r="' + list[i][2] + '" fill="url(#gGold)" stroke="#a7771e" stroke-width="0.4"/>';
+        }
+        return s;
+      };
+      /* a millet head: a fat, fuzzy spike of tiny gold beads along a curve
+         from (x0,y0) bending through (cx,cy) to (x1,y1) */
+      var head = function (x0, y0, cx, cy, x1, y1, n) {
+        var s = '', i, k;
+        for (i = 0; i <= n; i++) {
+          var t = i / n, u = 1 - t;
+          var x = u * u * x0 + 2 * u * t * cx + t * t * x1;
+          var y = u * u * y0 + 2 * u * t * cy + t * t * y1;
+          var dx = 2 * u * (cx - x0) + 2 * t * (x1 - cx), dy = 2 * u * (cy - y0) + 2 * t * (y1 - cy);
+          var len = Math.sqrt(dx * dx + dy * dy), nx = -dy / len, ny = dx / len;
+          var w = 3.4 * (0.45 + 0.55 * Math.sin(Math.PI * (0.1 + 0.8 * t)));
+          for (k = -1; k <= 1; k++) {
+            var bx = x + nx * k * w * 0.75, by = y + ny * k * w * 0.75;
+            s += '<circle cx="' + bx.toFixed(1) + '" cy="' + by.toFixed(1) + '" r="' + (k ? 1.6 : 1.9) + '" fill="url(#gGold)" stroke="#9a6c22" stroke-width="0.3"/>';
+          }
+        }
+        return s;
+      };
+      var stem = function (x1, y1, cx, cy) {
+        return '<path d="M45 81 Q' + cx + ' ' + cy + ' ' + x1 + ' ' + y1 + '" stroke="url(#gStem)" stroke-width="1.8" fill="none" stroke-linecap="round"/>';
+      };
+      return {
+        stages: [
+          // seed: a little pile of round golden seeds
+          svg(dots([[37, 80, 1.9], [53, 80, 2], [43, 80, 2.3], [48, 80, 2.4], [40, 77, 2.6], [50, 77, 2.6], [45, 74, 3]])),
+          // sprout: green shoots fanning out round a gold centre
+          svg(leaf('M45 80 Q36 70 27 64 Q38 69 46 79 Z', 'url(#gLeaf)') +
+              leaf('M45 80 Q54 70 63 64 Q52 69 44 79 Z', 'url(#gLeafLight)') +
+              leaf('M45 80 Q40 66 37 54 Q43 66 46 79 Z', 'url(#gLeafLight)') +
+              leaf('M45 80 Q50 66 53 54 Q47 66 44 79 Z', 'url(#gLeaf)') +
+              dots([[45, 76, 3.4], [41.5, 78.5, 1.6], [48.5, 78.5, 1.6]])),
+          // bloom: tall green leaves
+          svg(leaf('M45 80 Q28 70 14 58 Q30 66 46 77 Z', 'url(#gLeaf)') +
+              leaf('M45 80 Q62 70 76 58 Q60 66 44 77 Z', 'url(#gLeafLight)') +
+              leaf('M45 80 Q34 58 26 34 Q40 56 46.5 79 Z', 'url(#gLeafLight)') +
+              leaf('M45 80 Q56 58 64 34 Q50 56 43.5 79 Z', 'url(#gLeaf)') +
+              leaf('M45 80 Q43 56 46 28 Q49 56 46.5 80 Z', 'url(#gLeaf)')),
+          // mature: leaves all along the bottom, golden millet on top
+          svg(stem(24, 26, 36, 46) + stem(66, 26, 54, 46) + stem(45, 22, 46, 48) +
+              head(24, 28, 19, 18, 18, 6, 9) + head(66, 28, 71, 18, 72, 6, 9) + head(45, 24, 44, 12, 47, 2, 9) +
+              leaf('M45 80 Q26 74 8 76 Q26 66 46 77 Z', 'url(#gLeaf)') +
+              leaf('M45 80 Q64 74 82 76 Q64 66 44 77 Z', 'url(#gLeafLight)') +
+              leaf('M45 80 Q30 66 16 56 Q32 62 46 77 Z', 'url(#gLeafLight)') +
+              leaf('M45 80 Q60 66 74 56 Q58 62 44 77 Z', 'url(#gLeaf)') +
+              leaf('M45 80 Q36 64 32 50 Q41 62 46.5 79 Z', 'url(#gLeaf)') +
+              leaf('M45 80 Q54 64 58 50 Q49 62 43.5 79 Z', 'url(#gLeafLight)'))
+        ],
+        icon: '<svg width="44" height="44" viewBox="0 0 44 44">' +
+          '<circle cx="15" cy="27" r="5" fill="url(#gGold)" stroke="#a7771e" stroke-width="0.8"/>' +
+          '<circle cx="29" cy="27" r="5" fill="url(#gGold)" stroke="#a7771e" stroke-width="0.8"/>' +
+          '<circle cx="22" cy="17" r="5.5" fill="url(#gGold)" stroke="#a7771e" stroke-width="0.8"/></svg>'
+      };
+    }
 
     /* Brown Mold: a scatter of small fuzzy brown spots, then one squashed-
        together clump of them. */
@@ -1071,7 +1157,7 @@
     var lastInfo = '';
     function renderInfo() {
       if (infoBack.classList.contains('hidden')) return;
-      var b = gardenBonus(), cut = 1 - tickFactor(), n = 0;
+      var b = gardenBonus(), cut = 1 - tickFactor(), boost = effectBoost() - 1, n = 0;
       for (var i = 0; i < state.tiles.length; i++) if (state.tiles[i]) n++;
       /* an effect only shows here while something in the garden is giving it */
       var html = '<h3>YOUR GARDEN</h3>' +
@@ -1079,6 +1165,7 @@
           (b < 0 ? '-' : '+') + pct(Math.abs(b)) + '</span></div>' : '') +
         (cut > 0 ? '<div class="row"><span>Tick time</span><span class="' + (cut > 0 ? 'good' : '') + '">' + (cut > 0 ? '-' : '') + pct(cut) +
           ' (' + Math.round(tickMs() / 100) / 10 + 's a tick)</span></div>' : '') +
+        (boost > 0 ? '<div class="row"><span>Effects</span><span class="good">+' + pct(boost) + ' stronger</span></div>' : '') +
         '<div class="row"><span>Farm</span><span>' + rows() + ' x ' + cols() + ', ' + n + ' planted</span></div>' +
         '<div class="row"><span>Time</span><span>' + (state.frozen ? 'Frozen' : 'Running') + '</span></div>';
       if (html !== lastInfo) { document.getElementById('gardenInfo').innerHTML = html; lastInfo = html; }
