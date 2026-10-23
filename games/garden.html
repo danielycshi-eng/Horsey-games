@@ -889,7 +889,7 @@
       var left = Math.max(0, Math.ceil((tickMs() - state.clock) / 1000));
       var cut = Math.round((1 - tickFactor()) * 10000) / 100;
       document.getElementById('clock').textContent =
-        state.frozen ? 'Frozen' : 'Next tick in ' + left + 's' + (cut ? ' (-' + cut + '%)' : '');
+        state.frozen ? 'Frozen' : 'Next tick in ' + left + 's' + (cut && knowsEffect('tickCut') ? ' (-' + cut + '%)' : '');
 
       for (var i = 0; i < tileEls.length; i++) {
         var t = state.tiles[i], key = t ? t.kind + ':' + stageOf(t) : (state.ferts[i] ? 'fert' : '');
@@ -927,7 +927,7 @@
           '<div class="t-bar"><div class="t-fill" style="width:' +
             Math.min(100, age / q.life * 100).toFixed(1) + '%;background:' + barColor(t, t.age) + '"></div></div>' +
           (t.age < m ? 'Mature in: ' + (m - t.age) + ' ticks' : (harvestValue(hoverTile) ? 'Mature! Click to harvest ($' + harvestValue(hoverTile) + ')' : 'Mature! Click to pull it up')) + '<br>' +
-          'Life left: ' + (q.life - t.age) + ' ticks' + effectText(q, t) +
+          'Life left: ' + (q.life - t.age) + ' ticks' + (isUnlocked(t.kind) ? effectText(q, t) : '') +
           (isUnlocked(t.kind) ? '' : '<br>Harvest when ripe to get the seed!');
       }
       if (html) {
@@ -1039,13 +1039,9 @@
     infoBack.addEventListener('click', function (e) { if (e.target === infoBack) showInfo(false); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') showInfo(false); });
 
-    /* The how-to part of Information. Numbers come straight from the rules above. */
+    /* The how-to part of Information. Numbers come straight from the rules above.
+       No plant names or recipes - those are for finding out. */
     function buildGuide() {
-      var mut = MUTATIONS.map(function (mu) {
-        var parts = [];
-        for (var k in mu.needs) parts.push((mu.needs[k] > 1 ? mu.needs[k] + ' ' : '') + PLANTS[k].name);
-        return '<li>' + parts.join(' + ') + ' &rarr; ' + PLANTS[mu.into].name + ' (' + pct(mu.chance) + ' per tick)</li>';
-      }).join('');
       document.getElementById('guide').innerHTML =
         '<h3>PLANTING</h3>Pick a seed on the left, then click an empty tile. It costs the seed\'s price. ' +
         'Hover a seed to see its price, how long it takes and what it does.' +
@@ -1054,22 +1050,27 @@
         'Every plant dies when its life runs out, and sometimes leaves fertilizer behind.' +
         '<h3>HARVESTING &amp; UPROOTING</h3>Click a mature plant (gold border) to harvest it for money. ' +
         'Clicking a plant that isn\'t mature yet uproots it - it\'s gone and you get nothing. ' +
-        'Harvest a new kind of plant when it\'s mature to get its seed for good. ' +
-        'Uprooting a Forteweed has a ' + pct(MOLD_CHANCE) + ' chance to leave Brown Mold behind.' +
+        'Harvest a new kind of plant when it\'s mature to get its seed for good.' +
         '<h3>SPREADING</h3>A plant can spread when it\'s mature, isn\'t in its last 5 ticks of life, ' +
         'and is touching (sides or corners) another plant that is too - any kind. ' +
         'Then every empty tile next to it has a ' + pct(SPREAD_CHANCE) + ' chance per tick to sprout one of its kind ' +
         '(if a few plants can spread there, it\'s one of them at random).' +
-        '<h3>MUTATING</h3>Instead of spreading, an empty tile touching the right plants (all able to spread) can grow a new one:' +
-        '<ul style="margin:0.2rem 0 0 1.2rem">' + mut + '</ul>' +
-        '<h3>FORTEWEED</h3>Pops up on empty dirt (' + pct(WEED_SPAWN) + ' per tick). Once it can spread (same rules as above), ' +
-        'it creeps into the tiles next to it (' + pct(WEED_SPREAD) + ' per tick), killing any plant there.' +
-        '<h3>EFFECTS</h3>Some plants change the whole garden - Corn makes ticks shorter, Rice makes harvests pay more, ' +
-        'Brown Mold makes them pay less. A plant\'s effect grows with it: ' +
+        '<h3>MUTATING</h3>Instead of spreading, an empty tile touching the right mix of plants (all able to spread) ' +
+        'can sometimes grow a brand new kind of plant. Which plants make what is up to you to find out!' +
+        '<h3>WEEDS</h3>Weeds pop up on empty dirt by themselves. Once they can spread (same rules as above), ' +
+        'they creep into the tiles next to them, killing any plant there.' +
+        '<h3>EFFECTS</h3>Some plants change the whole garden while they\'re growing - good or bad. ' +
+        'A plant\'s effect grows with it: ' +
         EFFECT_BY_STAGE.map(pct).join(', ') + ' at Seed, Sprout, Bloom and Mature.' +
         '<h3>FERTILIZER</h3>Click fertilizer to pick it up, then use Upgrade Farm (under your money) to make your farm bigger.' +
         '<h3>TOOLS</h3>Harvest picks every plant at once - hold Shift to only pick the mature ones. ' +
         'Freeze stops time in the garden until you unfreeze it.';
+    }
+
+    /* Whether you've unlocked the seed of any plant with this effect. */
+    function knowsEffect(key) {
+      for (var k in PLANTS) if (PLANTS[k][key] && isUnlocked(k)) return true;
+      return false;
     }
 
     /* The pinned part of Information: what the garden is doing right now. */
@@ -1078,11 +1079,12 @@
       if (infoBack.classList.contains('hidden')) return;
       var b = gardenBonus(), cut = 1 - tickFactor(), n = 0;
       for (var i = 0; i < state.tiles.length; i++) if (state.tiles[i]) n++;
+      /* an effect only shows here once you've got the seed of a plant that has it */
       var html = '<h3>YOUR GARDEN</h3>' +
-        '<div class="row"><span>Harvest money</span><span class="' + (b > 0 ? 'good' : b < 0 ? 'bad' : '') + '">' +
-          (b < 0 ? '-' : '+') + pct(Math.abs(b)) + '</span></div>' +
-        '<div class="row"><span>Tick time</span><span class="' + (cut > 0 ? 'good' : '') + '">' + (cut > 0 ? '-' : '') + pct(cut) +
-          ' (' + Math.round(tickMs() / 100) / 10 + 's a tick)</span></div>' +
+        (knowsEffect('harvestBonus') ? '<div class="row"><span>Harvest money</span><span class="' + (b > 0 ? 'good' : b < 0 ? 'bad' : '') + '">' +
+          (b < 0 ? '-' : '+') + pct(Math.abs(b)) + '</span></div>' : '') +
+        (knowsEffect('tickCut') ? '<div class="row"><span>Tick time</span><span class="' + (cut > 0 ? 'good' : '') + '">' + (cut > 0 ? '-' : '') + pct(cut) +
+          ' (' + Math.round(tickMs() / 100) / 10 + 's a tick)</span></div>' : '') +
         '<div class="row"><span>Farm</span><span>' + rows() + ' x ' + cols() + ', ' + n + ' planted</span></div>' +
         '<div class="row"><span>Time</span><span>' + (state.frozen ? 'Frozen' : 'Running') + '</span></div>';
       if (html !== lastInfo) { document.getElementById('gardenInfo').innerHTML = html; lastInfo = html; }
