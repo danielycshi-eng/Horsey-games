@@ -443,7 +443,7 @@
       p.dashT = 0; p.cool = 0; p.canDash = true;
       p.landT = 0; p.landAmt = 0; p.phase = 0; p.plant = 1;
       p.hp = MAX_HP; p.inv = 0; p.stun = 0;
-      p.swingT = 0; p.swingBuf = 0; p.swingHit = false; p.sinceDash = 9; p.trail = [];
+      p.swingT = 0; p.swingCool = 0; p.swingBuf = 0; p.swingHit = false; p.trail = [];
       var L = LEVELS[level];
       p.hasSword = !!(L && (L.enemy || (L.pedestal && swordTaken)));
       pose = null;
@@ -716,7 +716,7 @@
     }
 
     /* ================= sword & the red stickman ================= */
-    var MAX_HP = 100, SWING_T = 0.32, SWORD_LEN = 44, SWORD_DMG = 10;
+    var MAX_HP = 100, SWING_T = 0.32, SWING_CD = 0.3, SWORD_LEN = 44, SWORD_DMG = 10;
     var RED = '#ff3b3b';
     var enemy = null, keyItem = null, pedestal = null, swordTaken = false, booms = [];
 
@@ -949,6 +949,8 @@
       /* your swing */
       if (p.swingT > 0) {
         p.swingT -= dt;
+        /* after a swing the sword needs 0.3s before it can swing again */
+        if (p.swingT <= 0) p.swingCool = SWING_CD;
         var s = 1 - p.swingT / SWING_T;
         if (s > 0.2 && s < 0.6 && joints) {
           p.trail.push(swordTip(joints));
@@ -958,8 +960,8 @@
           var hb = { x: p.face > 0 ? p.x - 10 : p.x - 72, y: p.y - 140, w: 82, h: 155 };
           if (boxesTouch(hb, bodyBox(enemy.x, enemy.y))) {
             p.swingHit = true;
-            /* swinging while you dash (or a blink after) is a critical hit */
-            var crit = p.dashT > 0 || p.sinceDash < 0.15;
+            /* hitting him while you're in the air coming down = critical hit */
+            var crit = !p.onGround && p.vy > 0;
             var dmg = crit ? SWORD_DMG * 2 : SWORD_DMG;
             var hx = enemy.x - p.face * 8, hy = clamp(p.y - 60, enemy.y - 90, enemy.y - 20);
             enemy.hp = Math.max(0, enemy.hp - dmg);
@@ -1048,11 +1050,11 @@
       var dir = (held(RIGHT) ? 1 : 0) - (held(LEFT) ? 1 : 0);
       p.jumpBuf -= dt; p.dashBuf -= dt; p.cool -= dt; p.swingBuf -= dt;
       if (p.inv > 0) p.inv -= dt;
-      p.sinceDash = p.dashT > 0 ? 0 : p.sinceDash + dt;
+      if (p.swingCool > 0) p.swingCool -= dt;
       /* knocked back by a hit: no control for a moment */
       if (p.stun > 0) { p.stun -= dt; dir = 0; p.jumpBuf = 0; p.dashBuf = 0; }
 
-      if (p.swingBuf > 0 && p.hasSword && p.swingT <= 0.04 && p.stun <= 0) {
+      if (p.swingBuf > 0 && p.hasSword && p.swingT <= 0 && p.swingCool <= 0 && p.stun <= 0) {
         p.swingT = SWING_T; p.swingHit = false; p.swingBuf = 0;
         p.swingFrom = [pose.ru, pose.rf]; p.trail = [];
       }
