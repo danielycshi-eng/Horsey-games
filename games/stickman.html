@@ -449,6 +449,7 @@
     /* cut straight back to the start: no camera pan, it just jumps there */
     function respawn() {
       resetPlayer();
+      pieces = [];   // no body left behind
       cam.look = p.face * 90;
       cam.x = cameraTarget();
       burst(p.x, p.y - 45, 14, [ORANGE, '#ffffff'], 260);
