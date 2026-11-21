@@ -109,7 +109,7 @@
 
   <div id="win">
     <h2>YOU BEAT STICKMAN</h2>
-    <p>all 5 levels, pure skill</p>
+    <p>you beat the red stickman and took his key. more coming soon</p>
     <button id="again" type="button">PLAY AGAIN</button>
   </div>
 
@@ -132,6 +132,7 @@
     var menuSub = document.getElementById('menu-sub');
     var restartBtn = document.getElementById('restart');
     var bannerT = 0;
+    var HINT_HTML = hint.innerHTML;
 
     /* ---------------- world ---------------- */
     var VIEW_H = 760, WORLD_W = 2400, PIT = 745;
@@ -190,7 +191,17 @@
                [1950, 34, 330], [2220, 120, 440], [2900, 100, 440], [3440, 300, 440],
                [4350, 80, 440], [4870, 440, 400]],
         spikes: [[1967, 330]],
-        slabs: [[2520, 200, 130], [3520, 160, 300]] }
+        slabs: [[2520, 200, 130], [3520, 160, 300]] },
+
+      /* level 6: the sword on its pedestal. The door stays locked until
+         you've picked it up. */
+      { w: 2300, goal: [2160, 620], needs: 'sword', pedestal: [1500, 620],
+        cols: [[0, 640, 620], [820, 300, 560], [1300, 1000, 620]] },
+
+      /* level 7: the red stickman. He carries the key on his belt; the
+         door won't open without it. */
+      { w: 1500, goal: [1410, 620], needs: 'key', enemy: [980, 620],
+        cols: [[0, 1500, 620]] }
     ];
 
     var level = 0, goal = null, solids = [], spikes = [];
@@ -243,6 +254,8 @@
       goal = { x: L.goal[0] - 22, y: L.goal[1] - 84, w: 44, h: 84 };
       START_X = L.cols[0][0] + 120;
       START_Y = L.cols[0][2];
+      pedestal = L.pedestal ? { x: L.pedestal[0], y: L.pedestal[1] } : null;
+      swordTaken = false;
     }
 
     /* ---------------- helpers ---------------- */
@@ -302,8 +315,7 @@
       };
     }
 
-    function runPose(k) {
-      var ph = p.phase;
+    function runPose(k, ph) {
       function leg(o) {
         var s = Math.sin(ph + o), c = Math.cos(ph + o);
         var th = 0.12 + (0.25 + 0.6 * k) * s;
@@ -336,7 +348,7 @@
       if (state === 'play' && p.dashT > 0) return DASH_POSE;
       if (!p.onGround && p.squat <= 0) return airPose();
       var k = clamp(Math.abs(p.vx) / RUN, 0, 1);
-      var tgt = mixPose(idlePose(), runPose(k), smooth(clamp(k * 2.5, 0, 1)));
+      var tgt = mixPose(idlePose(), runPose(k, p.phase), smooth(clamp(k * 2.5, 0, 1)));
       var skid = clamp(-p.vx * p.face / RUN * 1.6, 0, 1);
       if (skid > 0) tgt = mixPose(tgt, SKID, skid);
       var sq = 0;
@@ -359,13 +371,14 @@
       p.plant += (plantT - p.plant) * (1 - Math.exp(-20 * dt));
       if (p.onGround) p.phase += Math.abs(p.vx) * dt / 140 * Math.PI * 2;
 
-      joints = keepOutOfWalls(computeJoints(p.x, p.y));
+      if (p.swingT > 0) swingArm();
+      joints = keepOutOfWalls(computeJoints(p.x, p.y, pose, p.faceDraw, p.plant), p.x);
     }
 
     /* His collision box is slim, but a swinging arm, a reaching leg or the
        head can poke past it. If any part would be drawn inside a wall
        beside him, slide the whole figure back so it touches, not enters. */
-    function keepOutOfWalls(J) {
+    function keepOutOfWalls(J, cx) {
       var push = 0, k, i, s, pt, r;
       for (k in J) {
         if (!J.hasOwnProperty(k) || k === 'f') continue;
@@ -375,8 +388,8 @@
           s = solids[i];
           /* only parts level with the wall (not the floor he stands on) */
           if (pt.y <= s.y + 2 || pt.y >= s.y + s.h) continue;
-          if (p.x <= s.x && pt.x + r > s.x) push = Math.min(push, s.x - (pt.x + r));
-          else if (p.x >= s.x + s.w && pt.x - r < s.x + s.w) push = Math.max(push, s.x + s.w - (pt.x - r));
+          if (cx <= s.x && pt.x + r > s.x) push = Math.min(push, s.x - (pt.x + r));
+          else if (cx >= s.x + s.w && pt.x - r < s.x + s.w) push = Math.max(push, s.x + s.w - (pt.x - r));
         }
       }
       if (push === 0) return J;
@@ -388,13 +401,12 @@
       return { x: o.x + Math.sin(ang) * len * f, y: o.y + Math.cos(ang) * len };
     }
 
-    function computeJoints(px, py) {
-      var f = p.faceDraw, P = pose;
+    function computeJoints(px, py, P, f, plant) {
       var dL = Math.cos(P.lt) * LEN.thigh + Math.cos(P.ls) * LEN.shin;
       var dR = Math.cos(P.rt) * LEN.thigh + Math.cos(P.rs) * LEN.shin;
       /* on the ground the lowest foot is planted, so the hips ride up and
          down with the stride instead of the feet floating or sinking */
-      var hipH = LEG + (Math.max(dL, dR) - LEG) * p.plant;
+      var hipH = LEG + (Math.max(dL, dR) - LEG) * plant;
       var hip = { x: px, y: py - hipH };
       var sl = Math.sin(P.lean), cl = Math.cos(P.lean);
       var neck = { x: hip.x + sl * LEN.torso * f, y: hip.y - cl * LEN.torso };
@@ -421,6 +433,10 @@
       p.dead = false; p.deadT = 0;
       p.dashT = 0; p.cool = 0; p.canDash = true;
       p.landT = 0; p.landAmt = 0; p.phase = 0; p.plant = 1;
+      p.hp = MAX_HP; p.inv = 0; p.stun = 0;
+      p.swingT = 0; p.swingBuf = 0; p.swingHit = false; p.sinceDash = 9; p.trail = [];
+      var L = LEVELS[level];
+      p.hasSword = !!(L && (L.enemy || (L.pedestal && swordTaken)));
       pose = null;
       animate(0);
     }
@@ -533,14 +549,19 @@
     /* ---------------- death: he breaks apart ---------------- */
     function die() {
       p.dead = true; p.deadT = 0;
-      var J = joints;
+      pieces = [];
+      breakApart(joints, p.vx, p.vy, ORANGE);
+      cam.shake = 11;
+      lines = []; ghosts = [];
+    }
+
+    /* snap a figure into its bones and send them flying */
+    function breakApart(J, bvx, bvy, color) {
       var segs = [
         [J.hip, J.neck, false], [J.hip, J.lk, true], [J.lk, J.lf, true],
         [J.hip, J.rk, false], [J.rk, J.rf, false], [J.sh, J.le, true],
         [J.le, J.lh, true], [J.sh, J.re, false], [J.re, J.rh, false]
       ];
-      /* only your latest body stays; the one before is cleared */
-      pieces = [];
       for (var i = 0; i < segs.length; i++) {
         var a = segs[i][0], b = segs[i][1];
         var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
@@ -550,19 +571,17 @@
         var push = 180 + Math.random() * 260;
         pieces.push({
           x: mx, y: my, a: Math.atan2(dy, dx), h: len / 2,
-          vx: p.vx * 0.35 + ox * push,
-          vy: p.vy * 0.3 - 260 - Math.random() * 200 + oy * 150,
-          va: (Math.random() - 0.5) * 22, far: segs[i][2]
+          vx: bvx * 0.35 + ox * push,
+          vy: bvy * 0.3 - 260 - Math.random() * 200 + oy * 150,
+          va: (Math.random() - 0.5) * 22, color: color
         });
       }
       pieces.push({
         head: true, x: J.head.x, y: J.head.y, a: 0, h: LEN.head, f: J.f,
-        vx: p.vx * 0.4 + (Math.random() - 0.5) * 220, vy: -430 - Math.random() * 150,
-        va: (Math.random() - 0.5) * 14
+        vx: bvx * 0.4 + (Math.random() - 0.5) * 220, vy: -430 - Math.random() * 150,
+        va: (Math.random() - 0.5) * 14, color: color
       });
-      burst(J.hip.x, J.hip.y - 10, 26, ['#ffffff', ORANGE, '#ff4e6a'], 520);
-      cam.shake = 11;
-      lines = []; ghosts = [];
+      burst(J.hip.x, J.hip.y - 10, 26, ['#ffffff', color, '#ff4e6a'], 520);
     }
 
     function inside(x, y, s) {
@@ -635,6 +654,7 @@
     /* cut straight back to the start: no camera pan, it just jumps there */
     function respawn() {
       resetPlayer();
+      resetEnemy();
       pieces = [];   // no body left behind
       cam.look = p.face * LOOK;
       cam.x = cameraTarget();
@@ -669,8 +689,312 @@
       levelTag.classList.remove('show');
     }
 
+    function doorOpen() {
+      var need = LEVELS[level].needs;
+      if (need === 'sword') return p.hasSword;
+      if (need === 'key') return !!p.hasKey;
+      return true;
+    }
+
     function touchingGoal() {
-      return overlaps(p.x, p.y, goal);
+      return doorOpen() && overlaps(p.x, p.y, goal);
+    }
+
+    /* ================= sword & the red stickman ================= */
+    var MAX_HP = 100, SWING_T = 0.32, SWORD_LEN = 44, SWORD_DMG = 10;
+    var RED = '#ff3b3b';
+    var enemy = null, keyItem = null, pedestal = null, swordTaken = false, booms = [];
+
+    /* His two attacks. wind = the visible wind-up you can react to,
+       active = when it can hit, rec = recovery. Boxes are measured up from
+       his feet: the punch is high (head/chest), the kick is low (legs/belly). */
+    var ATTACKS = {
+      punch: { wind: 0.17, active: 0.09, rec: 0.24, dmg: 5,  reach: 54, top: 108, bot: 48 },
+      kick:  { wind: 0.27, active: 0.11, rec: 0.38, dmg: 10, reach: 76, top: 72,  bot: 8 }
+    };
+
+    var STANCE     = { lean: 0.12, tilt: -0.05, lt: 0.38, ls: -0.25, rt: -0.22, rs: -0.55,
+                       lu: 0.95, lf: 2.55, ru: 0.75, rf: 2.35 };
+    var PUNCH_WIND = { lean: -0.04, tilt: 0, lt: 0.42, ls: -0.3, rt: -0.3, rs: -0.62,
+                       lu: 1.0, lf: 2.6, ru: -0.95, rf: 0.85 };
+    var PUNCH_HIT  = { lean: 0.32, tilt: 0.05, lt: 0.55, ls: -0.12, rt: -0.48, rs: -0.55,
+                       lu: 0.45, lf: 2.2, ru: 1.6, rf: 1.6 };
+    var UPPERCUT   = { lean: 0.1, tilt: -0.25, lt: 0.5, ls: -0.1, rt: -0.4, rs: -0.5,
+                       lu: 0.5, lf: 2.2, ru: 2.55, rf: 2.75 };
+    var KICK_WIND  = { lean: -0.22, tilt: 0.05, lt: -0.05, ls: -0.12, rt: 1.55, rs: 0.1,
+                       lu: 1.3, lf: 2.2, ru: -0.6, rf: -0.2 };
+    var KICK_HIT   = { lean: -0.42, tilt: 0.12, lt: -0.1, ls: -0.15, rt: 1.62, rs: 1.62,
+                       lu: 1.65, lf: 2.0, ru: -1.0, rf: -0.7 };
+    var HURT       = { lean: -0.42, tilt: -0.3, lt: 0.3, ls: 0.0, rt: -0.4, rs: -0.6,
+                       lu: -0.8, lf: -0.5, ru: -1.1, rf: -0.9 };
+
+    function boxesTouch(a, b) {
+      return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+    function bodyBox(x, y) { return { x: x - PW / 2, y: y - PH, w: PW, h: PH }; }
+
+    function resetEnemy() {
+      var L = LEVELS[level];
+      keyItem = null; p.hasKey = false; booms = [];
+      if (!L.enemy) { enemy = null; return; }
+      enemy = { x: L.enemy[0], y: L.enemy[1], vx: 0, vy: 0, onGround: true,
+                face: -1, faceDraw: -1, plant: 1, phase: 0, pose: null, J: null,
+                hp: MAX_HP, act: 'idle', actT: 0, cool: 1.0, stun: 0, hitDone: false,
+                high: false, dead: false, flash: 0, backT: 0, readSwing: false, readDash: false };
+      animateEnemy(0);
+    }
+
+    /* the same box-vs-walls movement the player uses */
+    function moveBody(b, dt) {
+      var i, s;
+      b.x += b.vx * dt;
+      for (i = 0; i < solids.length; i++) {
+        s = solids[i];
+        if (!overlaps(b.x, b.y, s)) continue;
+        b.x = (b.x < s.x + s.w / 2) ? s.x - PW / 2 : s.x + s.w + PW / 2;
+        b.vx = 0;
+      }
+      b.y += b.vy * dt;
+      b.onGround = false;
+      for (i = 0; i < solids.length; i++) {
+        s = solids[i];
+        if (!overlaps(b.x, b.y, s)) continue;
+        if (b.y - PH / 2 < s.y + s.h / 2) { b.y = s.y; if (b.vy > 0) b.vy = 0; b.onGround = true; }
+        else { b.y = s.y + s.h + PH; if (b.vy < 0) b.vy = 0; }
+      }
+    }
+
+    function hurtPlayer(dmg, dir) {
+      if (p.dead || p.inv > 0) return;
+      p.hp = Math.max(0, p.hp - dmg);
+      p.inv = 0.6; p.stun = 0.22;
+      p.vx = dir * 330; p.vy = -260; p.onGround = false;
+      p.dashT = 0; p.swingT = 0; p.squat = 0;
+      burst(p.x, p.y - 60, 10, ['#ffffff', ORANGE], 300);
+      cam.shake = Math.max(cam.shake, dmg >= 10 ? 7 : 4);
+      if (p.hp <= 0) die();
+    }
+
+    function startAttack(e, kind, high) {
+      e.act = kind; e.actT = 0; e.hitDone = false; e.high = !!high;
+    }
+
+    /* Reads you every frame: how far away you are, how high, whether
+       you're winding up a swing, dashing in, or stuck in a swing's
+       follow-through. Punches when you're close or jumping over him,
+       kicks when you hover just outside punch range, backs off from
+       swings and dashes some of the time, and rushes in to punish a
+       missed swing. */
+    function updateEnemy(dt) {
+      var e = enemy;
+      if (!e || e.dead) return;
+      var dx = p.x - e.x, dist = Math.abs(dx), above = e.y - p.y;
+      var alive = !p.dead;
+      var sw = p.swingT > 0 ? 1 - p.swingT / SWING_T : -1;
+      e.flash = Math.max(0, e.flash - dt);
+
+      if (e.stun > 0) {
+        e.stun -= dt;
+        e.vx = approach(e.vx, 0, 1300 * dt);
+        if (e.stun <= 0) { e.act = 'idle'; e.cool = Math.max(e.cool, 0.25); }
+      } else if (e.act === 'punch' || e.act === 'kick') {
+        var A = ATTACKS[e.act];
+        e.actT += dt;
+        e.vx = approach(e.vx, e.act === 'punch' && e.actT > A.wind * 0.6 ? e.face * 90 : 0, 1600 * dt);
+        if (!e.hitDone && alive && e.actT >= A.wind && e.actT < A.wind + A.active) {
+          var top = (e.act === 'punch' && e.high) ? 165 : A.top;
+          var hb = { x: e.face > 0 ? e.x : e.x - A.reach, y: e.y - top, w: A.reach, h: top - A.bot };
+          if (boxesTouch(hb, bodyBox(p.x, p.y))) { e.hitDone = true; hurtPlayer(A.dmg, e.face); }
+        }
+        if (e.actT >= A.wind + A.active + A.rec) { e.act = 'idle'; e.cool = 0.35 + Math.random() * 0.35; }
+      } else {
+        if (alive) e.face = dx >= 0 ? 1 : -1;
+        e.cool -= dt;
+        var windingUp = sw >= 0 && sw < 0.35;
+        var recovering = sw >= 0.6;
+        var dashingAtHim = p.dashT > 0 && p.face === (dx < 0 ? 1 : -1);
+
+        if (windingUp && dist < 100 && !e.readSwing) {
+          e.readSwing = true;
+          if (Math.random() < 0.45) e.backT = 0.2;
+        }
+        if (!windingUp) e.readSwing = false;
+        if (dashingAtHim && dist < 280 && !e.readDash) {
+          e.readDash = true;
+          if (Math.random() < 0.35) e.backT = 0.22;
+        }
+        if (p.dashT <= 0) e.readDash = false;
+
+        if (e.backT > 0) {
+          e.backT -= dt;
+          e.vx = approach(e.vx, -e.face * 330, 2600 * dt);
+        } else {
+          var choice = null, high = false;
+          if (alive && e.cool <= 0 && e.onGround) {
+            if (above > 45 && above < 160 && dist < 62) { choice = 'punch'; high = true; }
+            else if (above <= 45 && dist < 50) choice = 'punch';
+            else if (above <= 30 && dist >= 50 && dist < 82) choice = 'kick';
+          }
+          if (choice) startAttack(e, choice, high);
+          else if (!alive) e.vx = approach(e.vx, 0, 1500 * dt);
+          else {
+            var spd = recovering ? 320 : 220;
+            if (dist > 74) e.vx = approach(e.vx, e.face * spd, 1800 * dt);
+            else if (dist < 38) e.vx = approach(e.vx, -e.face * 170, 1800 * dt);
+            else e.vx = approach(e.vx, 0, 1800 * dt);
+          }
+        }
+      }
+
+      e.vy = Math.min(e.vy + G * dt, 1400);
+      moveBody(e, dt);
+
+      /* you can't walk through him (you can dash through) */
+      if (alive && p.dashT <= 0 && Math.abs(p.x - e.x) < PW &&
+          p.y > e.y - PH + 10 && p.y - PH < e.y - 10) {
+        p.x = e.x + (p.x >= e.x ? PW : -PW);
+      }
+      animateEnemy(dt);
+    }
+
+    function enemyTarget(e) {
+      if (e.stun > 0) return HURT;
+      if (e.act === 'punch' || e.act === 'kick') {
+        var A = ATTACKS[e.act];
+        var W = e.act === 'punch' ? PUNCH_WIND : KICK_WIND;
+        var H = e.act === 'kick' ? KICK_HIT : (e.high ? UPPERCUT : PUNCH_HIT);
+        if (e.actT < A.wind) return W;
+        if (e.actT < A.wind + A.active + A.rec * 0.45) return H;
+        return STANCE;
+      }
+      if (!e.onGround) return FALL;
+      var k = clamp(Math.abs(e.vx) / 300, 0, 1);
+      var st = copyPose(STANCE), b = Math.sin(T * 5);
+      st.lt += 0.04 * b; st.ls -= 0.04 * b; st.rt += 0.04 * b; st.rs -= 0.04 * b;
+      st.lf += 0.05 * b; st.rf += 0.05 * Math.sin(T * 5 + 1);
+      var walk = runPose(k * 0.8, e.phase);
+      walk.lu = STANCE.lu; walk.lf = STANCE.lf; walk.ru = STANCE.ru; walk.rf = STANCE.rf;
+      return mixPose(st, walk, smooth(clamp(k * 2, 0, 1)));
+    }
+
+    function animateEnemy(dt) {
+      var e = enemy, tgt = enemyTarget(e), k;
+      if (!e.pose) e.pose = copyPose(tgt);
+      var striking = (e.act === 'punch' || e.act === 'kick') && e.actT >= ATTACKS[e.act].wind;
+      var a = 1 - Math.exp(-(striking ? 40 : e.stun > 0 ? 25 : 16) * dt);
+      for (k in tgt) if (tgt.hasOwnProperty(k)) e.pose[k] += (tgt[k] - e.pose[k]) * a;
+      e.faceDraw += (e.face - e.faceDraw) * (1 - Math.exp(-18 * dt));
+      e.plant += ((e.onGround ? 1 : 0) - e.plant) * (1 - Math.exp(-20 * dt));
+      if (e.onGround) e.phase += Math.abs(e.vx) * dt / 140 * Math.PI * 2;
+      e.J = keepOutOfWalls(computeJoints(e.x, e.y, e.pose, e.faceDraw, e.plant), e.x);
+    }
+
+    function killEnemy(e) {
+      e.dead = true;
+      breakApart(e.J, e.vx, e.vy, RED);
+      keyItem = { x: e.J.hip.x, y: e.J.hip.y, vx: -e.face * 80, vy: -420 };
+      cam.shake = 10;
+    }
+
+    /* the overhead swing: arm goes back behind the head, then over the
+       top and down in front. Angles run past -PI so it travels the long
+       way round, over his head, instead of through his body. */
+    function swingArm() {
+      var s = 1 - p.swingT / SWING_T, t;
+      var UP_U = -2.75, UP_F = -3.35, END_U = 0.7 - Math.PI * 2, END_F = 0.35 - Math.PI * 2;
+      if (s < 0.25) {
+        t = smooth(s / 0.25);
+        pose.ru = p.swingFrom[0] + (UP_U - p.swingFrom[0]) * t;
+        pose.rf = p.swingFrom[1] + (UP_F - p.swingFrom[1]) * t;
+      } else if (s < 0.55) {
+        t = smooth((s - 0.25) / 0.3);
+        pose.ru = UP_U + (END_U - UP_U) * t;
+        pose.rf = UP_F + (END_F - UP_F) * t;
+      } else if (pose.ru < -Math.PI) {
+        pose.ru += Math.PI * 2; pose.rf += Math.PI * 2;
+      }
+    }
+
+    function swordTip(J) {
+      var dx = J.rh.x - J.re.x, dy = J.rh.y - J.re.y, l = Math.sqrt(dx * dx + dy * dy) || 1;
+      return { x: J.rh.x + dx / l * SWORD_LEN, y: J.rh.y + dy / l * SWORD_LEN, ux: dx / l, uy: dy / l };
+    }
+
+    function updateCombat(dt) {
+      var i;
+      /* the sword on its pedestal */
+      if (pedestal && !swordTaken && !p.dead &&
+          boxesTouch(bodyBox(p.x, p.y), { x: pedestal.x - 30, y: pedestal.y - 120, w: 60, h: 120 })) {
+        swordTaken = true; p.hasSword = true;
+        burst(pedestal.x, pedestal.y - 70, 24, ['#ffffff', '#fff3a8'], 380);
+        hint.innerHTML = 'press <b>I</b> to swing your sword';
+        hint.classList.add('show'); hintT = 5;
+      }
+
+      /* your swing */
+      if (p.swingT > 0) {
+        p.swingT -= dt;
+        var s = 1 - p.swingT / SWING_T;
+        if (s > 0.2 && s < 0.6 && joints) {
+          p.trail.push(swordTip(joints));
+          if (p.trail.length > 7) p.trail.shift();
+        } else p.trail = [];
+        if (enemy && !enemy.dead && !p.swingHit && s >= 0.3 && s <= 0.6) {
+          var hb = { x: p.face > 0 ? p.x - 10 : p.x - 72, y: p.y - 140, w: 82, h: 155 };
+          if (boxesTouch(hb, bodyBox(enemy.x, enemy.y))) {
+            p.swingHit = true;
+            /* swinging while you dash (or a blink after) is a critical hit */
+            var crit = p.dashT > 0 || p.sinceDash < 0.15;
+            var dmg = crit ? SWORD_DMG * 2 : SWORD_DMG;
+            var hx = enemy.x - p.face * 8, hy = clamp(p.y - 60, enemy.y - 90, enemy.y - 20);
+            enemy.hp = Math.max(0, enemy.hp - dmg);
+            enemy.flash = 0.12;
+            enemy.stun = crit ? 0.45 : 0.28;
+            enemy.act = 'hurt';
+            enemy.vx = p.face * (crit ? 430 : 240);
+            enemy.vy = crit ? -260 : -110;
+            if (crit) {
+              booms.push({ x: hx, y: hy, t: 0 });
+              burst(hx, hy, 16, ['#ff3b3b', '#ff8a5a', '#ffffff'], 360);
+              cam.shake = Math.max(cam.shake, 7);
+            } else {
+              burst(hx, hy, 8, ['#ffffff', '#ffd0d0'], 260);
+              cam.shake = Math.max(cam.shake, 3);
+            }
+            if (enemy.hp <= 0) killEnemy(enemy);
+          }
+        }
+      } else p.trail = [];
+
+      for (i = booms.length - 1; i >= 0; i--) {
+        booms[i].t += dt;
+        if (booms[i].t > 0.35) booms.splice(i, 1);
+      }
+
+      updateEnemy(dt);
+
+      /* the key he dropped */
+      if (keyItem && !p.hasKey) {
+        keyItem.vy = Math.min(keyItem.vy + G * dt, 1400);
+        keyItem.x += keyItem.vx * dt; keyItem.y += keyItem.vy * dt;
+        for (i = 0; i < solids.length; i++) {
+          var sd = solids[i];
+          if (keyItem.x > sd.x && keyItem.x < sd.x + sd.w && keyItem.y + 8 > sd.y && keyItem.y < sd.y + sd.h) {
+            if (keyItem.y - keyItem.vy * dt + 8 <= sd.y + 2) {
+              keyItem.y = sd.y - 8;
+              keyItem.vy = keyItem.vy > 120 ? -keyItem.vy * 0.4 : 0;
+              keyItem.vx *= 0.7;
+            } else {
+              keyItem.vx = -keyItem.vx * 0.5;
+              keyItem.x = keyItem.x < sd.x + sd.w / 2 ? sd.x - 1 : sd.x + sd.w + 1;
+            }
+          }
+        }
+        if (!p.dead && Math.abs(keyItem.x - p.x) < 30 && keyItem.y > p.y - PH - 10 && keyItem.y < p.y + 10) {
+          p.hasKey = true;
+          burst(keyItem.x, keyItem.y, 18, ['#ffd166', '#ffffff'], 320);
+        }
+      }
     }
 
     /* ---------------- update ---------------- */
@@ -701,12 +1025,22 @@
          stopped moving (2.5s at most), then cuts to the start */
       if (p.dead) {
         p.deadT += dt;
+        updateCombat(dt);
         if ((p.deadT > 0.6 && piecesSettled()) || p.deadT >= 2.5) respawn();
         return;
       }
 
       var dir = (held(RIGHT) ? 1 : 0) - (held(LEFT) ? 1 : 0);
-      p.jumpBuf -= dt; p.dashBuf -= dt; p.cool -= dt;
+      p.jumpBuf -= dt; p.dashBuf -= dt; p.cool -= dt; p.swingBuf -= dt;
+      if (p.inv > 0) p.inv -= dt;
+      p.sinceDash = p.dashT > 0 ? 0 : p.sinceDash + dt;
+      /* knocked back by a hit: no control for a moment */
+      if (p.stun > 0) { p.stun -= dt; dir = 0; p.jumpBuf = 0; p.dashBuf = 0; }
+
+      if (p.swingBuf > 0 && p.hasSword && p.swingT <= 0.04 && p.stun <= 0) {
+        p.swingT = SWING_T; p.swingHit = false; p.swingBuf = 0;
+        p.swingFrom = [pose.ru, pose.rf]; p.trail = [];
+      }
       p.coyote = p.onGround ? 0.1 : p.coyote - dt;
       if (p.landT > 0) p.landT -= dt;
       if (dir !== 0 && p.dashT <= 0) p.face = dir;
@@ -762,6 +1096,8 @@
 
       move(dt);
       animate(dt);
+      updateCombat(dt);
+      if (p.dead) { updateCamera(dt); return; }
       if (touchingSpike() || p.y >= PIT) die();
       else if (touchingGoal()) reachGoal();
       updateCamera(dt);
@@ -805,30 +1141,30 @@
        face that floats just above the body. */
     var ORANGE = '#ff8a1f', LINE_W = 6.5;
 
-    function drawLimb(pts) {
+    function drawLimb(pts, color) {
       ctx.lineWidth = LINE_W;
-      ctx.strokeStyle = ORANGE;
+      ctx.strokeStyle = color || ORANGE;
       poly(pts);
     }
 
-    function drawHead(x, y) {
+    function drawHead(x, y, color) {
       ctx.beginPath();
       ctx.arc(x, y, LEN.head, 0, Math.PI * 2);
       ctx.lineWidth = LINE_W * 0.8;
-      ctx.strokeStyle = ORANGE;
+      ctx.strokeStyle = color || ORANGE;
       ctx.stroke();
     }
 
-    function drawFigure(J, alpha) {
+    function drawFigure(J, alpha, color) {
       ctx.save();
       ctx.globalAlpha = alpha;
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      drawLimb([J.hip, J.lk, J.lf]);
-      drawLimb([J.sh, J.le, J.lh]);
-      drawLimb([J.hip, J.neck]);
-      drawLimb([J.hip, J.rk, J.rf]);
-      drawLimb([J.sh, J.re, J.rh]);
-      drawHead(J.head.x, J.head.y);
+      drawLimb([J.hip, J.lk, J.lf], color);
+      drawLimb([J.sh, J.le, J.lh], color);
+      drawLimb([J.hip, J.neck], color);
+      drawLimb([J.hip, J.rk, J.rf], color);
+      drawLimb([J.sh, J.re, J.rh], color);
+      drawHead(J.head.x, J.head.y, color);
       ctx.restore();
     }
 
@@ -837,9 +1173,9 @@
       ctx.lineCap = 'round';
       for (var i = 0; i < pieces.length; i++) {
         var pc = pieces[i];
-        if (pc.head) { drawHead(pc.x, pc.y); continue; }
+        if (pc.head) { drawHead(pc.x, pc.y, pc.color); continue; }
         var cx = Math.cos(pc.a) * pc.h, cy = Math.sin(pc.a) * pc.h;
-        drawLimb([{ x: pc.x - cx, y: pc.y - cy }, { x: pc.x + cx, y: pc.y + cy }]);
+        drawLimb([{ x: pc.x - cx, y: pc.y - cy }, { x: pc.x + cx, y: pc.y + cy }], pc.color);
       }
       ctx.restore();
     }
@@ -885,18 +1221,48 @@
         ctx.fill(); ctx.stroke();
       }
 
-      /* the exit door */
+      /* the exit door (red with a padlock while it's locked) */
       if (goal) {
+        var open = doorOpen();
+        var dc = open ? '123,255,178' : '255,78,106';
         var pulse = 0.6 + 0.4 * Math.sin(T * 3);
-        ctx.shadowColor = '#7bffb2'; ctx.shadowBlur = 14 + 8 * pulse;
-        ctx.fillStyle = 'rgba(123,255,178,' + (0.10 + 0.08 * pulse) + ')';
-        ctx.strokeStyle = '#7bffb2'; ctx.lineWidth = 3;
+        ctx.shadowColor = 'rgb(' + dc + ')'; ctx.shadowBlur = open ? 14 + 8 * pulse : 8;
+        ctx.fillStyle = 'rgba(' + dc + ',' + (open ? 0.10 + 0.08 * pulse : 0.08) + ')';
+        ctx.strokeStyle = 'rgb(' + dc + ')'; ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.moveTo(goal.x, goal.y + goal.h);
         ctx.lineTo(goal.x, goal.y + 22);
         ctx.arc(goal.x + goal.w / 2, goal.y + 22, goal.w / 2, Math.PI, 0);
         ctx.lineTo(goal.x + goal.w, goal.y + goal.h);
         ctx.fill(); ctx.stroke();
+        if (!open) {
+          var lx = goal.x + goal.w / 2, ly = goal.y + 46;
+          ctx.shadowBlur = 0;
+          ctx.lineWidth = 2.5;
+          ctx.beginPath(); ctx.arc(lx, ly - 6, 6, Math.PI, 0); ctx.stroke();
+          ctx.fillStyle = 'rgb(' + dc + ')';
+          ctx.fillRect(lx - 9, ly - 6, 18, 14);
+        }
+      }
+
+      /* the pedestal, and the sword glowing on it until you take it */
+      if (pedestal) {
+        var px = pedestal.x, py = pedestal.y;
+        ctx.shadowColor = '#4e7fff'; ctx.shadowBlur = 8;
+        ctx.fillStyle = '#121a3a'; ctx.strokeStyle = '#4e7fff'; ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(px - 30, py); ctx.lineTo(px - 20, py - 40);
+        ctx.lineTo(px + 20, py - 40); ctx.lineTo(px + 30, py);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+        if (!swordTaken) {
+          var g2 = 0.5 + 0.5 * Math.sin(T * 2.5), hover = Math.sin(T * 2) * 3;
+          ctx.fillStyle = 'rgba(255,243,168,' + (0.07 + 0.06 * g2) + ')';
+          ctx.beginPath();
+          ctx.moveTo(px - 26, py - 40); ctx.lineTo(px - 8, py - 200);
+          ctx.lineTo(px + 8, py - 200); ctx.lineTo(px + 26, py - 40);
+          ctx.closePath(); ctx.fill();
+          drawSword(px, py - 52 + hover, 0, -1, 14 + 12 * g2);
+        }
       }
 
       ctx.restore();
@@ -937,7 +1303,100 @@
       drawLevel();
       drawFx();
       drawPieces();
-      if (joints && !p.dead) drawFigure(joints, 1);
+      drawEnemy();
+      drawKey();
+      if (joints && !p.dead) {
+        /* blink while you're briefly invincible after a hit */
+        var blink = p.inv > 0 && Math.floor(p.inv / 0.08) % 2 === 0;
+        drawFigure(joints, blink ? 0.35 : 1);
+        if (p.hasSword) drawHeldSword();
+      }
+      drawBooms();
+      if (joints && !p.dead && p.hasSword) drawBar(joints.head.x, joints.head.y - 26, p.hp, '#7bffb2');
+      if (enemy && !enemy.dead && enemy.J) drawBar(enemy.J.head.x, enemy.J.head.y - 26, enemy.hp, RED);
+    }
+
+    /* a sword whose grip sits at (x, y), pointing along (ux, uy) */
+    function drawSword(x, y, ux, uy, glow) {
+      ctx.save();
+      ctx.lineCap = 'round';
+      if (glow) { ctx.shadowColor = '#fff3a8'; ctx.shadowBlur = glow; }
+      ctx.strokeStyle = '#e8eef7'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(x + ux * 6, y + uy * 6);
+      ctx.lineTo(x + ux * SWORD_LEN, y + uy * SWORD_LEN); ctx.stroke();
+      ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(x + ux * 6 - uy * 8, y + uy * 6 + ux * 8);
+      ctx.lineTo(x + ux * 6 + uy * 8, y + uy * 6 - ux * 8); ctx.stroke();
+      ctx.strokeStyle = '#8a5a2b'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(x - ux * 6, y - uy * 6); ctx.lineTo(x + ux * 4, y + uy * 4); ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawHeldSword() {
+      var J = joints, tip = swordTip(J), i;
+      if (p.trail.length > 1) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(255,255,255,0.18)';
+        ctx.beginPath();
+        ctx.moveTo(J.rh.x, J.rh.y);
+        for (i = 0; i < p.trail.length; i++) ctx.lineTo(p.trail[i].x, p.trail[i].y);
+        ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+      drawSword(J.rh.x, J.rh.y, tip.ux, tip.uy, 0);
+    }
+
+    function drawKeyShape(x, y, ang) {
+      ctx.save();
+      ctx.translate(x, y); ctx.rotate(ang);
+      ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+      ctx.shadowColor = '#ffd166'; ctx.shadowBlur = 6;
+      ctx.beginPath(); ctx.arc(0, -5, 4, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, -1); ctx.lineTo(0, 10);
+      ctx.moveTo(0, 6); ctx.lineTo(3.5, 6); ctx.moveTo(0, 9.5); ctx.lineTo(3.5, 9.5);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawKey() {
+      if (keyItem && !p.hasKey) drawKeyShape(keyItem.x, keyItem.y - 4, 0);
+      if (p.hasKey && joints && !p.dead) drawKeyShape(joints.hip.x - p.faceDraw * 6, joints.hip.y + 6, Math.sin(T * 6) * 0.3);
+    }
+
+    function drawEnemy() {
+      var e = enemy;
+      if (!e || e.dead || !e.J) return;
+      drawFigure(e.J, 1, e.flash > 0 ? '#ffffff' : RED);
+      /* the key hangs off his belt, swinging as he moves */
+      drawKeyShape(e.J.hip.x - e.faceDraw * 5, e.J.hip.y + 6, Math.sin(T * 7 + e.x * 0.05) * 0.35);
+    }
+
+    function drawBooms() {
+      for (var i = 0; i < booms.length; i++) {
+        var b = booms[i], t = b.t / 0.35;
+        ctx.save();
+        ctx.globalAlpha = 1 - t;
+        ctx.fillStyle = '#ff3b3b';
+        ctx.beginPath(); ctx.arc(b.x, b.y, 6 + 20 * t, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#ffd0a0';
+        ctx.beginPath(); ctx.arc(b.x, b.y, 4 + 7 * (1 - t), 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    function drawBar(x, y, hp, color) {
+      var w = 56, h = 10;
+      ctx.save();
+      ctx.fillStyle = 'rgba(10,14,39,0.85)';
+      ctx.fillRect(x - w / 2 - 1.5, y - h / 2 - 1.5, w + 3, h + 3);
+      ctx.fillStyle = color;
+      ctx.fillRect(x - w / 2, y - h / 2, w * clamp(hp / MAX_HP, 0, 1), h);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 9px sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(Math.ceil(hp)), x, y + 0.5);
+      ctx.restore();
     }
 
     /* ---------------- loop ---------------- */
@@ -960,7 +1419,7 @@
       levelTag.classList.add('show');
       keys = {};
       enterLevel(fromLevel);
-      if (fromLevel === 0) { hint.classList.add('show'); hintT = 8; }
+      if (fromLevel === 0) { hint.innerHTML = HINT_HTML; hint.classList.add('show'); hintT = 8; }
     }
 
     function showMenuProgress() {
@@ -982,6 +1441,7 @@
       keys[c] = true;
       if (e.repeat) return;
       if (UP.indexOf(c) >= 0) p.jumpBuf = 0.13;
+      if (c === 'KeyI') p.swingBuf = 0.12;
     });
     document.addEventListener('keyup', function (e) { keys[e.code] = false; });
     window.addEventListener('blur', function () { keys = {}; });
@@ -995,6 +1455,7 @@
     resize();
     buildLevel(loadSaved());
     resetPlayer();
+    resetEnemy();
     showMenuProgress();
     cam.x = p.x - vw / 2;
     requestAnimationFrame(frame);
