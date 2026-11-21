@@ -54,6 +54,12 @@
       background: none; border: none; text-decoration: underline; cursor: pointer;
     }
     #restart:hover { color: #fff; }
+    #admin-toggle {
+      margin-top: 1.4em; padding: 0.4rem 1rem; font-family: inherit; font-size: 0.9rem;
+      background: rgba(14,22,52,0.7); border: 1.5px solid rgba(160,196,255,0.35);
+      color: #a0c4ff; border-radius: 8px; cursor: pointer;
+    }
+    #admin-toggle.on { border-color: #ff5a5a; color: #ff9a9a; box-shadow: 0 0 10px rgba(255,90,90,0.25); }
 
     #lvl {
       position: fixed; top: 14px; right: 18px; z-index: 10;
@@ -102,6 +108,7 @@
     <button id="play" type="button">PLAY</button>
     <p id="menu-sub"></p>
     <button id="restart" type="button">start over from level 1</button>
+    <button id="admin-toggle" type="button">🔧 Admin (test): OFF</button>
   </div>
 
   <div id="lvl"></div>
@@ -133,6 +140,8 @@
     var restartBtn = document.getElementById('restart');
     var bannerT = 0;
     var HINT_HTML = hint.innerHTML;
+    var adminBtn = document.getElementById('admin-toggle');
+    var adminMode = false;   // test mode: L skips to the next level
 
     /* ---------------- world ---------------- */
     var VIEW_H = 760, WORLD_W = 2400, PIT = 745;
@@ -679,6 +688,12 @@
       banner.textContent = 'LEVEL ' + (n + 1);
       banner.classList.add('show');
       bannerT = 1.8;
+    }
+
+    /* admin: L jumps straight to the next level (or the win screen) */
+    function skipLevel() {
+      if (level + 1 < LEVELS.length) enterLevel(level + 1);
+      else reachGoal();
     }
 
     function reachGoal() {
@@ -1442,6 +1457,7 @@
       if (e.repeat) return;
       if (UP.indexOf(c) >= 0) p.jumpBuf = 0.13;
       if (c === 'KeyI') p.swingBuf = 0.12;
+      if (c === 'KeyL' && adminMode && !p.dead) { keys = {}; skipLevel(); }
     });
     document.addEventListener('keyup', function (e) { keys[e.code] = false; });
     window.addEventListener('blur', function () { keys = {}; });
@@ -1449,6 +1465,12 @@
     /* a hidden tab pauses; coming back doesn't fast-forward */
     document.addEventListener('visibilitychange', function () { last = null; accum = 0; });
     playBtn.addEventListener('click', function () { playBtn.blur(); startGame(loadSaved()); });
+    adminBtn.addEventListener('click', function () {
+      adminMode = !adminMode;
+      adminBtn.textContent = '🔧 Admin (test): ' + (adminMode ? 'ON' : 'OFF');
+      adminBtn.classList.toggle('on', adminMode);
+      adminBtn.blur();
+    });
     restartBtn.addEventListener('click', function () { restartBtn.blur(); startGame(0); });
     againBtn.addEventListener('click', function () { againBtn.blur(); startGame(0); });
 
