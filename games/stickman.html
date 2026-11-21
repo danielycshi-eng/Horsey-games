@@ -48,6 +48,53 @@
     }
     #hint.show { opacity: 0.85; }
 
+    #menu-sub { color: #a0c4ff; margin: 1.2em 0 0.4em; min-height: 1.2em; }
+    #restart {
+      font-family: inherit; font-size: 0.95rem; color: #a0c4ff;
+      background: none; border: none; text-decoration: underline; cursor: pointer;
+    }
+    #restart:hover { color: #fff; }
+
+    #lvl {
+      position: fixed; top: 14px; right: 18px; z-index: 10;
+      color: #a0c4ff; font-size: 1rem; letter-spacing: 0.1em;
+      opacity: 0; transition: opacity 0.4s; pointer-events: none;
+    }
+    #lvl.show { opacity: 0.9; }
+
+    #banner {
+      position: fixed; top: 22%; left: 50%; transform: translate(-50%, -50%);
+      z-index: 12; text-align: center; pointer-events: none;
+      color: #fff; font-size: clamp(2.4rem, 7vw, 4rem); font-weight: 800;
+      letter-spacing: 0.25em; text-shadow: 0 0 18px #ff8a1f;
+      opacity: 0; transition: opacity 0.5s;
+    }
+    #banner small {
+      display: block; font-size: 0.35em; font-weight: 400;
+      letter-spacing: 0.2em; color: #ffd0a0; margin-top: 0.3em;
+    }
+    #banner.show { opacity: 1; }
+
+    #win {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 25;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: rgba(10,14,39,0.75); text-align: center;
+      opacity: 0; pointer-events: none; transition: opacity 0.6s;
+    }
+    #win.show { opacity: 1; pointer-events: auto; }
+    #win h2 {
+      font-size: clamp(2rem, 7vw, 4rem); margin: 0; letter-spacing: 0.15em;
+      color: #fff; text-shadow: 0 0 20px #ff8a1f;
+    }
+    #win p { color: #a0c4ff; margin: 0.8em 0 1.6em; }
+    #again {
+      font-family: inherit; font-weight: 700; font-size: 1.4rem;
+      letter-spacing: 0.2em; padding: 0.55em 2em;
+      border-radius: 999px; border: 3px solid #ff8a1f;
+      background: rgba(14,22,52,0.88); color: #fff; cursor: pointer;
+    }
+    #again:hover { background: #ff8a1f; color: #0a0e27; }
+
   </style>
 </head>
 <body>
@@ -57,6 +104,17 @@
   <div id="menu">
     <h1>STICKMAN</h1>
     <button id="play" type="button">PLAY</button>
+    <p id="menu-sub"></p>
+    <button id="restart" type="button">start over from level 1</button>
+  </div>
+
+  <div id="lvl"></div>
+  <div id="banner"></div>
+
+  <div id="win">
+    <h2>YOU BEAT STICKMAN</h2>
+    <p>all 5 levels, pure skill</p>
+    <button id="again" type="button">PLAY AGAIN</button>
   </div>
 
   <div id="hint">A / D or &larr; &rarr; move &nbsp;&middot;&nbsp; W / &uarr; / Space jump &nbsp;&middot;&nbsp; again in the air: double jump &nbsp;&middot;&nbsp; a third time: dash</div>
@@ -71,29 +129,117 @@
     var menu    = document.getElementById('menu');
     var playBtn = document.getElementById('play');
     var hint    = document.getElementById('hint');
+    var banner  = document.getElementById('banner');
+    var levelTag = document.getElementById('lvl');
+    var winBox  = document.getElementById('win');
+    var againBtn = document.getElementById('again');
+    var menuSub = document.getElementById('menu-sub');
+    var restartBtn = document.getElementById('restart');
+    var bannerT = 0;
 
     /* ---------------- world ---------------- */
-    var VIEW_H = 760, WORLD_W = 2400, GROUND = 620;
+    var VIEW_H = 760, WORLD_W = 2400, PIT = 745;
     var G = 2300, RUN = 340, ACC_G = 2800, ACC_A = 1700, FRIC = 3200;
     var FLIP_T = 0.25;
     var JUMP = 860, DASH = 1150, DASH_T = 0.16, DASH_CD = 0.55;
-    var PW = 22, PH = 98;
+    var PW = 22, PH = 98, TOOTH = 34;
     var LEN = { thigh: 23, shin: 23, upper: 17, fore: 17, torso: 30, head: 11 };
     var LEG = LEN.thigh + LEN.shin;
-    var START_X = 160;
+    var START_X = 160, START_Y = 620;
+    var SAVE_KEY = 'stickman_level';
 
-    var solids = [
-      { x: -200,    y: -1000, w: 200,     h: 2000 },
-      { x: WORLD_W, y: -1000, w: 200,     h: 2000 },
-      { x: 0,       y: GROUND, w: WORLD_W, h: 300 },
-      { x: 560,  y: 480, w: 170, h: 22 },
-      { x: 820,  y: 390, w: 150, h: 22 },
-      { x: 1060, y: 300, w: 220, h: 22 },
-      { x: 1700, y: 540, w: 140, h: 80 },
-      { x: 1960, y: 440, w: 180, h: 22 }
+    /* ---------------- levels ----------------
+       What each move reaches (edge to edge, same height):
+         single jump  ~320 across, 165 up   (measured, frame-perfect)
+         double jump  ~500 across, 280 up
+         + dash       ~660 across
+       So: double-jump gaps are ~390 (too far for one jump), dash gaps ~570
+       (too far for a double; wider where you drop down), and double-jump
+       walls are 200-230 tall (too tall for one jump). Nothing moves, so
+       there's no timing, and every landing is on screen before you jump.
+
+       cols   [x, w, top]  pillars rising out of the spike pit
+       spikes [x, y]       one tooth pointing up, x = centre of its base
+       slabs  [x, w, y]    floating block, toothed on top AND underneath;
+                           y is its underside. Walk under it, don't jump.
+       goal   [x, top]     the exit door                                   */
+    var LEVELS = [
+      { name: 'First Steps', w: 3300, goal: [3180, 320],
+        cols: [[0, 500, 620], [700, 260, 620], [1120, 220, 520], [1340, 300, 320],
+               [2030, 260, 320], [2860, 440, 320]],
+        spikes: [[300, 620]],
+        signs: [[300, 500, 'jump over the spike'],
+                [1230, 400, 'too tall? jump again in the air'],
+                [2160, 200, 'too far? jump a third time to dash']] },
+
+      { name: 'Up and Over', w: 3720, goal: [3600, 450],
+        cols: [[0, 420, 620], [810, 160, 600], [1350, 200, 480], [1550, 140, 250],
+               [2080, 300, 450], [2770, 120, 450], [3280, 440, 450]],
+        spikes: [[2097, 450], [2131, 450]] },
+
+      { name: 'Dash', w: 4500, goal: [4360, 480],
+        cols: [[0, 400, 600], [970, 200, 600], [1730, 180, 520], [1910, 160, 300],
+               [2720, 200, 480], [3490, 160, 480], [4040, 440, 480]] },
+
+      { name: 'Mind Your Head', w: 4500, goal: [4330, 460],
+        cols: [[0, 400, 620], [578, 34, 460], [790, 420, 620], [1600, 180, 560],
+               [1780, 180, 340], [2520, 140, 380], [3060, 380, 460], [4010, 440, 460]],
+        spikes: [[595, 460], [3077, 460]],
+        slabs: [[930, 200, 470], [3210, 120, 310]] },
+
+      { name: 'The Gauntlet', w: 5100, goal: [4940, 420],
+        cols: [[0, 360, 620], [750, 100, 560], [1050, 120, 360], [1740, 120, 360],
+               [2040, 34, 300], [2260, 160, 420], [2580, 140, 200], [3400, 160, 420],
+               [3950, 100, 380], [4620, 440, 420]],
+        spikes: [[2057, 300]] }
     ];
-    /* one tooth. x is the centre of its base */
-    var spikes = [ { x: 1420, y: GROUND, w: 34, h: 34 } ];
+
+    var level = 0, goal = null, signs = [], solids = [], spikes = [];
+
+    function addTeeth(x, w, y, down) {
+      var n = Math.floor(w / TOOTH), off = (w - n * TOOTH) / 2;
+      for (var i = 0; i < n; i++)
+        spikes.push({ x: x + off + TOOTH * (i + 0.5), y: y, w: TOOTH, h: TOOTH, down: down });
+    }
+
+    function buildLevel(n) {
+      var L = LEVELS[n], i, c;
+      level = n;
+      WORLD_W = L.w;
+      solids = [
+        { x: -200,    y: -1000, w: 200, h: 3000 },
+        { x: WORLD_W, y: -1000, w: 200, h: 3000 }
+      ];
+      spikes = [];
+      for (i = 0; i < L.cols.length; i++) {
+        c = L.cols[i];
+        solids.push({ x: c[0], y: c[2], w: c[1], h: 1200 - c[2], col: true });
+      }
+      /* the pit floor, toothed wherever no pillar covers it */
+      solids.push({ x: 0, y: PIT, w: WORLD_W, h: 400 });
+      for (var x = TOOTH / 2; x < WORLD_W; x += TOOTH) {
+        var covered = false;
+        for (i = 0; i < L.cols.length; i++) {
+          c = L.cols[i];
+          if (x > c[0] - TOOTH / 2 && x < c[0] + c[1] + TOOTH / 2) covered = true;
+        }
+        if (!covered) spikes.push({ x: x, y: PIT, w: TOOTH, h: TOOTH, down: false });
+      }
+      var S = L.spikes || [];
+      for (i = 0; i < S.length; i++)
+        spikes.push({ x: S[i][0], y: S[i][1], w: TOOTH, h: TOOTH, down: false, wide: true });
+      var B = L.slabs || [];
+      for (i = 0; i < B.length; i++) {
+        var b = B[i];
+        solids.push({ x: b[0], y: b[2] - 30, w: b[1], h: 30 });
+        addTeeth(b[0], b[1], b[2] - 30, false);
+        addTeeth(b[0], b[1], b[2], true);
+      }
+      goal = { x: L.goal[0] - 22, y: L.goal[1] - 84, w: 44, h: 84 };
+      signs = L.signs || [];
+      START_X = L.cols[0][0] + 120;
+      START_Y = L.cols[0][2];
+    }
 
     /* ---------------- helpers ---------------- */
     function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
@@ -241,7 +387,7 @@
 
     /* ---------------- player ---------------- */
     function resetPlayer() {
-      p.x = START_X; p.y = GROUND; p.vx = 0; p.vy = 0;
+      p.x = START_X; p.y = START_Y; p.vx = 0; p.vy = 0;
       p.onGround = true; p.face = 1; p.faceDraw = 1;
       p.coyote = 0; p.jumpBuf = 0; p.dashBuf = 0; p.squat = 0;
       p.jumping = false; p.cut = false;
@@ -296,7 +442,13 @@
         var k = spikes[i];
         /* a slim box up the middle of the tooth, so brushing the slope's
            empty corner doesn't count */
-        var hb = { x: k.x - k.w * 0.28, y: k.y - k.h * 0.8, w: k.w * 0.56, h: k.h * 0.8 };
+        /* hand-placed teeth kill across their whole base (and a hair past
+           it), so there's no sliver of ledge to stand on beside one */
+        var hb = k.wide
+          ? { x: k.x - k.w / 2 - 2, y: k.y - k.h * 0.8, w: k.w + 4, h: k.h * 0.8 }
+          : k.down
+          ? { x: k.x - k.w * 0.28, y: k.y, w: k.w * 0.56, h: k.h * 0.8 }
+          : { x: k.x - k.w * 0.28, y: k.y - k.h * 0.8, w: k.w * 0.56, h: k.h * 0.8 };
         if (overlaps(p.x, p.y, hb)) return true;
       }
       return false;
@@ -458,9 +610,42 @@
     function respawn() {
       resetPlayer();
       pieces = [];   // no body left behind
-      cam.look = p.face * 90;
+      cam.look = p.face * LOOK;
       cam.x = cameraTarget();
       burst(p.x, p.y - 45, 14, [ORANGE, '#ffffff'], 260);
+    }
+
+    function saveLevel(n) {
+      try { localStorage.setItem(SAVE_KEY, String(n)); } catch (e) {}
+    }
+    function loadSaved() {
+      var n = 0;
+      try { n = parseInt(localStorage.getItem(SAVE_KEY), 10) || 0; } catch (e) {}
+      return clamp(n, 0, LEVELS.length - 1);
+    }
+
+    function enterLevel(n) {
+      buildLevel(n);
+      saveLevel(n);
+      lines = []; ghosts = []; sparks = [];
+      respawn();
+      levelTag.textContent = 'Level ' + (n + 1) + ' / ' + LEVELS.length;
+      banner.innerHTML = 'LEVEL ' + (n + 1) + '<small>' + LEVELS[n].name + '</small>';
+      banner.classList.add('show');
+      bannerT = 1.8;
+    }
+
+    function reachGoal() {
+      if (level + 1 < LEVELS.length) { enterLevel(level + 1); return; }
+      state = 'won';
+      saveLevel(0);
+      winBox.classList.add('show');
+      levelTag.classList.remove('show');
+    }
+
+    function touchingGoal() {
+      /* counts even if you jump over the door */
+      return overlaps(p.x, p.y, { x: goal.x, y: goal.y - 400, w: goal.w, h: goal.h + 400 });
     }
 
     /* ---------------- update ---------------- */
@@ -468,10 +653,16 @@
       T += dt;
       updateFx(dt);
 
-      if (state === 'menu') {
+      if (state === 'menu' || state === 'won') {
+        if (state === 'won') { p.vx = 0; p.dashT = 0; }
         animate(dt);
         updateCamera(dt);
         return;
+      }
+
+      if (bannerT > 0) {
+        bannerT -= dt;
+        if (bannerT <= 0) banner.classList.remove('show');
       }
 
       if (hintT > 0) {
@@ -546,7 +737,8 @@
 
       move(dt);
       animate(dt);
-      if (touchingSpike()) die();
+      if (touchingSpike() || p.y >= PIT) die();
+      else if (touchingGoal()) reachGoal();
       updateCamera(dt);
     }
 
@@ -561,6 +753,9 @@
       vw = w / scale;
     }
 
+    /* the camera sits well ahead of you, so the next landing is always on
+       screen before you have to jump for it */
+    var LOOK = 230;
     function cameraTarget() {
       if (state === 'menu') return p.x - vw / 2;
       if (WORLD_W <= vw) return (WORLD_W - vw) / 2;
@@ -568,7 +763,7 @@
     }
 
     function updateCamera(dt) {
-      if (state !== 'menu') cam.look += (p.face * 90 - cam.look) * (1 - Math.exp(-3 * dt));
+      if (state !== 'menu') cam.look += (p.face * LOOK - cam.look) * (1 - Math.exp(-3 * dt));
       var target = cameraTarget();
       cam.x += (target - cam.x) * (1 - Math.exp(-6 * dt));
     }
@@ -656,13 +851,34 @@
       ctx.lineJoin = 'round';
       for (i = 0; i < spikes.length; i++) {
         s = spikes[i];
+        if (s.x > cam.x + vw + 40 || s.x < cam.x - 40) continue;
         ctx.beginPath();
         ctx.moveTo(s.x - s.w / 2, s.y);
-        ctx.lineTo(s.x, s.y - s.h);
+        ctx.lineTo(s.x, s.down ? s.y + s.h : s.y - s.h);
         ctx.lineTo(s.x + s.w / 2, s.y);
         ctx.closePath();
         ctx.fill(); ctx.stroke();
       }
+
+      /* the exit door */
+      if (goal) {
+        var pulse = 0.6 + 0.4 * Math.sin(T * 3);
+        ctx.shadowColor = '#7bffb2'; ctx.shadowBlur = 14 + 8 * pulse;
+        ctx.fillStyle = 'rgba(123,255,178,' + (0.10 + 0.08 * pulse) + ')';
+        ctx.strokeStyle = '#7bffb2'; ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(goal.x, goal.y + goal.h);
+        ctx.lineTo(goal.x, goal.y + 22);
+        ctx.arc(goal.x + goal.w / 2, goal.y + 22, goal.w / 2, Math.PI, 0);
+        ctx.lineTo(goal.x + goal.w, goal.y + goal.h);
+        ctx.fill(); ctx.stroke();
+      }
+
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#a0c4ff';
+      ctx.font = '18px sans-serif';
+      ctx.textAlign = 'center';
+      for (i = 0; i < signs.length; i++) ctx.fillText(signs[i][2], signs[i][0], signs[i][1]);
       ctx.restore();
     }
 
@@ -716,13 +932,21 @@
       requestAnimationFrame(frame);
     }
 
-    function startGame() {
-      if (state !== 'menu') return;
+    function startGame(fromLevel) {
+      if (state !== 'menu' && state !== 'won') return;
       state = 'play';
       menu.classList.add('gone');
+      winBox.classList.remove('show');
+      levelTag.classList.add('show');
       keys = {};
-      hint.classList.add('show');
-      hintT = 8;
+      enterLevel(fromLevel);
+      if (fromLevel === 0) { hint.classList.add('show'); hintT = 8; }
+    }
+
+    function showMenuProgress() {
+      var n = loadSaved();
+      menuSub.textContent = n > 0 ? 'continue from level ' + (n + 1) : '';
+      restartBtn.style.display = n > 0 ? '' : 'none';
     }
 
     /* ---------------- events ---------------- */
@@ -731,9 +955,10 @@
       var c = e.code;
       if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'].indexOf(c) >= 0) e.preventDefault();
       if (state === 'menu') {
-        if (c === 'Enter' || c === 'Space') startGame();
+        if (c === 'Enter' || c === 'Space') startGame(loadSaved());
         return;
       }
+      if (state === 'won') return;
       keys[c] = true;
       if (e.repeat) return;
       if (UP.indexOf(c) >= 0) p.jumpBuf = 0.13;
@@ -743,10 +968,14 @@
     window.addEventListener('resize', resize);
     /* a hidden tab pauses; coming back doesn't fast-forward */
     document.addEventListener('visibilitychange', function () { last = null; accum = 0; });
-    playBtn.addEventListener('click', function () { playBtn.blur(); startGame(); });
+    playBtn.addEventListener('click', function () { playBtn.blur(); startGame(loadSaved()); });
+    restartBtn.addEventListener('click', function () { restartBtn.blur(); startGame(0); });
+    againBtn.addEventListener('click', function () { againBtn.blur(); startGame(0); });
 
     resize();
+    buildLevel(loadSaved());
     resetPlayer();
+    showMenuProgress();
     cam.x = p.x - vw / 2;
     requestAnimationFrame(frame);
   })();
