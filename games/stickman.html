@@ -216,7 +216,26 @@
          red stickman guards the key. He won't leave his platform. */
       { w: 3800, goal: [3600, 400], needs: 'key', enemy: [2060, 400],
         cols: [[0, 400, 620], [790, 160, 560], [1150, 140, 360], [1790, 420, 400],
-               [2600, 140, 400], [3300, 500, 400]] }
+               [2600, 140, 400], [3300, 500, 400]] },
+
+      /* levels 9-11: regular platforming again (you keep the sword) */
+      { w: 4000, goal: [3840, 420],
+        cols: [[0, 400, 620], [790, 300, 620], [1480, 180, 520], [1660, 160, 300],
+               [2390, 200, 300], [3010, 140, 420], [3540, 400, 420]],
+        spikes: [[960, 620]] },
+
+      { w: 4100, goal: [3930, 400],
+        cols: [[0, 360, 620], [538, 34, 480], [750, 360, 560], [1500, 140, 560],
+               [2210, 140, 560], [2350, 180, 340], [2900, 160, 340], [3630, 400, 400]],
+        spikes: [[555, 480], [2917, 340]],
+        slabs: [[860, 140, 410]] },
+
+      { w: 4900, goal: [4700, 460],
+        cols: [[0, 360, 620], [560, 120, 420], [1250, 120, 420], [1760, 100, 420],
+               [2250, 300, 500], [3120, 140, 500], [3438, 34, 420], [3650, 140, 460],
+               [4360, 440, 460]],
+        spikes: [[3455, 420]],
+        slabs: [[2350, 120, 350]] }
     ];
 
     var level = 0, goal = null, solids = [], spikes = [];
@@ -451,7 +470,9 @@
       p.hp = MAX_HP; p.inv = 0; p.stun = 0;
       p.swingT = 0; p.swingCool = 0; p.swingBuf = 0; p.swingHit = false; p.trail = [];
       var L = LEVELS[level];
-      p.hasSword = !!(L && (L.enemy || (L.pedestal && swordTaken)));
+      /* once you've passed the pedestal room you always have the sword */
+      var swordRoom = 5;
+      p.hasSword = level > swordRoom || (level === swordRoom && swordTaken);
       pose = null;
       animate(0);
     }
