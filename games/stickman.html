@@ -210,7 +210,13 @@
       /* level 7: the red stickman. He carries the key on his belt; the
          door won't open without it. */
       { w: 1500, goal: [1410, 620], needs: 'key', enemy: [980, 620],
-        cols: [[0, 1500, 620]] }
+        cols: [[0, 1500, 620]] },
+
+      /* level 8: platforming either side of a middle platform, where another
+         red stickman guards the key. He won't leave his platform. */
+      { w: 3800, goal: [3600, 400], needs: 'key', enemy: [2060, 400],
+        cols: [[0, 400, 620], [790, 160, 560], [1150, 140, 360], [1790, 420, 400],
+               [2600, 140, 400], [3300, 500, 400]] }
     ];
 
     var level = 0, goal = null, solids = [], spikes = [];
@@ -752,7 +758,13 @@
       var L = LEVELS[level];
       keyItem = null; p.hasKey = false; booms = [];
       if (!L.enemy) { enemy = null; return; }
-      enemy = { x: L.enemy[0], y: L.enemy[1], vx: 0, vy: 0, onGround: true,
+      /* the platform he stands on is his: he never walks or gets knocked off it */
+      var home = { x0: 0, x1: WORLD_W };
+      for (var i = 0; i < L.cols.length; i++) {
+        var c = L.cols[i];
+        if (L.enemy[0] >= c[0] && L.enemy[0] <= c[0] + c[1] && c[2] === L.enemy[1]) home = { x0: c[0], x1: c[0] + c[1] };
+      }
+      enemy = { x: L.enemy[0], y: L.enemy[1], vx: 0, vy: 0, onGround: true, home: home, sx: L.enemy[0],
                 face: -1, faceDraw: -1, plant: 1, phase: 0, pose: null, J: null,
                 hp: MAX_HP, act: 'idle', actT: 0, cool: 1.0, stun: 0, hitDone: false,
                 high: false, dead: false, flash: 0, backT: 0, readSwing: false, readDash: false };
@@ -852,6 +864,11 @@
           }
           if (choice) startAttack(e, choice, high);
           else if (!alive) e.vx = approach(e.vx, 0, 1500 * dt);
+          else if (p.x < e.home.x0 || p.x > e.home.x1) {
+            /* you're not on his platform yet: he waits at his post */
+            var toPost = e.sx - e.x;
+            e.vx = approach(e.vx, Math.abs(toPost) > 8 ? (toPost > 0 ? 160 : -160) : 0, 1800 * dt);
+          }
           else {
             var spd = recovering ? 320 : 220;
             if (dist > 74) e.vx = approach(e.vx, e.face * spd, 1800 * dt);
@@ -863,6 +880,8 @@
 
       e.vy = Math.min(e.vy + G * dt, 1400);
       moveBody(e, dt);
+      if (e.x < e.home.x0 + 12) { e.x = e.home.x0 + 12; e.vx = Math.max(0, e.vx); }
+      if (e.x > e.home.x1 - 12) { e.x = e.home.x1 - 12; e.vx = Math.min(0, e.vx); }
 
       /* you can't walk through him (you can dash through) */
       if (alive && p.dashT <= 0 && Math.abs(p.x - e.x) < PW &&
@@ -907,7 +926,7 @@
     function killEnemy(e) {
       e.dead = true;
       breakApart(e.J, e.vx, e.vy, RED);
-      keyItem = { x: e.J.hip.x, y: e.J.hip.y, vx: -e.face * 80, vy: -420 };
+      keyItem = { x: clamp(e.J.hip.x, e.home.x0 + 14, e.home.x1 - 14), y: e.J.hip.y, vx: -e.face * 80, vy: -420, home: e.home };
       cam.shake = 10;
     }
 
@@ -994,6 +1013,9 @@
       if (keyItem && !p.hasKey) {
         keyItem.vy = Math.min(keyItem.vy + G * dt, 1400);
         keyItem.x += keyItem.vx * dt; keyItem.y += keyItem.vy * dt;
+        /* it stays on his platform, it never bounces off into the pit */
+        if (keyItem.x < keyItem.home.x0 + 10) { keyItem.x = keyItem.home.x0 + 10; keyItem.vx = Math.abs(keyItem.vx) * 0.5; }
+        if (keyItem.x > keyItem.home.x1 - 10) { keyItem.x = keyItem.home.x1 - 10; keyItem.vx = -Math.abs(keyItem.vx) * 0.5; }
         for (i = 0; i < solids.length; i++) {
           var sd = solids[i];
           if (keyItem.x > sd.x && keyItem.x < sd.x + sd.w && keyItem.y + 8 > sd.y && keyItem.y < sd.y + sd.h) {
