@@ -28,7 +28,8 @@
     unnamed:               'UNDEFINED',
     risk:                  'BANG',
     password:              'THXNEIL',
-    garden:                'THXORTEIL'
+    garden:                'THXORTEIL',
+    stickman:              'STICK'
   };
 
   var LABELS = {
@@ -45,7 +46,8 @@
     unnamed:               'A Platformer Game',
     risk:                  'Risk',
     password:              'Choose a Password',
-    garden:                'Garden'
+    garden:                'Garden',
+    stickman:              'Stickman'
   };
 
   var script = document.currentScript;

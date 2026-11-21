@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stickman - Horsey Games</title>
+  <link rel="stylesheet" href="../style.css">
+  <script src="../gate.js" data-gate="stickman"></script>
+  <style>
+    body { overflow: hidden; margin: 0; background: #0a0e27; display: block; }
+    canvas { display: block; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+    .back-link { z-index: 30; }
+
+    #menu {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 20;
+      display: flex; flex-direction: column; align-items: center;
+      padding-top: 13vh;
+      background: radial-gradient(ellipse at 50% 70%, rgba(10,14,39,0.15), rgba(10,14,39,0.8));
+      transition: opacity 0.6s;
+    }
+    #menu.gone { opacity: 0; pointer-events: none; }
+    #menu h1 {
+      font-size: clamp(3rem, 10vw, 6.5rem);
+      letter-spacing: 0.3em; padding-left: 0.3em;
+      margin: 0 0 0.45em;
+      color: #fff; font-weight: 800;
+      text-shadow: 0 0 18px #4ee1ff, 0 0 42px rgba(78,225,255,0.55);
+    }
+    #play {
+      font-family: inherit; font-weight: 700;
+      font-size: clamp(1.6rem, 4vw, 2.5rem);
+      letter-spacing: 0.25em; padding: 0.6em 2.4em 0.6em 2.65em;
+      border-radius: 999px; border: 3px solid #4ee1ff;
+      background: rgba(14,22,52,0.88); color: #fff; cursor: pointer;
+      box-shadow: 0 0 24px rgba(78,225,255,0.4), inset 0 0 18px rgba(78,225,255,0.2);
+      animation: pulse 1.8s ease-in-out infinite;
+      transition: background 0.15s, color 0.15s;
+    }
+    #play:hover { background: #4ee1ff; color: #0a0e27; }
+    @keyframes pulse {
+      50% { box-shadow: 0 0 44px rgba(78,225,255,0.7), inset 0 0 18px rgba(78,225,255,0.35); transform: scale(1.04); }
+    }
+
+    #hint {
+      position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+      z-index: 10; color: #a0c4ff; font-size: 0.95rem; text-align: center;
+      opacity: 0; transition: opacity 0.8s; pointer-events: none; width: 92%;
+    }
+    #hint.show { opacity: 0.85; }
+
+    #dead {
+      position: fixed; top: 36%; left: 50%; transform: translate(-50%, -50%);
+      z-index: 15; text-align: center; opacity: 0; transition: opacity 0.4s;
+      pointer-events: none;
+    }
+    #dead.show { opacity: 1; }
+    #dead h2 {
+      font-size: clamp(2.2rem, 7vw, 3.4rem); margin: 0; letter-spacing: 0.2em;
+      color: #ff4e6a; text-shadow: 0 0 20px #ff4e6a;
+    }
+    #dead p { color: #a0c4ff; margin-top: 0.6em; }
+  </style>
+</head>
+<body>
+  <a href="../games.html" class="back-link">&larr; All Games</a>
+  <canvas id="game"></canvas>
+
+  <div id="menu">
+    <h1>STICKMAN</h1>
+    <button id="play" type="button">PLAY</button>
+  </div>
+
+  <div id="hint">A / D or &larr; &rarr; move &nbsp;&middot;&nbsp; W / &uarr; / Space jump &nbsp;&middot;&nbsp; F dash</div>
+
+  <div id="dead">
+    <h2>YOU DIED</h2>
+    <p>press any key</p>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    var canvas  = document.getElementById('game');
+    var ctx     = canvas.getContext('2d');
+    var menu    = document.getElementById('menu');
+    var playBtn = document.getElementById('play');
+    var hint    = document.getElementById('hint');
+    var deadBox = document.getElementById('dead');
+
+    /* ---------------- world ---------------- */
+    var VIEW_H = 760, WORLD_W = 2400, GROUND = 620;
+    var G = 2300, RUN = 340, ACC_G = 2800, ACC_A = 1700, FRIC = 3200;
+    var JUMP = 860, DASH = 1150, DASH_T = 0.16, DASH_CD = 0.55;
+    var PW = 22, PH = 94;
+    var LEN = { thigh: 23, shin: 23, upper: 17, fore: 17, torso: 30, head: 9.5 };
+    var LEG = LEN.thigh + LEN.shin;
+    var START_X = 160;
+
+    var solids = [
+      { x: -200,    y: -1000, w: 200,     h: 2000 },
+      { x: WORLD_W, y: -1000, w: 200,     h: 2000 },
+      { x: 0,       y: GROUND, w: WORLD_W, h: 300 },
+      { x: 560,  y: 480, w: 170, h: 22 },
+      { x: 820,  y: 390, w: 150, h: 22 },
+      { x: 1060, y: 300, w: 220, h: 22 },
+      { x: 1700, y: 540, w: 140, h: 80 },
+      { x: 1960, y: 440, w: 180, h: 22 }
+    ];
+    /* one tooth. x is the centre of its base */
+    var spikes = [ { x: 1420, y: GROUND, w: 34, h: 34 } ];
+
+    /* ---------------- helpers ---------------- */
+    function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+    function approach(v, t, d) { return v < t ? Math.min(v + d, t) : Math.max(v - d, t); }
+    function smooth(t) { return t * t * (3 - 2 * t); }
+    function mixPose(a, b, t) {
+      var o = {}, k;
+      for (k in a) if (a.hasOwnProperty(k)) o[k] = a[k] + (b[k] - a[k]) * t;
+      return o;
+    }
+    function copyPose(a) { return mixPose(a, a, 0); }
+
+    /* ---------------- input ---------------- */
+    var keys = {};
+    var LEFT = ['KeyA', 'ArrowLeft'], RIGHT = ['KeyD', 'ArrowRight'];
+    var UP = ['KeyW', 'ArrowUp', 'Space'], DOWN = ['KeyS', 'ArrowDown'];
+    function held(list) {
+      for (var i = 0; i < list.length; i++) if (keys[list[i]]) return true;
+      return false;
+    }
+
+    /* ---------------- state ---------------- */
+    var state = 'menu';
+    var T = 0, hintT = 0;
+    var p = {};
+    var pose = null, joints = null;
+    var pieces = [], lines = [], ghosts = [], sparks = [];
+    var cam = { x: 0, look: 0, shake: 0 };
+    var ghostT = 0;
+
+    /* ---------------- poses ----------------
+       Every limb angle is measured from straight down; positive swings it
+       towards the way he's facing. lean is the torso tipping forward. */
+    var DASH_POSE = { lean: 0.95, tilt: -0.15, lt: -0.35, ls: -0.9, rt: -0.85, rs: -1.25,
+                      lu: -1.35, lf: -1.6, ru: -1.15, rf: -1.45 };
+    var CROUCH    = { lean: 0.35, tilt: 0.1, lt: 1.1, ls: -0.55, rt: 0.85, rs: -0.85,
+                      lu: 0.6, lf: 1.1, ru: 0.3, rf: 0.9 };
+    var SKID      = { lean: 0.38, tilt: 0.05, lt: 0.35, ls: -0.35, rt: -0.65, rs: -0.75,
+                      lu: 0.9, lf: 1.3, ru: -0.6, rf: -0.2 };
+    var RISE      = { lean: 0.12, tilt: -0.12, lt: 1.25, ls: 0.15, rt: 0.2, rs: -0.65,
+                      lu: 2.4, lf: 2.8, ru: -0.7, rf: -0.3 };
+    var FALL      = { lean: 0.05, tilt: 0.1, lt: 0.45, ls: 0.1, rt: -0.15, rs: -0.45,
+                      lu: 1.65, lf: 2.1, ru: -1.55, rf: -1.9 };
+
+    function idlePose() {
+      var w = T * 2.4, b = Math.sin(w);
+      return {
+        lean: 0.03 + 0.012 * b, tilt: 0.02 * b,
+        lt: 0.10 + 0.03 * b, ls: -0.02 - 0.04 * b,
+        rt: -0.07 + 0.03 * b, rs: -0.12 - 0.04 * b,
+        lu: 0.12 + 0.04 * Math.sin(w + 0.6), lf: 0.32 + 0.05 * Math.sin(w + 0.9),
+        ru: -0.10 + 0.04 * Math.sin(w + 0.3), rf: 0.12 + 0.05 * Math.sin(w + 0.7)
+      };
+    }
+
+    function runPose(k) {
+      var ph = p.phase;
+      function leg(o) {
+        var s = Math.sin(ph + o), c = Math.cos(ph + o);
+        var th = 0.12 + (0.25 + 0.6 * k) * s;
+        /* knee folds while the leg swings through, straightens on the push */
+        var bend = 0.1 + (0.25 + 1.3 * k) * Math.max(0, c);
+        return [th, th - bend];
+      }
+      function arm(o) {
+        var s = Math.sin(ph + o);
+        var u = 0.1 - (0.3 + 0.65 * k) * s;
+        return [u, u + 0.4 + 1.0 * k + 0.25 * Math.max(0, -s)];
+      }
+      var A = leg(0), B = leg(Math.PI), C = arm(0), D = arm(Math.PI);
+      return {
+        lean: 0.08 + 0.22 * k, tilt: -0.05 * k + 0.03 * Math.sin(2 * ph),
+        lt: A[0], ls: A[1], rt: B[0], rs: B[1],
+        lu: C[0], lf: C[1], ru: D[0], rf: D[1]
+      };
+    }
+
+    function airPose() {
+      var t = smooth(clamp((p.vy + 300) / 900, 0, 1));
+      var o = mixPose(RISE, FALL, t);
+      o.lean += clamp(p.vx * p.face / RUN, -1, 1) * 0.1;
+      return o;
+    }
+
+    function targetPose() {
+      if (state === 'play' && p.dashT > 0) return DASH_POSE;
+      if (!p.onGround && p.squat <= 0) return airPose();
+      var k = clamp(Math.abs(p.vx) / RUN, 0, 1);
+      var tgt = mixPose(idlePose(), runPose(k), smooth(clamp(k * 2.5, 0, 1)));
+      var skid = clamp(-p.vx * p.face / RUN * 1.6, 0, 1);
+      if (skid > 0) tgt = mixPose(tgt, SKID, skid);
+      var sq = 0;
+      if (p.landT > 0) sq = p.landAmt * (p.landT / 0.2);
+      if (p.squat > 0) sq = Math.max(sq, 0.8);
+      if (state === 'play' && held(DOWN)) sq = Math.max(sq, 0.7);
+      if (sq > 0) tgt = mixPose(tgt, CROUCH, sq);
+      return tgt;
+    }
+
+    function animate(dt) {
+      var tgt = targetPose();
+      if (!pose) pose = copyPose(tgt);
+      var rate = p.dashT > 0 ? 35 : (p.onGround && Math.abs(p.vx) > 20 ? 22 : 14);
+      var a = 1 - Math.exp(-rate * dt), k;
+      for (k in tgt) if (tgt.hasOwnProperty(k)) pose[k] += (tgt[k] - pose[k]) * a;
+
+      p.faceDraw += (p.face - p.faceDraw) * (1 - Math.exp(-18 * dt));
+      var plantT = (p.onGround && p.dashT <= 0) ? 1 : 0;
+      p.plant += (plantT - p.plant) * (1 - Math.exp(-20 * dt));
+      if (p.onGround) p.phase += Math.abs(p.vx) * dt / 140 * Math.PI * 2;
+
+      joints = computeJoints(p.x, p.y);
+    }
+
+    function seg(o, ang, len, f) {
+      return { x: o.x + Math.sin(ang) * len * f, y: o.y + Math.cos(ang) * len };
+    }
+
+    function computeJoints(px, py) {
+      var f = p.faceDraw, P = pose;
+      var dL = Math.cos(P.lt) * LEN.thigh + Math.cos(P.ls) * LEN.shin;
+      var dR = Math.cos(P.rt) * LEN.thigh + Math.cos(P.rs) * LEN.shin;
+      /* on the ground the lowest foot is planted, so the hips ride up and
+         down with the stride instead of the feet floating or sinking */
+      var hipH = LEG + (Math.max(dL, dR) - LEG) * p.plant;
+      var hip = { x: px, y: py - hipH };
+      var sl = Math.sin(P.lean), cl = Math.cos(P.lean);
+      var neck = { x: hip.x + sl * LEN.torso * f, y: hip.y - cl * LEN.torso };
+      var sh = { x: hip.x + sl * LEN.torso * 0.86 * f, y: hip.y - cl * LEN.torso * 0.86 };
+      var ha = P.lean + P.tilt;
+      var head = { x: neck.x + Math.sin(ha) * (LEN.head + 2.5) * f,
+                   y: neck.y - Math.cos(ha) * (LEN.head + 2.5) };
+      var lk = seg(hip, P.lt, LEN.thigh, f), lf = seg(lk, P.ls, LEN.shin, f);
+      var rk = seg(hip, P.rt, LEN.thigh, f), rf = seg(rk, P.rs, LEN.shin, f);
+      var le = seg(sh, P.lu, LEN.upper, f),  lh = seg(le, P.lf, LEN.fore, f);
+      var re = seg(sh, P.ru, LEN.upper, f),  rh = seg(re, P.rf, LEN.fore, f);
+      return { f: f, hip: hip, neck: neck, sh: sh, head: head,
+               lk: lk, lf: lf, rk: rk, rf: rf, le: le, lh: lh, re: re, rh: rh };
+    }
+
+    /* ---------------- player ---------------- */
+    function resetPlayer() {
+      p.x = START_X; p.y = GROUND; p.vx = 0; p.vy = 0;
+      p.onGround = true; p.face = 1; p.faceDraw = 1;
+      p.coyote = 0; p.jumpBuf = 0; p.dashBuf = 0; p.squat = 0;
+      p.jumping = false; p.cut = false;
+      p.dashT = 0; p.cool = 0; p.canDash = true;
+      p.landT = 0; p.landAmt = 0; p.phase = 0; p.plant = 1;
+      p.dead = false; p.deadT = 0;
+      pose = null;
+      animate(0);
+    }
+
+    function overlaps(x, y, s) {
+      return x + PW / 2 > s.x && x - PW / 2 < s.x + s.w && y > s.y && y - PH < s.y + s.h;
+    }
+
+    function move(dt) {
+      var i, s, wasGround = p.onGround, fallV = p.vy;
+
+      p.x += p.vx * dt;
+      for (i = 0; i < solids.length; i++) {
+        s = solids[i];
+        if (!overlaps(p.x, p.y, s)) continue;
+        if (p.x < s.x + s.w / 2) p.x = s.x - PW / 2;
+        else p.x = s.x + s.w + PW / 2;
+        p.vx = 0;
+      }
+
+      p.y += p.vy * dt;
+      p.onGround = false;
+      for (i = 0; i < solids.length; i++) {
+        s = solids[i];
+        if (!overlaps(p.x, p.y, s)) continue;
+        if (p.y - PH / 2 < s.y + s.h / 2) {
+          p.y = s.y; if (p.vy > 0) p.vy = 0; p.onGround = true;
+        } else {
+          p.y = s.y + s.h + PH; if (p.vy < 0) p.vy = 0;
+        }
+      }
+
+      if (p.onGround && !wasGround) {
+        p.landAmt = clamp(fallV / 1400, 0.15, 0.85);
+        p.landT = 0.2;
+        p.jumping = false;
+      }
+      if (p.onGround && p.dashT <= 0) p.canDash = true;
+    }
+
+    function touchingSpike() {
+      for (var i = 0; i < spikes.length; i++) {
+        var k = spikes[i];
+        /* a slim box up the middle of the tooth, so brushing the slope's
+           empty corner doesn't count */
+        var hb = { x: k.x - k.w * 0.28, y: k.y - k.h * 0.8, w: k.w * 0.56, h: k.h * 0.8 };
+        if (overlaps(p.x, p.y, hb)) return true;
+      }
+      return false;
+    }
+
+    /* ---------------- effects ---------------- */
+    function zoomLine(spread) {
+      var len = 50 + Math.random() * 110;
+      var life = 0.18 + Math.random() * 0.1;
+      lines.push({
+        x: p.x - p.face * (6 + Math.random() * spread),
+        y: p.y - 8 - Math.random() * (PH - 14),
+        len: len, f: p.face, life: life, max: life
+      });
+    }
+
+    function spawnDash() {
+      for (var i = 0; i < 10; i++) zoomLine(60);
+      cam.shake = Math.max(cam.shake, 3);
+    }
+
+    function snapshotJoints(J) {
+      var o = {}, k;
+      for (k in J) if (J.hasOwnProperty(k)) o[k] = (k === 'f') ? J[k] : { x: J[k].x, y: J[k].y };
+      return o;
+    }
+
+    function burst(x, y, n, colors, speed) {
+      for (var i = 0; i < n; i++) {
+        var a = Math.random() * Math.PI * 2, v = speed * (0.3 + Math.random() * 0.7);
+        sparks.push({ x: x, y: y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - speed * 0.4,
+                      life: 0.5 + Math.random() * 0.4, max: 0.9,
+                      c: colors[i % colors.length] });
+      }
+    }
+
+    function updateFx(dt) {
+      var i;
+      for (i = lines.length - 1; i >= 0; i--) {
+        lines[i].life -= dt;
+        lines[i].x -= lines[i].f * 120 * dt;
+        if (lines[i].life <= 0) lines.splice(i, 1);
+      }
+      for (i = ghosts.length - 1; i >= 0; i--) {
+        ghosts[i].life -= dt;
+        if (ghosts[i].life <= 0) ghosts.splice(i, 1);
+      }
+      for (i = sparks.length - 1; i >= 0; i--) {
+        var s = sparks[i];
+        s.life -= dt; s.vy += G * 0.5 * dt; s.x += s.vx * dt; s.y += s.vy * dt;
+        if (s.life <= 0) sparks.splice(i, 1);
+      }
+      if (cam.shake > 0) cam.shake = Math.max(0, cam.shake - 30 * dt);
+    }
+
+    /* ---------------- death: he breaks apart ---------------- */
+    function die() {
+      p.dead = true; p.deadT = 0;
+      var J = joints;
+      var segs = [
+        [J.hip, J.neck, false], [J.hip, J.lk, true], [J.lk, J.lf, true],
+        [J.hip, J.rk, false], [J.rk, J.rf, false], [J.sh, J.le, true],
+        [J.le, J.lh, true], [J.sh, J.re, false], [J.re, J.rh, false]
+      ];
+      pieces = [];
+      for (var i = 0; i < segs.length; i++) {
+        var a = segs[i][0], b = segs[i][1];
+        var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        var dx = b.x - a.x, dy = b.y - a.y, len = Math.sqrt(dx * dx + dy * dy) || 1;
+        var ox = mx - J.hip.x, oy = my - J.hip.y, ol = Math.sqrt(ox * ox + oy * oy);
+        if (ol < 0.01) { ox = 0; oy = -1; } else { ox /= ol; oy /= ol; }
+        var push = 180 + Math.random() * 260;
+        pieces.push({
+          x: mx, y: my, a: Math.atan2(dy, dx), h: len / 2,
+          vx: p.vx * 0.35 + ox * push,
+          vy: p.vy * 0.3 - 260 - Math.random() * 200 + oy * 150,
+          va: (Math.random() - 0.5) * 22, far: segs[i][2]
+        });
+      }
+      pieces.push({
+        head: true, x: J.head.x, y: J.head.y, a: 0, h: LEN.head, f: J.f,
+        vx: p.vx * 0.4 + (Math.random() - 0.5) * 220, vy: -430 - Math.random() * 150,
+        va: (Math.random() - 0.5) * 14
+      });
+      burst(J.hip.x, J.hip.y - 10, 26, ['#ffffff', '#4ee1ff', '#ff4e6a'], 520);
+      cam.shake = 11;
+      p.vx = 0; p.vy = 0;
+      lines = []; ghosts = [];
+    }
+
+    function inside(x, y, s) {
+      return x > s.x && x < s.x + s.w && y > s.y && y < s.y + s.h;
+    }
+
+    function updatePieces(dt) {
+      for (var i = 0; i < pieces.length; i++) {
+        var pc = pieces[i], j, s;
+        pc.vy += G * dt;
+        pc.x += pc.vx * dt; pc.y += pc.vy * dt; pc.a += pc.va * dt;
+
+        if (pc.head) {
+          var r = LEN.head;
+          for (j = 0; j < solids.length; j++) {
+            s = solids[j];
+            if (pc.x + r * 0.7 < s.x || pc.x - r * 0.7 > s.x + s.w) continue;
+            if (pc.y + r < s.y || pc.y - r > s.y + s.h) continue;
+            if (pc.y - pc.vy * dt + r <= s.y + 2) {
+              pc.y = s.y - r;
+              if (pc.vy > 0) pc.vy = -pc.vy * 0.45;
+              if (Math.abs(pc.vy) < 50) pc.vy = 0;
+              pc.vx *= 0.94;
+              pc.va = pc.vx / r;
+            } else if (pc.y - pc.vy * dt - r >= s.y + s.h - 2) {
+              pc.y = s.y + s.h + r; if (pc.vy < 0) pc.vy = 0;
+            } else {
+              pc.x = (pc.x < s.x + s.w / 2) ? s.x - r : s.x + s.w + r;
+              pc.vx = -pc.vx * 0.5;
+            }
+          }
+          continue;
+        }
+
+        var cx = Math.cos(pc.a) * pc.h, cy = Math.sin(pc.a) * pc.h;
+        var ends = [[pc.x + cx, pc.y + cy], [pc.x - cx, pc.y - cy]];
+        var touching = false;
+        for (var e = 0; e < 2; e++) {
+          var ex = ends[e][0], ey = ends[e][1];
+          for (j = 0; j < solids.length; j++) {
+            s = solids[j];
+            if (!inside(ex, ey, s)) continue;
+            var pen = ey - s.y;
+            if (pen < 30) {
+              pc.y -= pen; ey -= pen;
+              if (pc.vy > 0) pc.vy = -pc.vy * 0.3;
+              pc.vx *= 0.9; pc.va *= 0.85;
+              /* the end that hit the floor is a pivot: the stick tips over
+                 until it lies flat */
+              pc.va += ((pc.x - ex) / pc.h) * 70 * dt;
+              touching = true;
+            } else {
+              pc.x += (ex < s.x + s.w / 2) ? (s.x - ex) : (s.x + s.w - ex);
+              pc.vx = -pc.vx * 0.4;
+            }
+          }
+        }
+        if (touching && Math.abs(pc.vy) < 40) pc.vy = 0;
+      }
+    }
+
+    function respawn() {
+      deadBox.classList.remove('show');
+      pieces = [];
+      resetPlayer();
+      burst(p.x, p.y - 45, 14, ['#4ee1ff', '#ffffff'], 260);
+    }
+
+    /* ---------------- update ---------------- */
+    function update(dt) {
+      T += dt;
+      updateFx(dt);
+
+      if (state === 'menu') {
+        animate(dt);
+        updateCamera(dt);
+        return;
+      }
+
+      if (hintT > 0) {
+        hintT -= dt;
+        if (hintT <= 0) hint.classList.remove('show');
+      }
+
+      if (p.dead) {
+        p.deadT += dt;
+        updatePieces(dt);
+        if (p.deadT > 1.3) deadBox.classList.add('show');
+        if (p.deadT > 4) respawn();
+        updateCamera(dt);
+        return;
+      }
+
+      var dir = (held(RIGHT) ? 1 : 0) - (held(LEFT) ? 1 : 0);
+      p.jumpBuf -= dt; p.dashBuf -= dt; p.cool -= dt;
+      p.coyote = p.onGround ? 0.1 : p.coyote - dt;
+      if (p.landT > 0) p.landT -= dt;
+      if (dir !== 0 && p.dashT <= 0) p.face = dir;
+
+      if (p.dashBuf > 0 && p.cool <= 0 && p.canDash) {
+        p.dashT = DASH_T; p.cool = DASH_CD; p.canDash = false;
+        p.dashBuf = 0; p.squat = 0; p.jumping = false;
+        spawnDash();
+      }
+
+      if (p.dashT > 0) {
+        p.dashT -= dt;
+        p.vx = p.face * DASH; p.vy = 0;
+        if (Math.random() < 0.8) zoomLine(40);
+        ghostT -= dt;
+        if (ghostT <= 0 && joints) {
+          ghosts.push({ J: snapshotJoints(joints), life: 0.22, max: 0.22 });
+          ghostT = 0.025;
+        }
+        if (p.dashT <= 0) p.vx = p.face * RUN;
+      } else {
+        var crouching = p.onGround && held(DOWN);
+        var target = crouching ? 0 : dir * RUN;
+        var acc = p.onGround ? (dir && !crouching ? ACC_G : FRIC) : (dir ? ACC_A : ACC_A * 0.35);
+        p.vx = approach(p.vx, target, acc * dt);
+
+        if (p.jumpBuf > 0 && (p.onGround || p.coyote > 0) && p.squat <= 0) {
+          p.squat = 0.055; p.jumpBuf = 0; p.coyote = 0;
+        }
+        if (p.squat > 0) {
+          p.squat -= dt;
+          if (p.squat <= 0) {
+            p.vy = -JUMP; p.onGround = false;
+            p.jumping = true; p.cut = false; p.coyote = 0;
+          }
+        }
+        if (p.jumping && !held(UP) && p.vy < 0 && !p.cut) { p.vy *= 0.45; p.cut = true; }
+
+        p.vy = Math.min(p.vy + G * dt, 1400);
+      }
+
+      move(dt);
+      animate(dt);
+      if (touchingSpike()) die();
+      updateCamera(dt);
+    }
+
+    /* ---------------- camera & render ---------------- */
+    var dpr = 1, scale = 1, vw = 1280;
+    function resize() {
+      var w = window.innerWidth || 1280, h = window.innerHeight || 760;
+      dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      scale = h / VIEW_H;
+      vw = w / scale;
+    }
+
+    function updateCamera(dt) {
+      var target;
+      if (state === 'menu') {
+        target = p.x - vw / 2;
+      } else {
+        cam.look += (p.face * 90 - cam.look) * (1 - Math.exp(-3 * dt));
+        target = p.x + cam.look - vw / 2;
+        if (WORLD_W <= vw) target = (WORLD_W - vw) / 2;
+        else target = clamp(target, 0, WORLD_W - vw);
+      }
+      cam.x += (target - cam.x) * (1 - Math.exp(-6 * dt));
+    }
+
+    function poly(pts) {
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (var i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.stroke();
+    }
+
+    function drawEyes(x, y, f, rot) {
+      ctx.save();
+      ctx.translate(x, y);
+      if (rot) ctx.rotate(rot);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#ffffff';
+      var s = f < 0 ? -1 : 1, w = Math.abs(f);
+      ctx.fillRect(s * 1.5 * w - 0.9, -3.4, 2, 4);
+      ctx.fillRect(s * 5.2 * w - 0.9, -3.4, 2, 4);
+      ctx.restore();
+    }
+
+    function drawFigure(J, alpha, ghost) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.lineWidth = 5.5;
+      if (!ghost) { ctx.shadowColor = '#4ee1ff'; ctx.shadowBlur = 12; }
+
+      /* far-side limbs a shade dimmer so you can read which leg is which */
+      ctx.strokeStyle = ghost ? '#ffffff' : '#7fa8c8';
+      poly([J.hip, J.lk, J.lf]);
+      poly([J.sh, J.le, J.lh]);
+
+      ctx.strokeStyle = ghost ? '#ffffff' : '#eaf6ff';
+      poly([J.hip, J.neck]);
+      poly([J.hip, J.rk, J.rf]);
+      poly([J.sh, J.re, J.rh]);
+
+      ctx.beginPath();
+      ctx.arc(J.head.x, J.head.y, LEN.head, 0, Math.PI * 2);
+      ctx.fillStyle = '#0d1430';
+      ctx.fill();
+      ctx.lineWidth = 3.5;
+      ctx.stroke();
+      if (!ghost) drawEyes(J.head.x, J.head.y, J.f, 0);
+      ctx.restore();
+    }
+
+    function drawPieces() {
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.shadowColor = '#4ee1ff'; ctx.shadowBlur = 12;
+      for (var i = 0; i < pieces.length; i++) {
+        var pc = pieces[i];
+        if (pc.head) {
+          ctx.beginPath();
+          ctx.arc(pc.x, pc.y, LEN.head, 0, Math.PI * 2);
+          ctx.fillStyle = '#0d1430'; ctx.fill();
+          ctx.strokeStyle = '#eaf6ff'; ctx.lineWidth = 3.5; ctx.stroke();
+          drawEyes(pc.x, pc.y, pc.f, pc.a);
+          continue;
+        }
+        var cx = Math.cos(pc.a) * pc.h, cy = Math.sin(pc.a) * pc.h;
+        ctx.strokeStyle = pc.far ? '#7fa8c8' : '#eaf6ff';
+        ctx.lineWidth = 5.5;
+        ctx.beginPath();
+        ctx.moveTo(pc.x - cx, pc.y - cy);
+        ctx.lineTo(pc.x + cx, pc.y + cy);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawBackground() {
+      ctx.fillStyle = '#0a0e27';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      /* faint parallax grid */
+      ctx.save();
+      ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
+      ctx.strokeStyle = 'rgba(78,127,255,0.06)';
+      ctx.lineWidth = 1;
+      var gap = 80, off = -((cam.x * 0.4) % gap);
+      ctx.beginPath();
+      for (var x = off; x < vw + gap; x += gap) { ctx.moveTo(x, 0); ctx.lineTo(x, VIEW_H); }
+      for (var y = 20; y < VIEW_H; y += gap) { ctx.moveTo(0, y); ctx.lineTo(vw, y); }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawLevel() {
+      var i, s;
+      ctx.save();
+      ctx.shadowColor = '#4e7fff'; ctx.shadowBlur = 10;
+      ctx.fillStyle = '#121a3a'; ctx.strokeStyle = '#4e7fff'; ctx.lineWidth = 2.5;
+      for (i = 2; i < solids.length; i++) {
+        s = solids[i];
+        if (s.x > cam.x + vw + 20 || s.x + s.w < cam.x - 20) continue;
+        ctx.fillRect(s.x, s.y, s.w, s.h);
+        ctx.strokeRect(s.x, s.y, s.w, s.h);
+      }
+      ctx.shadowColor = '#ff4e6a';
+      ctx.fillStyle = '#1e0c1a'; ctx.strokeStyle = '#ff4e6a';
+      ctx.lineJoin = 'round';
+      for (i = 0; i < spikes.length; i++) {
+        s = spikes[i];
+        ctx.beginPath();
+        ctx.moveTo(s.x - s.w / 2, s.y);
+        ctx.lineTo(s.x, s.y - s.h);
+        ctx.lineTo(s.x + s.w / 2, s.y);
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawFx() {
+      var i;
+      ctx.save();
+      ctx.lineCap = 'round';
+      for (i = 0; i < lines.length; i++) {
+        var l = lines[i], a = l.life / l.max;
+        var x2 = l.x - l.f * l.len;
+        var g = ctx.createLinearGradient(l.x, 0, x2, 0);
+        g.addColorStop(0, 'rgba(255,255,255,' + (0.9 * a) + ')');
+        g.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.strokeStyle = g;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(l.x, l.y); ctx.lineTo(x2, l.y); ctx.stroke();
+      }
+      for (i = 0; i < sparks.length; i++) {
+        var s = sparks[i];
+        ctx.globalAlpha = clamp(s.life / s.max, 0, 1);
+        ctx.fillStyle = s.c;
+        ctx.fillRect(s.x - 2, s.y - 2, 4, 4);
+      }
+      ctx.restore();
+      for (i = 0; i < ghosts.length; i++) {
+        drawFigure(ghosts[i].J, 0.35 * ghosts[i].life / ghosts[i].max, true);
+      }
+    }
+
+    function render() {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      drawBackground();
+      var sx = (Math.random() - 0.5) * cam.shake, sy = (Math.random() - 0.5) * cam.shake;
+      var k = dpr * scale;
+      ctx.setTransform(k, 0, 0, k, -(cam.x + sx) * k, sy * k);
+      drawLevel();
+      drawFx();
+      if (p.dead) drawPieces();
+      else if (joints) drawFigure(joints, 1, false);
+    }
+
+    /* ---------------- loop ---------------- */
+    var last = null, accum = 0, STEP = 1 / 120;
+    function frame(now) {
+      if (last === null) last = now;
+      var dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      accum += dt;
+      while (accum >= STEP) { update(STEP); accum -= STEP; }
+      render();
+      requestAnimationFrame(frame);
+    }
+
+    function startGame() {
+      if (state !== 'menu') return;
+      state = 'play';
+      menu.classList.add('gone');
+      keys = {};
+      hint.classList.add('show');
+      hintT = 8;
+    }
+
+    /* ---------------- events ---------------- */
+    document.addEventListener('keydown', function (e) {
+      if (e.target && e.target.tagName === 'INPUT') return;
+      var c = e.code;
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'].indexOf(c) >= 0) e.preventDefault();
+      if (state === 'menu') {
+        if (c === 'Enter' || c === 'Space') startGame();
+        return;
+      }
+      keys[c] = true;
+      if (e.repeat) return;
+      if (p.dead) { if (p.deadT > 1.6) respawn(); return; }
+      if (UP.indexOf(c) >= 0) p.jumpBuf = 0.13;
+      if (c === 'KeyF') p.dashBuf = 0.12;
+    });
+    document.addEventListener('keyup', function (e) { keys[e.code] = false; });
+    window.addEventListener('blur', function () { keys = {}; });
+    window.addEventListener('resize', resize);
+    /* a hidden tab pauses; coming back doesn't fast-forward */
+    document.addEventListener('visibilitychange', function () { last = null; accum = 0; });
+    playBtn.addEventListener('click', function () { playBtn.blur(); startGame(); });
+
+    resize();
+    resetPlayer();
+    cam.x = p.x - vw / 2;
+    requestAnimationFrame(frame);
+  })();
+  </script>
+</body>
+</html>
