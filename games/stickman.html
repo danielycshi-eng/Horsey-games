@@ -59,7 +59,7 @@
     <button id="play" type="button">PLAY</button>
   </div>
 
-  <div id="hint">A / D or &larr; &rarr; move &nbsp;&middot;&nbsp; W / &uarr; / Space jump (twice to double jump) &nbsp;&middot;&nbsp; F dash</div>
+  <div id="hint">A / D or &larr; &rarr; move &nbsp;&middot;&nbsp; W / &uarr; / Space jump &nbsp;&middot;&nbsp; again in the air: double jump &nbsp;&middot;&nbsp; a third time: dash</div>
 
 
   <script>
@@ -75,10 +75,10 @@
     /* ---------------- world ---------------- */
     var VIEW_H = 760, WORLD_W = 2400, GROUND = 620;
     var G = 2300, RUN = 340, ACC_G = 2800, ACC_A = 1700, FRIC = 3200;
-    var FLIP_T = 0.42;
+    var FLIP_T = 0.25;
     var JUMP = 860, DASH = 1150, DASH_T = 0.16, DASH_CD = 0.55;
-    var PW = 22, PH = 94;
-    var LEN = { thigh: 23, shin: 23, upper: 17, fore: 17, torso: 30, head: 9.5 };
+    var PW = 22, PH = 98;
+    var LEN = { thigh: 23, shin: 23, upper: 17, fore: 17, torso: 30, head: 11 };
     var LEG = LEN.thigh + LEN.shin;
     var START_X = 160;
 
@@ -137,7 +137,7 @@
                       lu: 2.4, lf: 2.8, ru: -0.7, rf: -0.3 };
     var FALL      = { lean: 0.05, tilt: 0.1, lt: 0.45, ls: 0.1, rt: -0.15, rs: -0.45,
                       lu: 1.65, lf: 2.1, ru: -1.55, rf: -1.9 };
-    /* knees to chest, arms hugging them, for the double-jump flip */
+    /* knees tucked up for a moment on the double jump (no spin) */
     var TUCK      = { lean: 0.55, tilt: 0.25, lt: 1.95, ls: 0.35, rt: 1.75, rs: 0.15,
                       lu: 1.3, lf: 2.3, ru: 1.1, rf: 2.1 };
 
@@ -164,7 +164,7 @@
       function arm(o) {
         var s = Math.sin(ph + o);
         var u = 0.1 - (0.12 + 0.3 * k) * s;
-        return [u, u + 0.35 + 0.65 * k + 0.12 * Math.max(0, -s)];
+        return [u, u + 0.12 + 0.25 * k];
       }
       var A = leg(0), B = leg(Math.PI), C = arm(0), D = arm(Math.PI);
       return {
@@ -226,26 +226,17 @@
       var hip = { x: px, y: py - hipH };
       var sl = Math.sin(P.lean), cl = Math.cos(P.lean);
       var neck = { x: hip.x + sl * LEN.torso * f, y: hip.y - cl * LEN.torso };
-      var sh = { x: hip.x + sl * LEN.torso * 0.86 * f, y: hip.y - cl * LEN.torso * 0.86 };
+      /* arms hang from the very top of the body; the head floats just above */
+      var sh = neck;
       var ha = P.lean + P.tilt;
-      var head = { x: neck.x + Math.sin(ha) * (LEN.head + 2.5) * f,
-                   y: neck.y - Math.cos(ha) * (LEN.head + 2.5) };
+      var head = { x: neck.x + Math.sin(ha) * (LEN.head + 5) * f,
+                   y: neck.y - Math.cos(ha) * (LEN.head + 5) };
       var lk = seg(hip, P.lt, LEN.thigh, f), lf = seg(lk, P.ls, LEN.shin, f);
       var rk = seg(hip, P.rt, LEN.thigh, f), rf = seg(rk, P.rs, LEN.shin, f);
       var le = seg(sh, P.lu, LEN.upper, f),  lh = seg(le, P.lf, LEN.fore, f);
       var re = seg(sh, P.ru, LEN.upper, f),  rh = seg(re, P.rf, LEN.fore, f);
-      var J = { f: f, hip: hip, neck: neck, sh: sh, head: head,
+      return { f: f, hip: hip, neck: neck, sh: sh, head: head,
                lk: lk, lf: lf, rk: rk, rf: rf, le: le, lh: lh, re: re, rh: rh };
-      if (p.flip > 0) {
-        /* double jump: one full forward flip, spun round his middle */
-        var ang = p.face * Math.PI * 2 * smooth(1 - p.flip / FLIP_T);
-        var ox = px, oy = py - 45, ca = Math.cos(ang), sa = Math.sin(ang), k;
-        for (k in J) if (J.hasOwnProperty(k) && k !== 'f') {
-          var dx = J[k].x - ox, dy = J[k].y - oy;
-          J[k] = { x: ox + dx * ca - dy * sa, y: oy + dx * sa + dy * ca };
-        }
-      }
-      return J;
     }
 
     /* ---------------- player ---------------- */
@@ -255,6 +246,7 @@
       p.coyote = 0; p.jumpBuf = 0; p.dashBuf = 0; p.squat = 0;
       p.jumping = false; p.cut = false;
       p.airJumps = 1; p.flip = 0;
+      p.dead = false; p.deadT = 0;
       p.dashT = 0; p.cool = 0; p.canDash = true;
       p.landT = 0; p.landAmt = 0; p.phase = 0; p.plant = 1;
       pose = null;
@@ -362,13 +354,14 @@
 
     /* ---------------- death: he breaks apart ---------------- */
     function die() {
+      p.dead = true; p.deadT = 0;
       var J = joints;
       var segs = [
         [J.hip, J.neck, false], [J.hip, J.lk, true], [J.lk, J.lf, true],
         [J.hip, J.rk, false], [J.rk, J.rf, false], [J.sh, J.le, true],
         [J.le, J.lh, true], [J.sh, J.re, false], [J.re, J.rh, false]
       ];
-      pieces = [];
+      /* every body you leave behind stays */
       for (var i = 0; i < segs.length; i++) {
         var a = segs[i][0], b = segs[i][1];
         var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
@@ -391,7 +384,6 @@
       burst(J.hip.x, J.hip.y - 10, 26, ['#ffffff', ORANGE, '#ff4e6a'], 520);
       cam.shake = 11;
       lines = []; ghosts = [];
-      respawn();
     }
 
     function inside(x, y, s) {
@@ -453,9 +445,11 @@
       }
     }
 
-    /* straight back to the start; his broken pieces stay where he died */
+    /* cut straight back to the start: no camera pan, it just jumps there */
     function respawn() {
       resetPlayer();
+      cam.look = p.face * 90;
+      cam.x = cameraTarget();
       burst(p.x, p.y - 45, 14, [ORANGE, '#ffffff'], 260);
     }
 
@@ -477,11 +471,24 @@
 
       updatePieces(dt);
 
+      /* dead: the camera holds still for half a second, then cuts */
+      if (p.dead) {
+        p.deadT += dt;
+        if (p.deadT >= 0.5) respawn();
+        return;
+      }
+
       var dir = (held(RIGHT) ? 1 : 0) - (held(LEFT) ? 1 : 0);
       p.jumpBuf -= dt; p.dashBuf -= dt; p.cool -= dt;
       p.coyote = p.onGround ? 0.1 : p.coyote - dt;
       if (p.landT > 0) p.landT -= dt;
       if (dir !== 0 && p.dashT <= 0) p.face = dir;
+
+      /* third jump press (in the air, double jump used up) = dash */
+      if (p.jumpBuf > 0 && !p.onGround && p.coyote <= 0 && p.squat <= 0 &&
+          p.airJumps === 0 && p.dashT <= 0) {
+        p.dashBuf = p.jumpBuf; p.jumpBuf = 0;
+      }
 
       if (p.dashBuf > 0 && p.cool <= 0 && p.canDash) {
         p.dashT = DASH_T; p.cool = DASH_CD; p.canDash = false;
@@ -543,16 +550,15 @@
       vw = w / scale;
     }
 
+    function cameraTarget() {
+      if (state === 'menu') return p.x - vw / 2;
+      if (WORLD_W <= vw) return (WORLD_W - vw) / 2;
+      return clamp(p.x + cam.look - vw / 2, 0, WORLD_W - vw);
+    }
+
     function updateCamera(dt) {
-      var target;
-      if (state === 'menu') {
-        target = p.x - vw / 2;
-      } else {
-        cam.look += (p.face * 90 - cam.look) * (1 - Math.exp(-3 * dt));
-        target = p.x + cam.look - vw / 2;
-        if (WORLD_W <= vw) target = (WORLD_W - vw) / 2;
-        else target = clamp(target, 0, WORLD_W - vw);
-      }
+      if (state !== 'menu') cam.look += (p.face * 90 - cam.look) * (1 - Math.exp(-3 * dt));
+      var target = cameraTarget();
       cam.x += (target - cam.x) * (1 - Math.exp(-6 * dt));
     }
 
@@ -563,62 +569,35 @@
       ctx.stroke();
     }
 
-    function drawEyes(x, y, f, rot) {
-      ctx.save();
-      ctx.translate(x, y);
-      if (rot) ctx.rotate(rot);
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = '#ffffff';
-      var s = f < 0 ? -1 : 1, w = Math.abs(f);
-      ctx.fillRect(s * 1.5 * w - 0.9, -3.4, 2, 4);
-      ctx.fillRect(s * 5.2 * w - 0.9, -3.4, 2, 4);
-      ctx.restore();
-    }
+    /* Drawn like the Animation vs. stick figures: one flat orange, thick
+       round-ended lines, no hands or feet, and a solid round head with no
+       face that floats just above the body. */
+    var ORANGE = '#ff8a1f', LINE_W = 6.5;
 
-    /* All orange, no glow. Shading: the far-side limbs are a darker orange
-       (they're in shadow behind the body), near limbs get a thin light
-       streak along their top edge, and the head is a lit ball. */
-    var ORANGE = '#ff8a1f', ORANGE_DARK = '#b8560c', ORANGE_LIGHT = '#ffc27a';
-
-    function drawLimb(pts, far) {
-      ctx.lineWidth = 5.5;
-      ctx.strokeStyle = far ? ORANGE_DARK : ORANGE;
+    function drawLimb(pts) {
+      ctx.lineWidth = LINE_W;
+      ctx.strokeStyle = ORANGE;
       poly(pts);
-      if (far) return;
-      var sh = [];
-      for (var i = 0; i < pts.length; i++) sh.push({ x: pts[i].x - 0.9, y: pts[i].y - 1.1 });
-      ctx.lineWidth = 1.6;
-      ctx.strokeStyle = ORANGE_LIGHT;
-      poly(sh);
     }
 
-    function drawHead(x, y, f, rot, eyes) {
-      var r = LEN.head;
-      var g = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.1, x, y, r);
-      g.addColorStop(0, ORANGE_LIGHT);
-      g.addColorStop(0.55, ORANGE);
-      g.addColorStop(1, '#d9640c');
+    function drawHead(x, y) {
       ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fillStyle = g;
-      ctx.fill();
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = '#8a3a05';
+      ctx.arc(x, y, LEN.head, 0, Math.PI * 2);
+      ctx.lineWidth = LINE_W * 0.8;
+      ctx.strokeStyle = ORANGE;
       ctx.stroke();
-      if (eyes) drawEyes(x, y, f, rot);
     }
 
-    function drawFigure(J, alpha, ghost) {
+    function drawFigure(J, alpha) {
       ctx.save();
       ctx.globalAlpha = alpha;
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-
-      drawLimb([J.hip, J.lk, J.lf], true);
-      drawLimb([J.sh, J.le, J.lh], true);
-      drawLimb([J.hip, J.neck], false);
-      drawLimb([J.hip, J.rk, J.rf], false);
-      drawLimb([J.sh, J.re, J.rh], false);
-      drawHead(J.head.x, J.head.y, J.f, 0, !ghost);
+      drawLimb([J.hip, J.lk, J.lf]);
+      drawLimb([J.sh, J.le, J.lh]);
+      drawLimb([J.hip, J.neck]);
+      drawLimb([J.hip, J.rk, J.rf]);
+      drawLimb([J.sh, J.re, J.rh]);
+      drawHead(J.head.x, J.head.y);
       ctx.restore();
     }
 
@@ -627,9 +606,9 @@
       ctx.lineCap = 'round';
       for (var i = 0; i < pieces.length; i++) {
         var pc = pieces[i];
-        if (pc.head) { drawHead(pc.x, pc.y, pc.f, pc.a, true); continue; }
+        if (pc.head) { drawHead(pc.x, pc.y); continue; }
         var cx = Math.cos(pc.a) * pc.h, cy = Math.sin(pc.a) * pc.h;
-        drawLimb([{ x: pc.x - cx, y: pc.y - cy }, { x: pc.x + cx, y: pc.y + cy }], pc.far);
+        drawLimb([{ x: pc.x - cx, y: pc.y - cy }, { x: pc.x + cx, y: pc.y + cy }]);
       }
       ctx.restore();
     }
@@ -698,7 +677,7 @@
       }
       ctx.restore();
       for (i = 0; i < ghosts.length; i++) {
-        drawFigure(ghosts[i].J, 0.35 * ghosts[i].life / ghosts[i].max, true);
+        drawFigure(ghosts[i].J, 0.35 * ghosts[i].life / ghosts[i].max);
       }
     }
 
@@ -711,7 +690,7 @@
       drawLevel();
       drawFx();
       drawPieces();
-      if (joints) drawFigure(joints, 1, false);
+      if (joints && !p.dead) drawFigure(joints, 1);
     }
 
     /* ---------------- loop ---------------- */
@@ -747,7 +726,6 @@
       keys[c] = true;
       if (e.repeat) return;
       if (UP.indexOf(c) >= 0) p.jumpBuf = 0.13;
-      if (c === 'KeyF') p.dashBuf = 0.12;
     });
     document.addEventListener('keyup', function (e) { keys[e.code] = false; });
     window.addEventListener('blur', function () { keys = {}; });
