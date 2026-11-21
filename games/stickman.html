@@ -361,7 +361,8 @@
         [J.hip, J.rk, false], [J.rk, J.rf, false], [J.sh, J.le, true],
         [J.le, J.lh, true], [J.sh, J.re, false], [J.re, J.rh, false]
       ];
-      /* every body you leave behind stays */
+      /* only your latest body stays; the one before is cleared */
+      pieces = [];
       for (var i = 0; i < segs.length; i++) {
         var a = segs[i][0], b = segs[i][1];
         var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
