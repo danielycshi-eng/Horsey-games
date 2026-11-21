@@ -446,6 +446,14 @@
       }
     }
 
+    function piecesSettled() {
+      for (var i = 0; i < pieces.length; i++) {
+        var pc = pieces[i];
+        if (Math.abs(pc.vx) > 25 || Math.abs(pc.vy) > 25 || Math.abs(pc.va) > 1.5) return false;
+      }
+      return true;
+    }
+
     /* cut straight back to the start: no camera pan, it just jumps there */
     function respawn() {
       resetPlayer();
@@ -473,10 +481,11 @@
 
       updatePieces(dt);
 
-      /* dead: the camera holds still for half a second, then cuts */
+      /* dead: the camera holds still until the pieces have landed and
+         stopped moving (2.5s at most), then cuts to the start */
       if (p.dead) {
         p.deadT += dt;
-        if (p.deadT >= 0.5) respawn();
+        if ((p.deadT > 0.6 && piecesSettled()) || p.deadT >= 2.5) respawn();
         return;
       }
 
