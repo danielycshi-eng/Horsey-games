@@ -69,10 +69,6 @@
       letter-spacing: 0.25em; text-shadow: 0 0 18px #ff8a1f;
       opacity: 0; transition: opacity 0.5s;
     }
-    #banner small {
-      display: block; font-size: 0.35em; font-weight: 400;
-      letter-spacing: 0.2em; color: #ffd0a0; margin-top: 0.3em;
-    }
     #banner.show { opacity: 1; }
 
     #win {
@@ -164,42 +160,46 @@
                            y is its underside. Walk under it, don't jump.
        goal   [x, top]     the exit door                                   */
     var LEVELS = [
-      { name: 'First Steps', w: 3300, goal: [3180, 320],
+      { w: 3300, goal: [3180, 320],
         cols: [[0, 500, 620], [700, 260, 620], [1120, 220, 520], [1340, 300, 320],
                [2030, 260, 320], [2860, 440, 320]],
-        spikes: [[300, 620]],
-        signs: [[300, 500, 'jump over the spike'],
-                [1230, 400, 'too tall? jump again in the air'],
-                [2160, 200, 'too far? jump a third time to dash']] },
+        spikes: [[300, 620]] },
 
-      { name: 'Up and Over', w: 3720, goal: [3600, 450],
+      { w: 3720, goal: [3600, 450],
         cols: [[0, 420, 620], [810, 160, 600], [1350, 200, 480], [1550, 140, 250],
                [2080, 300, 450], [2770, 120, 450], [3280, 440, 450]],
         spikes: [[2097, 450], [2131, 450]] },
 
-      { name: 'Dash', w: 4500, goal: [4360, 480],
+      { w: 4500, goal: [4360, 480],
         cols: [[0, 400, 600], [970, 200, 600], [1730, 180, 520], [1910, 160, 300],
                [2720, 200, 480], [3490, 160, 480], [4040, 440, 480]] },
 
-      { name: 'Mind Your Head', w: 4500, goal: [4330, 460],
+      { w: 4500, goal: [4330, 460],
         cols: [[0, 400, 620], [578, 34, 460], [790, 420, 620], [1600, 180, 560],
                [1780, 180, 340], [2520, 140, 380], [3060, 380, 460], [4010, 440, 460]],
         spikes: [[595, 460], [3077, 460]],
         slabs: [[930, 200, 470], [3210, 120, 310]] },
 
-      { name: 'The Gauntlet', w: 5100, goal: [4940, 420],
-        cols: [[0, 360, 620], [750, 100, 560], [1050, 120, 360], [1740, 120, 360],
-               [2040, 34, 300], [2260, 160, 420], [2580, 140, 200], [3400, 160, 420],
-               [3950, 100, 380], [4620, 440, 420]],
-        spikes: [[2057, 300]] }
+      /* level 5: still nothing moves, but the timing is tight. Gaps sit
+         close to each move's limit, landings are narrow, the runways
+         after the slabs are short, and one dash gap has a spiky slab
+         hanging over it: double-jump at the top of your first jump and
+         you hit it, so you have to double late and dash underneath. */
+      { w: 5310, goal: [5160, 400],
+        cols: [[0, 300, 620], [740, 70, 620], [1000, 90, 380], [1690, 90, 380],
+               [1950, 34, 330], [2220, 120, 440], [2900, 100, 440], [3440, 300, 440],
+               [4350, 80, 440], [4870, 440, 400]],
+        spikes: [[1967, 330]],
+        slabs: [[2520, 200, 130], [3520, 160, 300]] }
     ];
 
-    var level = 0, goal = null, signs = [], solids = [], spikes = [];
+    var level = 0, goal = null, solids = [], spikes = [];
 
+    /* teeth tiled across the slab's whole width, no bare strip at the ends */
     function addTeeth(x, w, y, down) {
-      var n = Math.floor(w / TOOTH), off = (w - n * TOOTH) / 2;
+      var n = Math.max(1, Math.round(w / TOOTH)), tw = w / n;
       for (var i = 0; i < n; i++)
-        spikes.push({ x: x + off + TOOTH * (i + 0.5), y: y, w: TOOTH, h: TOOTH, down: down });
+        spikes.push({ x: x + tw * (i + 0.5), y: y, w: tw, h: TOOTH, down: down, wide: true });
     }
 
     function buildLevel(n) {
@@ -215,15 +215,20 @@
         c = L.cols[i];
         solids.push({ x: c[0], y: c[2], w: c[1], h: 1200 - c[2], col: true });
       }
-      /* the pit floor, toothed wherever no pillar covers it */
+      /* the pit floor: every stretch between pillars is tiled wall to wall
+         with teeth (each stretch gets its own tooth width so they fit
+         exactly, no gaps at the edges) */
       solids.push({ x: 0, y: PIT, w: WORLD_W, h: 400 });
-      for (var x = TOOTH / 2; x < WORLD_W; x += TOOTH) {
-        var covered = false;
-        for (i = 0; i < L.cols.length; i++) {
-          c = L.cols[i];
-          if (x > c[0] - TOOTH / 2 && x < c[0] + c[1] + TOOTH / 2) covered = true;
+      var sorted = L.cols.slice().sort(function (u, v) { return u[0] - v[0]; });
+      var from = 0;
+      for (i = 0; i <= sorted.length; i++) {
+        var to = i < sorted.length ? sorted[i][0] : WORLD_W;
+        if (to - from > 4) {
+          var nT = Math.max(1, Math.round((to - from) / TOOTH)), tw = (to - from) / nT;
+          for (var j = 0; j < nT; j++)
+            spikes.push({ x: from + tw * (j + 0.5), y: PIT, w: tw, h: TOOTH, down: false });
         }
-        if (!covered) spikes.push({ x: x, y: PIT, w: TOOTH, h: TOOTH, down: false });
+        if (i < sorted.length) from = Math.max(from, sorted[i][0] + sorted[i][1]);
       }
       var S = L.spikes || [];
       for (i = 0; i < S.length; i++)
@@ -236,7 +241,6 @@
         addTeeth(b[0], b[1], b[2], true);
       }
       goal = { x: L.goal[0] - 22, y: L.goal[1] - 84, w: 44, h: 84 };
-      signs = L.signs || [];
       START_X = L.cols[0][0] + 120;
       START_Y = L.cols[0][2];
     }
@@ -355,7 +359,29 @@
       p.plant += (plantT - p.plant) * (1 - Math.exp(-20 * dt));
       if (p.onGround) p.phase += Math.abs(p.vx) * dt / 140 * Math.PI * 2;
 
-      joints = computeJoints(p.x, p.y);
+      joints = keepOutOfWalls(computeJoints(p.x, p.y));
+    }
+
+    /* His collision box is slim, but a swinging arm, a reaching leg or the
+       head can poke past it. If any part would be drawn inside a wall
+       beside him, slide the whole figure back so it touches, not enters. */
+    function keepOutOfWalls(J) {
+      var push = 0, k, i, s, pt, r;
+      for (k in J) {
+        if (!J.hasOwnProperty(k) || k === 'f') continue;
+        pt = J[k];
+        r = (k === 'head' ? LEN.head : 0) + LINE_W / 2;
+        for (i = 0; i < solids.length; i++) {
+          s = solids[i];
+          /* only parts level with the wall (not the floor he stands on) */
+          if (pt.y <= s.y + 2 || pt.y >= s.y + s.h) continue;
+          if (p.x <= s.x && pt.x + r > s.x) push = Math.min(push, s.x - (pt.x + r));
+          else if (p.x >= s.x + s.w && pt.x - r < s.x + s.w) push = Math.max(push, s.x + s.w - (pt.x - r));
+        }
+      }
+      if (push === 0) return J;
+      for (k in J) if (J.hasOwnProperty(k) && k !== 'f') J[k] = { x: J[k].x + push, y: J[k].y };
+      return J;
     }
 
     function seg(o, ang, len, f) {
@@ -445,7 +471,7 @@
         /* hand-placed teeth kill across their whole base (and a hair past
            it), so there's no sliver of ledge to stand on beside one */
         var hb = k.wide
-          ? { x: k.x - k.w / 2 - 2, y: k.y - k.h * 0.8, w: k.w + 4, h: k.h * 0.8 }
+          ? { x: k.x - k.w / 2 - 2, y: k.down ? k.y : k.y - k.h * 0.8, w: k.w + 4, h: k.h * 0.8 }
           : k.down
           ? { x: k.x - k.w * 0.28, y: k.y, w: k.w * 0.56, h: k.h * 0.8 }
           : { x: k.x - k.w * 0.28, y: k.y - k.h * 0.8, w: k.w * 0.56, h: k.h * 0.8 };
@@ -630,7 +656,7 @@
       lines = []; ghosts = []; sparks = [];
       respawn();
       levelTag.textContent = 'Level ' + (n + 1) + ' / ' + LEVELS.length;
-      banner.innerHTML = 'LEVEL ' + (n + 1) + '<small>' + LEVELS[n].name + '</small>';
+      banner.textContent = 'LEVEL ' + (n + 1);
       banner.classList.add('show');
       bannerT = 1.8;
     }
@@ -644,8 +670,7 @@
     }
 
     function touchingGoal() {
-      /* counts even if you jump over the door */
-      return overlaps(p.x, p.y, { x: goal.x, y: goal.y - 400, w: goal.w, h: goal.h + 400 });
+      return overlaps(p.x, p.y, goal);
     }
 
     /* ---------------- update ---------------- */
@@ -874,11 +899,6 @@
         ctx.fill(); ctx.stroke();
       }
 
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = '#a0c4ff';
-      ctx.font = '18px sans-serif';
-      ctx.textAlign = 'center';
-      for (i = 0; i < signs.length; i++) ctx.fillText(signs[i][2], signs[i][0], signs[i][1]);
       ctx.restore();
     }
 
